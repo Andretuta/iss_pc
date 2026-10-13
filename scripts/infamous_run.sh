@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# Gravity Rush 2: prepares the image, runs the game for N seconds and, optionally, presses buttons
+# inFAMOUS Second Son: prepares the image, runs the game for N seconds and, optionally, presses buttons
 # from a script and saves screenshots (raw RGBA display dumps converted to PNG).
-# Usage: scripts/gr2_run.sh [seconds=120] [shots_dir] [press_script]
+# Usage: scripts/infamous_run.sh [seconds=120] [shots_dir] [press_script]
 #   press_script: lines "<second> <buttons...>" (e.g. "40 cross", "60 options"); each press lasts 0.3 s.
 # Only one game instance may run at a time on this machine: the script waits for any other.
 set -uo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 port=$root/port
 seconds=${1:-120}; shots=${2:-}; script=${3:-}
-dump=$root/game/CUSA03694
+dump=$root/game/CUSA00223
 # One game instance at a time on this machine (shared lock with the other agents' runs).
 lock=${GAME_LOCK:-/tmp/claude-1000/-home-hayatog-decomp/79f27d1d-d3f5-4a2e-a5f3-511e01385ae2/scratchpad/game.lock}
-if [[ -z ${GR2_RUN_LOCKED:-} ]]; then
-    touch "$lock"; exec env GR2_RUN_LOCKED=1 flock "$lock" "$0" "$@"
+if [[ -z ${INFAMOUS_RUN_LOCKED:-} ]]; then
+    touch "$lock"; exec env INFAMOUS_RUN_LOCKED=1 flock "$lock" "$0" "$@"
 fi
 (cd "$port/scripts" &&
  python3 prepare.py "$dump" --out ../out >/dev/null &&
- python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx libSceJobManager.prx \
-     "$dump/sysdata/libSceSecure.prx" "$root/dump/system_lib/libSceNgs2.sprx" >/dev/null &&
+ python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx >/dev/null &&
  python3 content_profile.py "$dump" --out ../out >/dev/null) || { echo "prepare failed" >&2; exit 1; }
 mkdir -p "$port/user" "$port/out/logs"
-log=$port/out/logs/gr2-$(date +%Y%m%d-%H%M%S).log
+log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
 export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=2 TLG_GC_BUDGET_MB=5600 TLG_UPSCALER=off TLG_JITTER=0 \
-       TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_NGS2=native TLG_LANGUAGE=${TLG_LANGUAGE:-1}
+       TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_LANGUAGE=${TLG_LANGUAGE:-1}
 pad=$port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
 if [[ -n $shots ]]; then
     mkdir -p "$shots"; export TLG_FRAME_DUMP_TRIGGER=$shots/trigger TLG_DUMP_DIR=$shots
 fi
+export TLG_APP_NAME="inFAMOUS Second Son" TLG_APP_ID=infamous-pc
 (cd "$port/user" && exec "$port/out/tlg-probe" "$port/out/boot-linked.bin" --app0 "$dump" --user . \
     --content-profile "$port/out/content.bin" --timeout "$seconds") > "$log" 2>&1 &
 game=$!
