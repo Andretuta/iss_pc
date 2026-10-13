@@ -24,3 +24,4 @@ perf.data
 mods.json
 patches.json
 !launcher/tlg.png
+port/out-build.log
