@@ -21,6 +21,8 @@ export GOW3_READBACKS=${GOW3_READBACKS:-2}
 # usa ~3,5 GB (texturas descartadas e recarregadas = engasgos e glitches). 5200 MB serve para 6 GB de
 # VRAM; ajuste para outras placas (ex.: 7000 em 8 GB).
 export GOW3_GC_BUDGET_MB=${GOW3_GC_BUDGET_MB:-5200}
+# FPS a cada 5 s e diagnóstico de engasgos no log (o vigia scripts/watch_session.sh usa como batimento).
+export GOW3_FRAME_STATS=${GOW3_FRAME_STATS:-1}
 export GOW3_RESTART_COMMAND=${GOW3_RESTART_COMMAND:-"$0"}
 # Um log por execução em out/logs/ (mantém os 30 mais recentes); last_run.log aponta para o último.
 mkdir -p "$out/logs"
