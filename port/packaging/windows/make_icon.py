@@ -1,11 +1,11 @@
-"""Builds the port's icon files from packaging/icon/tlg-icon-1024.png (original art made for
+"""Builds the port's icon files from packaging/icon/gr2-icon-1024.png (original art made for
 this project; the official game art is read from the player's dump at run time). Needs Pillow.
-usage: make_icon.py launcher/tlg.ico launcher/tlg.png"""
+usage: make_icon.py launcher/gr2.ico launcher/gr2.png"""
 from pathlib import Path
 import sys
 from PIL import Image
 
-SOURCE = Path(__file__).resolve().parent.parent / 'icon' / 'tlg-icon-1024.png'
+SOURCE = Path(__file__).resolve().parent.parent / 'icon' / 'gr2-icon-1024.png'
 
 
 def main():

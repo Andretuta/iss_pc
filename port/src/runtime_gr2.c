@@ -19,6 +19,9 @@
 #ifndef _WIN32
 #include <sys/random.h>
 #include <ucontext.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 #define KERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
@@ -198,13 +201,96 @@ static ABI int32_t fiber_return_to_thread(uint64_t arg_on_return,uint64_t *arg_o
     return 0;
 }
 #else
-/* Windows: fibers come with the Win32 fiber port; until then the game gets an error. */
-static ABI int32_t fiber_unsupported(void) { once("sceFiber* (not ported to Windows yet)"); return (int32_t)0x80590004; }
-#define fiber_initialize fiber_unsupported
-#define fiber_finalize fiber_unsupported
-#define fiber_run fiber_unsupported
-#define fiber_switch fiber_unsupported
-#define fiber_return_to_thread fiber_unsupported
+/* Windows: Win32 fibers. Each fiber gets its own stack from the system (the game's context
+ * memory is not needed); the thread becomes a fiber the first time it runs one. */
+typedef struct HostFiber {
+    void *fiber;
+    FiberEntry entry;
+    uint64_t arg_on_initialize, arg_to_deliver;
+    uint64_t *resume_out;
+    int started, running;
+    char name[32];
+} HostFiber;
+typedef struct { uint64_t magic; HostFiber *host; } GuestFiber;
+static __thread struct {
+    void *thread_fiber;
+    HostFiber *current;
+    uint64_t *thread_return_out;
+} fiber_tls;
+static HostFiber *fiber_of(void *guest) {
+    GuestFiber *g=guest;
+    return g && g->magic==FIBER_MAGIC ? g->host : NULL;
+}
+static void WINAPI fiber_trampoline(void *param) {
+    HostFiber *f=param;
+    f->entry(f->arg_on_initialize,f->arg_to_deliver);
+    fprintf(stderr,"STOP: fiber %s returned from its entry function\n",f->name);
+    abort();
+}
+static ABI int32_t fiber_initialize(void *guest,const char *name,FiberEntry entry,uint64_t arg_on_initialize,
+                                    void *context,uint64_t context_size,const void *option,uint32_t build_version) {
+    (void)context; (void)option; (void)build_version;
+    if (!guest || !entry) return FIBER_ERR_NULL;
+    HostFiber *f=calloc(1,sizeof(*f));
+    if (!f) return FIBER_ERR_INVALID;
+    f->entry=entry; f->arg_on_initialize=arg_on_initialize;
+    snprintf(f->name,sizeof(f->name),"%s",name ? name : "");
+    SIZE_T size=context_size<65536 ? 65536 : (SIZE_T)context_size;
+    f->fiber=CreateFiber(size,fiber_trampoline,f);
+    if (!f->fiber) { free(f); return FIBER_ERR_INVALID; }
+    ((GuestFiber *)guest)->magic=FIBER_MAGIC;
+    ((GuestFiber *)guest)->host=f;
+    return 0;
+}
+static ABI int32_t fiber_finalize(void *guest) {
+    HostFiber *f=fiber_of(guest);
+    if (!f) return FIBER_ERR_INVALID;
+    if (f->running) return FIBER_ERR_STATE;
+    ((GuestFiber *)guest)->magic=0;
+    DeleteFiber(f->fiber);
+    free(f);
+    return 0;
+}
+static void fiber_enter(HostFiber *f,uint64_t arg) {
+    if (f->started && f->resume_out) *f->resume_out=arg;
+    f->arg_to_deliver=arg;
+    f->started=1; f->running=1;
+    fiber_tls.current=f;
+}
+static ABI int32_t fiber_run(void *guest,uint64_t arg_on_run_to,uint64_t *arg_on_return) {
+    HostFiber *f=fiber_of(guest);
+    if (!f) return FIBER_ERR_INVALID;
+    if (fiber_tls.current) return FIBER_ERR_PERMISSION;
+    if (f->running) return FIBER_ERR_STATE;
+    if (!fiber_tls.thread_fiber) {
+        fiber_tls.thread_fiber=IsThreadAFiber() ? GetCurrentFiber() : ConvertThreadToFiber(NULL);
+        if (!fiber_tls.thread_fiber) return FIBER_ERR_INVALID;
+    }
+    fiber_tls.thread_return_out=arg_on_return;
+    fiber_enter(f,arg_on_run_to);
+    SwitchToFiber(f->fiber);
+    fiber_tls.current=NULL;
+    return 0;
+}
+static ABI int32_t fiber_switch(void *guest,uint64_t arg_on_run_to,uint64_t *arg_on_run) {
+    HostFiber *to=fiber_of(guest), *from=fiber_tls.current;
+    if (!to) return FIBER_ERR_INVALID;
+    if (!from) return FIBER_ERR_PERMISSION;
+    if (to->running) return FIBER_ERR_STATE;
+    from->resume_out=arg_on_run; from->running=0;
+    fiber_enter(to,arg_on_run_to);
+    SwitchToFiber(to->fiber);
+    return 0;
+}
+static ABI int32_t fiber_return_to_thread(uint64_t arg_on_return,uint64_t *arg_on_run) {
+    HostFiber *from=fiber_tls.current;
+    if (!from) return FIBER_ERR_PERMISSION;
+    if (fiber_tls.thread_return_out) *fiber_tls.thread_return_out=arg_on_return;
+    from->resume_out=arg_on_run; from->running=0;
+    fiber_tls.current=NULL;
+    SwitchToFiber(fiber_tls.thread_fiber);
+    return 0;
+}
 #endif
 
 /* ---- App content: temporary data, no add-on entitlements ---- */
