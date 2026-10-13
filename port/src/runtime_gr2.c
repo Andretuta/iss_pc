@@ -20,7 +20,9 @@
 #include <sys/random.h>
 #include <ucontext.h>
 #else
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
@@ -48,16 +50,26 @@ static ABI int32_t kernel_queue_event_ok(void *eq,int32_t fd,uint64_t size,void 
     return 0;
 }
 static ABI int32_t kernel_current_cpu(void) {
+#ifdef _WIN32
+    int cpu=(int)GetCurrentProcessorNumber();
+#else
     int cpu=sched_getcpu();
+#endif
     return cpu<0 ? 0 : cpu%7; /* the game sees the PS4's seven usable cores */
 }
 static ABI int32_t kernel_is_stack(void *address,void **start,void **end) {
-    pthread_attr_t attr;
     void *base=NULL; size_t size=0;
+#ifdef _WIN32
+    ULONG_PTR low=0, high=0;
+    GetCurrentThreadStackLimits(&low,&high);
+    base=(void *)low; size=(size_t)(high-low);
+#else
+    pthread_attr_t attr;
     if (!pthread_getattr_np(pthread_self(),&attr)) {
         pthread_attr_getstack(&attr,&base,&size);
         pthread_attr_destroy(&attr);
     }
+#endif
     int inside=base && (char *)address>=(char *)base && (char *)address<(char *)base+size;
     if (start) *start=inside ? base : NULL;
     if (end) *end=inside ? (char *)base+size : NULL;

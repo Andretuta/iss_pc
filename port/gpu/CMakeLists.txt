@@ -218,7 +218,9 @@ if (WIN32)
     set_target_properties(tlg-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
     target_compile_options(tlg-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>)
     target_include_directories(tlg-probe PRIVATE .. ../src)
-    target_link_libraries(tlg-probe PRIVATE tlggpu atrac9 onecore bcrypt ws2_32 -pthread)
+    # tlg: libSceFont (runtime_gr2_font.c) renders glyphs with FreeType.
+    pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
+    target_link_libraries(tlg-probe PRIVATE tlggpu atrac9 PkgConfig::FREETYPE onecore bcrypt ws2_32 -pthread)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
     target_link_options(tlg-probe PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
