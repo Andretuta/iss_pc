@@ -49,6 +49,10 @@ if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && co
     fi
     echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
 fi
+# FreeType headers: the system package, or a local copy in the workspace tools (no root needed).
+if ! pkg-config --exists freetype2 && [[ -d ../../tools/freetype-devel/pkgconfig ]]; then
+    export PKG_CONFIG_PATH="$(cd ../../tools/freetype-devel/pkgconfig && pwd)${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+fi
 read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil libswscale freetype2)"
 read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil libswscale freetype2)"
 # GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libtlggpu.so.
