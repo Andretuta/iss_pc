@@ -3,7 +3,8 @@
  * Fibers are a complete implementation (ucontext on the game's own context memory). The rest are
  * small contracts of a console without extra content, network or optional features: content
  * search/export/delete, error dialogs, temporary data, kernel queries, POSIX sockets. Image
- * codecs and libSecure log their first use; they are filled in when the game is seen using them.
+ * codecs log their first use; they are filled in when the game is seen using them. libSecure is
+ * the game's own sysdata/libSceSecure.prx, linked as a module.
  */
 #define _GNU_SOURCE
 #include "runtime.h"
@@ -62,11 +63,15 @@ static ABI int32_t kernel_is_stack(void *address,void **start,void **end) {
 static ABI int32_t kernel_load_start_module(const char *path,uint64_t args,const void *argp,uint32_t flags,
                                             const void *option,int32_t *result) {
     (void)args; (void)argp; (void)flags; (void)option;
-    printf("Runtime: sceKernelLoadStartModule(%s): not loaded at run time (link it with --modules)\n",
-           path ? path : "(null)");
+    /* The game's own modules (/app0/...) are linked ahead of time (link_modules.py --modules),
+     * so loading one succeeds: its exports are already bound to the eboot's imports. */
+    static int32_t next_handle=0x100;
+    const int own=path && !strncmp(path,"/app0/",6);
+    printf("Runtime: sceKernelLoadStartModule(%s): %s\n",path ? path : "(null)",
+           own ? "linked ahead of time" : "not available");
     fflush(stdout);
     if (result) *result=0;
-    return KERR_ENOENT;
+    return own ? __atomic_fetch_add(&next_handle,1,__ATOMIC_RELAXED) : KERR_ENOENT;
 }
 static ABI int32_t kernel_set_gpo(uint32_t bits) { (void)bits; return 0; }
 static ABI int32_t kernel_sleep(uint32_t seconds) { sleep(seconds); return 0; }
@@ -250,7 +255,6 @@ static ABI int32_t savedata_transferring_mount(const void *mount,void *result) {
 static ABI int32_t png_unsupported(void) { once("scePngDec*"); return (int32_t)0x80690001; }
 static ABI int32_t jpeg_dec_unsupported(void) { once("sceJpegDec*"); return (int32_t)0x80650001; }
 static ABI int32_t jpeg_enc_unsupported(void) { once("sceJpegEnc*"); return (int32_t)0x80650101; }
-static ABI int32_t secure_unsupported(void) { once("sceLibSecure*"); return (int32_t)0x80FC0001; }
 
 static ABI int32_t playgo_dialog_close(void) { return 0; }
 
@@ -292,14 +296,6 @@ static const RuntimeExport exports[]={
     {"sceJpegDecDelete",jpeg_dec_unsupported},
     {"sceJpegEncQueryMemorySize",jpeg_enc_unsupported}, {"sceJpegEncCreate",jpeg_enc_unsupported},
     {"sceJpegEncEncode",jpeg_enc_unsupported}, {"sceJpegEncDelete",jpeg_enc_unsupported},
-    {"sceLibSecureInit",secure_unsupported}, {"sceLibSecureDestroy",secure_unsupported},
-    {"sceLibSecureCryptographyGetContextSize",secure_unsupported},
-    {"sceLibSecureCryptographySetContext",secure_unsupported},
-    {"sceLibSecureCryptographyDeleteContext",secure_unsupported},
-    {"sceLibSecureCryptographyEncrypt",secure_unsupported},
-    {"sceLibSecureCryptographyDecrypt",secure_unsupported},
-    {"sceLibSecureCryptographyMessagePadding",secure_unsupported},
-    {"sceLibSecureCryptographyMessagePaddingSize",secure_unsupported},
     {"scePlayGoDialogClose",playgo_dialog_close},
 };
 uintptr_t runtime_gr2_resolve(const char *name) {
