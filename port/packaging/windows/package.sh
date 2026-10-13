@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds dist/tlg-windows-x86_64.zip after `bash build.sh` in an MSYS2 CLANG64 shell:
-# "The Last Guardian.exe" (the launcher, frozen with PyInstaller so players need no Python),
-# "Play The Last Guardian.exe" (starts the game with the saved settings), out/tlg-probe.exe with
+# Builds dist/$PORT_SLUG-windows-x86_64.zip after `bash build.sh` in an MSYS2 CLANG64 shell:
+# "$PORT_NAME.exe" (the launcher, frozen with PyInstaller so players need no Python),
+# "Play $PORT_NAME.exe" (starts the game with the saved settings), out/tlg-probe.exe with
 # the CLANG64 DLLs it loads, the preparation scripts and the player README. No game or console
 # file may ship. Freezing uses a Windows Python 3.10+ (python.org or actions/setup-python;
 # WINPYTHON overrides) and a private venv in out/pyenv.
@@ -54,8 +54,8 @@ ldd "$dest/out/tlg-probe.exe" "$dest/out/tlg-gpu-capabilities.exe" |
 cp -r scripts "$dest/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
-printf '%s\r\n' 'Coloque aqui o libSceNgs2.sprx do firmware do seu PS4 (/system/common/lib) para ter som.' \
-    'Put libSceNgs2.sprx from your PS4 firmware (/system/common/lib) here for audio.' > "$dest/system_lib/LEIA-ME.txt"
+printf '%s\r\n' 'Este jogo não precisa de módulos do firmware do console: a pasta fica vazia.' \
+    'This game needs no console firmware modules: leave this folder empty.' > "$dest/system_lib/LEIA-ME.txt"
 bash packaging/check_package.sh "$dest"
 mkdir -p dist
 rm -f "dist/$name.zip"

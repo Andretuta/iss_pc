@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds dist/tlg-linux-x86_64.tar.gz after `bash build.sh`: "$PORT_NAME" (the launcher,
+# Builds dist/$PORT_SLUG-linux-x86_64.tar.gz after `bash build.sh`: "$PORT_NAME" (the launcher,
 # frozen with PyInstaller so players need no Python or Tk), out/tlg-probe with libtlggpu.so, the
 # libraries they need that a desktop may lack (out/lib: SDL3, FFmpeg, Zydis, fmt, ...), the
 # preparation scripts and the player README. No game or console file may ship.
@@ -47,8 +47,8 @@ find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
 cp packaging/linux/install_desktop.sh packaging/port.env "$dest/"
 cat > "$dest/system_lib/LEIA-ME.txt" <<'TXT'
-Coloque aqui o libSceNgs2.sprx do firmware do seu PS4 (/system/common/lib) para ter som.
-Put libSceNgs2.sprx from your PS4 firmware (/system/common/lib) here for audio.
+Este jogo não precisa de módulos do firmware do console: a pasta fica vazia.
+This game needs no console firmware modules: leave this folder empty.
 TXT
 bash packaging/check_package.sh "$dest"
 mkdir -p dist
