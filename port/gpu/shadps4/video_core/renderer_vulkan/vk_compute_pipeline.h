@@ -50,6 +50,11 @@ public:
                     vk::ShaderModule module, SerializationSupport& sdata, bool preloading);
     ~ComputePipeline();
 
+    /// tlg: program hash and permutation (frame recorder).
+    const ComputePipelineKey& GetComputeKey() const {
+        return compute_key;
+    }
+
 private:
     ComputePipelineKey compute_key;
 };

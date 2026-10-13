@@ -11,7 +11,9 @@
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "video_core/renderer_vulkan/vk_lighting_test.h"
 #include "video_core/renderer_vulkan/vk_pass_census.h"
+#include "video_core/renderer_vulkan/vk_frame_record.h"
 #include "common/debug.h"
+#include "common/hash.h"
 #include "core/debug_state.h"
 #include "core/emulator_settings.h"
 #include "core/memory.h"
@@ -70,6 +72,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     memory->SetRasterizer(this);
 
     GpuProfiler::Init(instance, scheduler);
+    FrameRecord::Attach(instance, scheduler);
     if (DrawPipeWanted()) {
         constant_ring = std::make_unique<ConstantRing>(instance, scheduler);
         draw_pipe = std::make_unique<DrawPipe>(&RunDrawPacket, this);
@@ -396,7 +399,9 @@ bool Rasterizer::DrawPipeWanted() {
 }
 
 bool Rasterizer::UseDrawPipe() const {
-    return draw_pipe && !host_markers_enabled && !TlgToggle::Disabled(TlgToggle::DrawPipeline);
+    // tlg: off while a frame is recorded: everything then runs in stream order on this thread.
+    return draw_pipe && !host_markers_enabled && !TlgToggle::Disabled(TlgToggle::DrawPipeline) &&
+           !FrameRecord::Active();
 }
 
 bool Rasterizer::OnStageA() const {
@@ -1192,6 +1197,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     }
     UpdateDynamicState(pipeline, is_indexed);
     MarkPass(pipeline, state);
+    if (FrameRecord::IsRecording()) [[unlikely]] {
+        RecordFrameInputs(pipeline, draw_prepared, &state, is_indexed, index_offset, nullptr);
+    }
     scheduler.BeginRendering(state);
 
     const auto& vs_info = pipeline->GetStage(Shader::SwStage::Vertex);
@@ -1328,6 +1336,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     }
     UpdateDynamicState(pipeline, is_indexed);
     MarkPass(pipeline, state);
+    if (FrameRecord::IsRecording()) [[unlikely]] {
+        RecordFrameInputs(pipeline, nullptr, &state, is_indexed, 0, &indirect);
+    }
     scheduler.BeginRendering(state);
 
     ASSERT(stride == (is_indexed ? sizeof(VkDrawIndexedIndirectCommand)
@@ -1405,7 +1416,13 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     if (upscaler->Enabled()) {
         upscaler->OnDispatch(cs.pgm_hash);
     }
+    if (FrameRecord::IsRecording()) [[unlikely]] {
+        RecordFrameInputs(pipeline, nullptr, nullptr, false, 0, nullptr);
+    }
     if (ExecuteShaderHLE(cs, Regs(), cs_program, *this)) {
+        if (FrameRecord::Open()) [[unlikely]] {
+            FrameRecord::Append(" hle");
+        }
         return;
     }
 
@@ -1492,6 +1509,10 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
         runtime.FlushBarriers();
     }
 
+    if (FrameRecord::IsRecording()) [[unlikely]] {
+        const IndirectDraw indirect = {address + offset, 0, size, 1};
+        RecordFrameInputs(pipeline, nullptr, nullptr, false, 0, &indirect);
+    }
     scheduler.EndRendering();
     pipeline->BindResources(set_writes, push_data);
 
@@ -1512,6 +1533,205 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
 
     ResetBindings(true);
     scheduler.KickRecording();
+}
+
+namespace {
+// tlg: frame recorder helpers. Registers as 32-bit words, '.'-separated.
+template <typename T>
+std::string RecordWords(const T& value) {
+    static_assert(sizeof(T) % 4 == 0);
+    std::array<u32, sizeof(T) / 4> words;
+    std::memcpy(words.data(), &value, sizeof(T));
+    std::string out;
+    for (size_t i = 0; i < words.size(); ++i) {
+        out += fmt::format("{}{:x}", i ? "." : "", words[i]);
+    }
+    return out;
+}
+// Indexed by Shader::SwStage.
+constexpr std::array<const char*, Shader::MaxStageTypes> RecordStageNames = {"ps", "hs", "ds",
+                                                                            "vs", "gs", "cs"};
+} // namespace
+
+void Rasterizer::RecordFrameInputs(const Pipeline* pipeline, const PreparedDraw* prepared,
+                                   const RenderState* state, bool is_indexed, u32 index_offset,
+                                   const IndirectDraw* indirect) {
+    if (!FrameRecord::Open() || DrawPipe::OnStageB()) {
+        return;
+    }
+    const auto add = [](const std::string& text) { FrameRecord::Append(text); };
+    // The copies end the render pass; a draw that clears its targets and continues the pass
+    // in progress would clear them again when it begins a new one.
+    bool gpu_ok = FrameRecord::GpuCopiesAvailable();
+    if (state && scheduler.IsRenderingWith(*state)) {
+        bool clears = state->depth_stencil_attachment.depth_clear ||
+                      state->depth_stencil_attachment.stencil_clear;
+        for (u32 i = 0; i < state->num_color_attachments; ++i) {
+            clears |= state->color_attachments[i].is_clear != 0;
+        }
+        if (clears) {
+            gpu_ok = false;
+            add(" gpu=skipped_clear");
+        }
+    }
+    // Memory the GPU wrote is read from the GPU's copy (the guest copy may be stale or
+    // read-protected); anything else from guest memory, which the cache mirrors.
+    const auto memory_input = [&](const std::string& key, VAddr address, u64 size) {
+        add(fmt::format(" {}={:#x}+{}:", key, address, size));
+        if (address == 0 || size == 0) {
+            add("null");
+            return;
+        }
+        size = memory->ClampRangeSize(address, size);
+        if (gpu_ok && size && size <= std::numeric_limits<u32>::max() &&
+            buffer_cache.IsRegionGpuModified(address, size)) {
+            const auto [buffer, offset] = buffer_cache.ObtainBuffer(address, u32(size), false);
+            FrameRecord::GpuHash("", buffer->Handle(), offset, size);
+        } else {
+            add(FrameRecord::GuestHash(address, size));
+        }
+    };
+
+    const auto* saved_prepared = bind_prepared;
+    bind_prepared = prepared;
+    const auto& regs = Regs();
+    for (const Shader::Info* info : pipeline->GetStages()) {
+        if (!info) {
+            continue;
+        }
+        const u32 s = static_cast<u32>(info->sw_stage);
+        const char* name = s < RecordStageNames.size() ? RecordStageNames[s] : "xs";
+        // Permutation: the pipeline key holds HashCombine(program hash, permutation index).
+        const u64 key_hash =
+            pipeline->IsCompute()
+                ? static_cast<const ComputePipeline*>(pipeline)->GetComputeKey().value
+                : static_cast<const GraphicsPipeline*>(pipeline)->GetGraphicsKey().stage_hashes[s];
+        std::string perm = "?";
+        for (u64 p = 0; p < 4096; ++p) {
+            if (HashCombine(info->pgm_hash, p) == key_hash) {
+                perm = std::to_string(p);
+                break;
+            }
+        }
+        const auto ud = info->FlatUserData();
+        add(fmt::format(" {}={:016x}/p{} {}.ud={:016x}", name, info->pgm_hash, perm, name,
+                        XXH3_64bits(ud.data(), ud.size() * sizeof(u32))));
+        const PreparedStage* ps = FindPreparedStage(*info);
+        for (u32 i = 0; i < info->buffers.size(); ++i) {
+            const auto& desc = info->buffers[i];
+            if (desc.IsSpecial()) {
+                continue;
+            }
+            const auto sharp = ps ? ps->buffer_sharps[i] : desc.GetSharp(*info);
+            memory_input(fmt::format("{}.b{}{}", name, i, desc.is_written ? "w" : ""),
+                         sharp.base_address, sharp.GetSize());
+        }
+        for (u32 i = 0; i < info->images.size(); ++i) {
+            const auto& desc = info->images[i];
+            const auto t = ps ? ps->image_sharps[i] : desc.GetSharp(*info);
+            add(fmt::format(" {}.t{}{}=", name, i, desc.is_written ? "w" : ""));
+            if (t.Address() == 0) {
+                add("null");
+                continue;
+            }
+            add(fmt::format("{:#x}:{}/{}:{}x{}x{}:{}:m{}-{}", t.Address(),
+                            magic_enum::enum_name(t.GetDataFmt()),
+                            magic_enum::enum_name(t.GetNumberFmt()), u32(t.width) + 1,
+                            u32(t.height) + 1, u32(t.depth) + 1,
+                            magic_enum::enum_name(t.GetType()), u32(t.base_level),
+                            u32(t.last_level)));
+        }
+        for (u32 i = 0; i < info->samplers.size(); ++i) {
+            const auto ss = ps ? ps->sampler_sharps[i] : info->samplers[i].GetSharp(*info);
+            add(fmt::format(" {}.s{}={:08x}", name, i, u32(XXH3_64bits(&ss, sizeof(ss)))));
+        }
+    }
+
+    if (pipeline->IsCompute()) {
+        if (!indirect) {
+            const auto& cs = CsRegs();
+            add(fmt::format(" groups={}x{}x{}", cs.dim_x, cs.dim_y, cs.dim_z));
+        }
+    } else {
+        const auto* graphics = static_cast<const GraphicsPipeline*>(pipeline);
+        const auto& vs = graphics->GetStage(Shader::SwStage::Vertex);
+        if (const auto& fetch = graphics->GetFetchShader()) {
+            for (u32 i = 0; i < fetch->attributes.size(); ++i) {
+                const auto sharp = fetch->attributes[i].GetSharp(vs);
+                memory_input(fmt::format("vb{}", i), sharp.base_address, sharp.GetSize());
+            }
+        }
+        if (is_indexed) {
+            const u32 index_size =
+                regs.index_buffer_type.index_type == AmdGpu::IndexType::Index16 ? 2u : 4u;
+            const u64 count = indirect ? regs.index_size : regs.num_indices;
+            add(fmt::format(" ioff={}", index_offset));
+            memory_input("ib",
+                         regs.index_base_address.Address<VAddr>() + u64(index_offset) * index_size,
+                         count * index_size);
+        }
+        add(fmt::format(" prim={}", magic_enum::enum_name(regs.primitive_type)));
+        const auto& vp = regs.viewports[0];
+        add(fmt::format(" vp={:g},{:g},{:g},{:g},{:g},{:g} scis={}", vp.xscale, vp.xoffset,
+                        vp.yscale, vp.yoffset, vp.zscale, vp.zoffset,
+                        RecordWords(regs.screen_scissor)));
+        const u32 num_colors = state ? state->num_color_attachments : 0;
+        for (u32 cb = 0; cb < num_colors; ++cb) {
+            add(fmt::format(" rt{}=", cb));
+            if (!cb_descs[cb].first) {
+                add("null");
+            } else {
+                const auto& image = texture_cache.GetImage(cb_descs[cb].first).info;
+                add(fmt::format("{:#x}:{}:{}x{}", image.guest_address,
+                                vk::to_string(image.pixel_format), image.size.width,
+                                image.size.height));
+            }
+            add(fmt::format(" bl{}={}", cb, RecordWords(regs.blend_control[cb])));
+        }
+        if (db_desc.first) {
+            const auto& image = texture_cache.GetImage(db_desc.first).info;
+            add(fmt::format(" z={:#x}:{}:{}x{}", image.guest_address,
+                            vk::to_string(image.pixel_format), image.size.width,
+                            image.size.height));
+        }
+        add(fmt::format(" cm={} csm={} cc={} dc={} st={} sref={}.{} drc={} pc={} bc={}",
+                        RecordWords(regs.color_target_mask), RecordWords(regs.color_shader_mask),
+                        RecordWords(regs.color_control), RecordWords(regs.depth_control),
+                        RecordWords(regs.stencil_control), RecordWords(regs.stencil_ref_front),
+                        RecordWords(regs.stencil_ref_back), RecordWords(regs.depth_render_control),
+                        RecordWords(regs.polygon_control), RecordWords(regs.blend_constants)));
+        if (state) {
+            u32 clears = 0;
+            for (u32 i = 0; i < state->num_color_attachments; ++i) {
+                clears |= u32(state->color_attachments[i].is_clear != 0) << i;
+            }
+            clears |= u32(state->depth_stencil_attachment.depth_clear) << 8 |
+                      u32(state->depth_stencil_attachment.stencil_clear) << 9;
+            add(fmt::format(" clr={:x}", clears));
+        }
+    }
+
+    if (indirect) {
+        // Arguments as the guest wrote them and as the GPU reads them at this draw.
+        const u64 bytes = u64(indirect->stride) * indirect->max_count;
+        add(fmt::format(" max={} stride={} args.cpu={}", indirect->max_count, indirect->stride,
+                        FrameRecord::GuestWords(indirect->args, bytes)));
+        if (gpu_ok && bytes && bytes <= std::numeric_limits<u32>::max()) {
+            const auto [buffer, offset] = buffer_cache.ObtainBuffer(indirect->args, u32(bytes), false);
+            FrameRecord::GpuWords(" args=", buffer->Handle(), offset, bytes);
+        }
+        if (indirect->count) {
+            add(fmt::format(" count.cpu={}", FrameRecord::GuestWords(indirect->count, 4)));
+            if (gpu_ok) {
+                const auto [buffer, offset] = buffer_cache.ObtainBuffer(indirect->count, 4, false);
+                FrameRecord::GpuWords(" count=", buffer->Handle(), offset, 4);
+            }
+        }
+    }
+    bind_prepared = saved_prepared;
+    if (gpu_ok) {
+        FrameRecord::FlushGpuCopies();
+    }
 }
 
 u64 Rasterizer::Flush() {

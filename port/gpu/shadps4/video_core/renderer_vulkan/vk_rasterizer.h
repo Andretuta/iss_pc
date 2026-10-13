@@ -239,6 +239,11 @@ private:
                   const IndirectDraw* indirect = nullptr);
     /// Everything of a direct dispatch after the pipeline selection (GPU thread or stage B).
     void DispatchRecord(const ComputePipeline* pipeline);
+    /// tlg: TLG_FRAME_RECORD_TRIGGER: inputs of the draw or dispatch being recorded
+    /// (vk_frame_record.h). `state`: the draw's render state, null for dispatches.
+    void RecordFrameInputs(const Pipeline* pipeline, const PreparedDraw* prepared,
+                           const RenderState* state, bool is_indexed, u32 index_offset,
+                           const IndirectDraw* indirect);
     /// The compute registers of the dispatch being recorded.
     const AmdGpu::ComputeProgram& CsRegs() const;
     static void RunDrawPacket(void* rasterizer, const u8* packet, u32 size);
