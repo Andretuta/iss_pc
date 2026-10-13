@@ -22,7 +22,11 @@ export GOW3_READBACKS=${GOW3_READBACKS:-2}
 # VRAM; ajuste para outras placas (ex.: 7000 em 8 GB).
 export GOW3_GC_BUDGET_MB=${GOW3_GC_BUDGET_MB:-5200}
 export GOW3_RESTART_COMMAND=${GOW3_RESTART_COMMAND:-"$0"}
-log=$out/last_run.log
+# Um log por execução em out/logs/ (mantém os 30 mais recentes); last_run.log aponta para o último.
+mkdir -p "$out/logs"
+log=$out/logs/run-$(date +%Y%m%d-%H%M%S).log
+ln -sfn "$log" "$out/last_run.log"
+ls -1t "$out"/logs/run-*.log 2>/dev/null | tail -n +31 | xargs -r rm -f
 echo "Rodando (log: $log)"
 exec "$out/gow3-probe" "$out/boot-linked.bin" --app0 "$game" --user "$port/user" \
     --content-profile "$out/content.bin" --timeout "${1:-0}" > >(tee "$log") 2>&1
