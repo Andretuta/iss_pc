@@ -308,6 +308,23 @@ struct Image {
         return base_type;
     }
 
+    /// tlg: Vulkan has no block-compressed 1D images (inFAMOUS binds BC1/BC4/BC5 1D textures),
+    /// so these are 2D images of height 1 on the host, sampled at the middle row.
+    bool IsBlock1D() const noexcept {
+        const auto type = GetType();
+        return (type == ImageType::Color1D || type == ImageType::Color1DArray) &&
+               IsBlockCoded(GetDataFmt());
+    }
+
+    /// The view type of the host image: GetViewType, with block-compressed 1D as 2D.
+    ImageType GetHostViewType(const bool is_array) const noexcept {
+        const auto view = GetViewType(is_array);
+        if (IsBlock1D()) {
+            return view == ImageType::Color1DArray ? ImageType::Color2DArray : ImageType::Color2D;
+        }
+        return view;
+    }
+
     ImageType GetViewType(const bool is_array) const noexcept {
         const auto base_type = GetType();
         if (IsCube()) {
