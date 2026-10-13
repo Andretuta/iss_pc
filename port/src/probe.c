@@ -227,6 +227,29 @@ static void fault(int sig, siginfo_t *info, void *context) {
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
     if (gpu_enabled) gow3gpu_dump_guest_writes(context);
+    /* Engine ASSERT (int 0x41): the formatted "file(line): func() ASSERT(cond)" message sits in a
+     * stack buffer of the asserting frame; its logger may be null, so print it from here. */
+    if (rip - (uintptr_t)image < 0x10000000) {
+        unsigned char op[2] = {0};
+        struct iovec lo = {op, 2}, ro = {(void *)rip, 2};
+        if (process_vm_readv(getpid(), &lo, 1, &ro, 1, 0) == 2 && op[0] == 0xcd && op[1] == 0x41) {
+            static char stack[0x4000];
+            uintptr_t rsp = (uintptr_t)uc->uc_mcontext.gregs[REG_RSP];
+            struct iovec ls = {stack, sizeof(stack) - 1}, rs = {(void *)rsp, sizeof(stack) - 1};
+            ssize_t got = process_vm_readv(getpid(), &ls, 1, &rs, 1, 0);
+            for (ssize_t i = 0; got > 0 && i + 8 < got; ++i) {
+                if (!memcmp(stack + i, "D:\\trico", 8) || !memcmp(stack + i, "C:\\", 3)) {
+                    stack[got] = 0;
+                    const char *msg = stack + i;
+                    if (strstr(msg, "ASSERT")) {
+                        snprintf(line, sizeof(line), "  engine assert: %.400s\n", msg);
+                        ssize_t written_=write(2, line, strlen(line)); (void)written_;
+                        break;
+                    }
+                }
+            }
+        }
+    }
     /* Guest call chain: the eboot keeps frame pointers, so follow rbp (reads cannot fault). */
     if (rip - (uintptr_t)image < 0x10000000) {
         uintptr_t rbp = (uintptr_t)uc->uc_mcontext.gregs[REG_RBP];
