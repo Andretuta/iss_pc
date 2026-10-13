@@ -467,7 +467,9 @@ static ABI int32_t playgo_init(const void *params) {
     (void)params;
     int fd=(int)runtime_file_open("/app0/sce_sys/playgo-chunk.dat",0,0);
     unsigned char header[12];
-    playgo_chunks=1;
+    /* Without playgo-chunk.dat (FTP dumps do not expose it) every chunk id the game asks for is
+     * reported installed: The Last Guardian maps its 12 archives to chunks 0..26. */
+    playgo_chunks=256;
     if (fd>=0) {
         if (runtime_file_read(fd,header,sizeof(header))==sizeof(header)) playgo_chunks=header[10]|header[11]<<8;
         runtime_file_close(fd);

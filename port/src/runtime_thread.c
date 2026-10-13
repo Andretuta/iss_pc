@@ -351,6 +351,23 @@ static ABI int32_t thread_rename(GuestThread *t,const char *name) {
     return 0;
 }
 static ABI int32_t thread_equal(GuestThread *a,GuestThread *b) { return a==b; }
+static ABI int32_t thread_get_name(GuestThread *t,char *name) {
+    if (!find_thread(t)) return ERR(3);
+    if (!name) return ERR(22);
+    snprintf(name,32,"%s",t->name); return 0;
+}
+/* Small stable per-thread id (the TID the kernel would report is not observable by the game). */
+static ABI int32_t thread_get_id(void) {
+    static int32_t next=1;
+    static _Thread_local int32_t id;
+    if (!id) id=__atomic_fetch_add(&next,1,__ATOMIC_RELAXED);
+    return id;
+}
+/* The guest-provided stack memory is ignored: host threads always get a host stack of the requested size. */
+static ABI int32_t attr_set_stack_addr(ThreadAttr **slot,void *address) {
+    (void)address;
+    return find_attr(slot) ? 0 : ERR(22);
+}
 
 /* POSIX (libScePosix) variants return positive errno values. */
 static int32_t posix(int32_t r) { return r ? (int32_t)((uint32_t)r&0xffff) : 0; }
@@ -384,6 +401,8 @@ uintptr_t runtime_thread_resolve(const char *name) {
         {"euKRgm0Vn2M#libkernel",posix_attr_set_param}, {"OxhIB8LB-PQ#libkernel",posix_create},
         {"Jmi+9w9u0E4#libkernel",posix_create_name}, {"h9CcP3J0oVM#libkernel",posix_join},
         {"FJrT5LuUBAU#libkernel",thread_exit},
+        {"How7B8Oet6k#libkernel",thread_get_name}, {"EI-5-jlq2dE#libkernel",thread_get_id},
+        {"F+yfmduIBB8#libkernel",attr_set_stack_addr},
     };
     for (size_t i=0;i<sizeof(table)/sizeof(*table);++i)
         if (!strcmp(name,table[i].nid)) return (uintptr_t)table[i].fn;

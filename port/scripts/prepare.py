@@ -24,9 +24,33 @@ def unpack(fmt, data, offset):
     return struct.unpack(fmt, span(data, offset, struct.calcsize(fmt)))
 
 
+def parse_elf(data):
+    """Plain decrypted ELF (GoldHEN FTP dumps), same result shape as parse_self."""
+    header = unpack('<16sHHIQQQIHHHHHH', data, 0)
+    if header[0][:7] != b'\x7fELF\x02\x01\x01' or header[2] != 62:
+        raise ValueError("expected little-endian x86-64 ELF")
+    if header[1] not in (0xfe00, 0xfe10, 0xfe18):
+        raise ValueError(f"unexpected ELF type {header[1]:#x} (want ET_SCE_EXEC/DYNEXEC/DYNAMIC)")
+    if header[9] != 56 or not 0 < header[10] < 256:
+        raise ValueError("unsupported program headers")
+    ph = [dict(zip(('type', 'flags', 'offset', 'vaddr', 'paddr', 'filesz', 'memsz', 'align'),
+                   unpack('<IIQQQQQQ', data, header[5] + i * 56)))
+          for i in range(header[10])]
+    end = max(p['offset'] + p['filesz'] for p in ph)
+    if end > 512 * 1024 * 1024:
+        raise ValueError("probe image exceeds 512 MiB limit")
+    elf = bytearray(span(data, 0, end))
+    for i, p in enumerate(ph):
+        if p['type'] in (1, 2, 0x61000000, 0x61000010) and p['filesz']:
+            span(data, p['offset'], p['filesz'])  # required segment must be present
+    return elf, header, ph, [], []
+
+
 def parse_self(data):
+    if span(data, 0, 4) == b'\x7fELF':
+        return parse_elf(data)
     if span(data, 0, 4) != b'O\x15=\x1d':
-        raise ValueError("expected PS4 SELF")
+        raise ValueError("expected PS4 SELF or decrypted ELF")
     count, = unpack('<H', data, 24)
     base = 32 + count * 32
     header = unpack('<16sHHIQQQIHHHHHH', data, base)
@@ -228,9 +252,11 @@ def prepare(game, out):
     (out / 'entry.bin').write_bytes(image[:1024])
     resources = collections.Counter()
     total_bytes = 0
-    for path in (game / 'dvdroot_ps4').rglob('*'):
+    # GoW3 ships loose files in dvdroot_ps4/; TLG ships *.psarc archives at the root.
+    for path in [*(game / 'dvdroot_ps4').rglob('*'), *game.glob('*.psarc')]:
         if path.is_file():
-            resources[path.relative_to(game / 'dvdroot_ps4').parts[0]] += 1
+            key = path.suffix if path.suffix == '.psarc' else path.relative_to(game / 'dvdroot_ps4').parts[0]
+            resources[key] += 1
             total_bytes += path.stat().st_size
     report = dict(source_sha256=hashlib.sha256(source).hexdigest(), source_bytes=len(source),
                   sfo=sfo((game / 'sce_sys/param.sfo').read_bytes()), entry=hex(header[4]),

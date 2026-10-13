@@ -50,10 +50,25 @@ static int create_locked(Rwlock **out) {
     if (e) { free(r); return e; }
     r->next=registry; registry=r; *out=r; ++created; return 0;
 }
+/* PS4 rwlock attributes only carry a reader/writer preference and pshared; host rwlocks keep their
+ * default policy, so an attribute object is a tagged allocation that rw_init validates and ignores. */
+#define RWATTR_MAGIC UINT64_C(0x5257415454520001)
+static ABI int32_t rwattr_init(uint64_t **attr) {
+    if (!attr) return error(EINVAL);
+    uint64_t *a=malloc(2*sizeof(uint64_t));
+    if (!a) return error(ENOMEM);
+    a[0]=RWATTR_MAGIC; a[1]=0; *attr=a; return 0;
+}
+static ABI int32_t rwattr_destroy(uint64_t **attr) {
+    if (!attr || !*attr || (*attr)[0]!=RWATTR_MAGIC) return error(EINVAL);
+    (*attr)[0]=0; free(*attr); *attr=NULL; return 0;
+}
 static ABI int32_t rw_init(Rwlock **out, void *const *attr, const char *name) {
     (void)name;
     if (!out || (attr && !*attr)) return error(EINVAL);
-    if (attr) { fputs("STOP: non-default PS4 rwlock attributes are not implemented\n",stderr); exit(21); }
+    if (attr && *(const uint64_t *)*attr!=RWATTR_MAGIC) {
+        fputs("STOP: unknown PS4 rwlock attribute object\n",stderr); exit(21);
+    }
     pthread_mutex_lock(&registry_lock);
     /* POSIX allows uninitialized storage, so never read *out during init. */
     int e=create_locked(out);
@@ -152,6 +167,8 @@ uintptr_t runtime_rwlock_resolve(const char *name) {
     if (!strcmp(name,"+L98PIbGttk#libkernel")) return (uintptr_t)rw_unlock;
     if (!strcmp(name,"iPtZRWICjrM#libkernel")) return (uintptr_t)rw_timedread;
     if (!strcmp(name,"adh--6nIqTk#libkernel")) return (uintptr_t)rw_timedwrite;
+    if (!strcmp(name,"yOfGg-I1ZII#libkernel")) return (uintptr_t)rwattr_init;
+    if (!strcmp(name,"i2ifZ3fS2fo#libkernel")) return (uintptr_t)rwattr_destroy;
     return 0;
 }
 void runtime_rwlock_report(void) {
