@@ -213,9 +213,12 @@ class Launcher:
             return
         self.art_loaded = True
         try:
-            icon = art_path(self.settings, 'icon0.png')  # the user's own dump (GR2 has no port icon yet)
+            icon = art_path(self.settings, 'icon0.png')  # the game's own icon, from the user's dump
             if icon and icon.is_file():
                 self.icon = tk.PhotoImage(file=str(icon)).subsample(4)
+                self.root.iconphoto(True, self.icon)
+            elif (tlg_run.PORT_DIR / 'launcher' / 'gr2.png').is_file():  # the port's own icon
+                self.icon = tk.PhotoImage(file=str(tlg_run.PORT_DIR / 'launcher' / 'gr2.png'))
                 self.root.iconphoto(True, self.icon)
             picture = art_path(self.settings, 'pic1.png') or art_path(self.settings, 'pic0.png')
             if picture:

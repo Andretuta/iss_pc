@@ -7,6 +7,7 @@ fsr4_shaders/
 pgo/
 *.png
 !packaging/icon/*.png
+!launcher/*.png
 last_run.log
 dist/
 packaging/runtime-paths.nix

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Desempenho de uma sessão a partir de um log do port (TLG_FRAME_STATS=1, uma amostra a cada 5 s):
-FPS, pior quadro e draws por quadro ao longo do tempo. Uso: session_chart.py <log> <saída.png>"""
+FPS, pior quadro e draws por quadro ao longo do tempo.
+Uso: session_chart.py <log> <saída.png> [nome do jogo]"""
 import re
 import statistics
 import sys
@@ -43,7 +44,8 @@ c.set_xlabel('minutos de sessão')
 steady = [f for f in fps[6:]] or fps
 at30 = sum(1 for f in steady if f >= 29.5) / len(steady) * 100
 p99 = statistics.median(p[2] for p in pacing) if pacing else float('nan')
-fig.suptitle('The Last Guardian no PC — sessão de %.0f min (Linux, Vulkan, RTX 2060 6 GB)' % t[-1],
+game = sys.argv[3] if len(sys.argv) > 3 else 'The Last Guardian'
+fig.suptitle('%s no PC — sessão de %.0f min (Linux, Vulkan, RTX 2060 6 GB)' % (game, t[-1]),
              x=0.07, ha='left', color=ink, fontsize=13, fontweight='bold')
 fig.text(0.07, 0.915, '%.0f%% das janelas de 5 s a 30 FPS · p99 do quadro %.1f ms · %d a %d draws por quadro'
          % (at30, p99, min(draws), max(draws)), color=muted, fontsize=10)

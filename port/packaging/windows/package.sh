@@ -7,9 +7,11 @@
 # WINPYTHON overrides) and a private venv in out/pyenv.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
+# shellcheck source=../port.env
+source packaging/port.env
 source ./msys2-env.sh
 [[ -f out/tlg-probe.exe && -f out/tlg-gpu-capabilities.exe && -f out/tlg-play.exe ]] || { echo 'Build first: bash build.sh' >&2; exit 1; }
-name=${TLG_PACKAGE_NAME:-tlg-windows-x86_64}
+name=${TLG_PACKAGE_NAME:-$PORT_SLUG-windows-x86_64}
 
 python=${WINPYTHON:-}
 if [[ -z $python ]]; then
@@ -30,16 +32,16 @@ for module in argparse base64 collections hashlib json re shutil struct tempfile
     hidden+=(--hidden-import "$module")
 done
 out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
-    --name "The Last Guardian" --icon "$(cygpath -w "$PWD/launcher/tlg.ico")" --distpath out/pyi-dist \
+    --name "$PORT_NAME" --icon "$(cygpath -w "$PWD/launcher/$PORT_ICON.ico")" --distpath out/pyi-dist \
     --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" \
-    --paths "$(cygpath -w "$PWD/launcher")" "${hidden[@]}" "$(cygpath -w "$PWD/launcher/tlg_launcher.py")"
+    --paths "$(cygpath -w "$PWD/launcher")" "${hidden[@]}" "$(cygpath -w "$PWD/launcher/$PORT_LAUNCHER")"
 
 dest=out/stage/$name
 rm -rf -- out/stage
 mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
-cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
-llvm-strip -o "$dest/Play The Last Guardian.exe" out/tlg-play.exe
-cp launcher/tlg.ico launcher/tlg.png "$dest/launcher/"
+cp -r "out/pyi-dist/$PORT_NAME/." "$dest/"
+llvm-strip -o "$dest/Play $PORT_NAME.exe" out/tlg-play.exe
+cp launcher/$PORT_ICON.ico launcher/$PORT_ICON.png "$dest/launcher/"
 # The executables without debug information, where tlg_run.py looks for them (out/).
 for exe in tlg-probe.exe tlg-gpu-capabilities.exe; do
     llvm-strip --strip-debug -o "$dest/out/$exe" "out/$exe"
