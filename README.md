@@ -1,39 +1,64 @@
+<p align="center"><img src="port/packaging/icon/infamous-icon-1024.png" width="160" alt=""></p>
+
 <h1 align="center">inFAMOUS Second Son — port nativo para PC</h1>
 
 <p align="center">
   <a href="#english"><b>English below</b></a> ·
+  <a href="https://github.com/HayatoG/iss_pc/releases/tag/nightly">Download</a> ·
   <a href="https://www.youtube.com/@hayatog-dev">YouTube</a> ·
   <a href="https://discord.gg/UMkdMYZh9g">Discord</a>
 </p>
 
-<p align="center"><a href="https://github.com/HayatoG/infamous_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/infamous_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
+<p align="center"><a href="https://github.com/HayatoG/iss_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/iss_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
 
-> **Em desenvolvimento — ainda não inicia.** O jogo ainda cai logo no começo do boot. Não há o que jogar por enquanto.
+> **Jogável, em desenvolvimento.** O jogo inicia, chega ao gameplay e passa pelos primeiros capítulos, mas o desempenho ainda é instável (20–30 FPS típicos numa RTX 2060) e há falhas de imagem conhecidas. Veja o [Status](#status).
 
-**inFAMOUS Second Son** (PS4, CUSA00223, update 1.07) rodando no PC sem emulador de CPU: o código original do jogo roda nativo no processador, o sistema do PS4 é reimplementado e a GPU é traduzida para Vulkan. Usa o mesmo núcleo dos ports de [The Last Guardian](https://github.com/HayatoG/tlg_pc) e [Gravity Rush 2](https://github.com/HayatoG/gr2_pc).
+**inFAMOUS Second Son** (PS4, CUSA00223, jogo base 1.00 + update 1.07) rodando no PC sem emulador de CPU: o código original do jogo roda nativo no processador, o sistema do PS4 é reimplementado e a GPU é traduzida para Vulkan. Usa o mesmo núcleo dos ports de [The Last Guardian](https://github.com/HayatoG/tlg_pc) e [Gravity Rush 2](https://github.com/HayatoG/gr2_pc).
 
 > **Nenhum arquivo do jogo vem com este projeto.** Para jogar, você precisa da sua própria cópia, tirada do seu PS4.
 
 Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g)
 
-Ainda sem capturas de tela: elas entram aqui quando o jogo mostrar o primeiro quadro.
+| | |
+|---|---|
+| ![Delsin diante do outdoor, com o pedido de virar o controle de lado](docs/screenshots/01-grafite-sensor.jpg) | ![Delsin no galpão do cais](docs/screenshots/02-galpao.jpg) |
+| ![Na cerca do cais](docs/screenshots/03-cerca.jpg) | ![Correndo pela praia ao pôr do sol](docs/screenshots/04-praia.jpg) |
+
+![Escalando as rochas acima da vila](docs/screenshots/05-escalada.jpg)
+
+<sub>Capturas na resolução nativa (1920×1080, reduzidas para 1280), direto da GPU, no Linux com uma RTX 2060.</sub>
+
+## Novidades
+
+- **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em Share (ou L3+R3) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode. É o que passa do grafite ("Hold Wireless Controller Sideways") e dos outros pedidos de movimento.
+- **Analógicos:** zona morta de 10% contra drift (`TLG_STICK_DEADZONE`, também no launcher), e o último controle usado é o que vale.
+- **Touchpad sem touchpad:** segure View/Select (ou Tab) e mova o analógico direito (ou as setas) para deslizar o dedo, como no "Open Door"; um toque rápido continua sendo clique.
+- **Desempenho:** o FPS não cai mais com o tempo (caía de 60 para 6 em 2 minutos: as variantes de shader nunca se repetiam), e transições parciais de imagem repetidas são puladas.
+- **Leitura precisa da GPU por padrão:** a fumaça do dreno de energia, os drones e outras partículas calculadas na GPU aparecem. O modo rápido continua no launcher ("Precisão da GPU").
+- **Cache de shaders automático:** a pasta do cache leva a versão do tradutor de shaders, e o cache antigo é apagado sozinho depois de uma atualização.
 
 ## Status
 
 | Área | Estado |
 |---|---|
-| Carregar o `eboot.bin` 1.07 e ligar `libc` e `Fios2` do jogo | ✅ Funciona |
-| Funções de sistema que o jogo importa | ⏳ Faltam ~16 (NpManager, PlayGo, Http, NetCtl, AppContent...) |
-| Boot | ❌ Cai em menos de 1 s, dentro do `main` do jogo |
-| Imagem, áudio, controle, saves | 📋 Depois do boot |
-| Linux | 🧪 Compila; é onde o port é desenvolvido (Nobara/Fedora 44) |
-| Windows | 📋 Planejado (o build usa o mesmo processo dos outros ports) |
+| Boot, título, intro e gameplay | ✅ Funciona; testado até "Go to Longhouse", com escalada, corrida, poderes e cutscenes |
+| Sensor de movimento (grafite, pedidos de movimento) | ✅ Giroscópio real ou simulado em qualquer controle e no teclado |
+| Fumaça do dreno, drones e partículas da GPU | ✅ Com a leitura precisa da GPU (padrão) |
+| HUD | ✅ Correto |
+| Áudio | ✅ AudioOut + Ajm próprios, sem nenhum arquivo do firmware |
+| Saves | ✅ O save é criado e o "Continue" funciona |
+| Controle | ✅ DualSense, DualShock 4, Xbox e 8BitDo via SDL3 |
+| Desempenho | 🔧 20–30 FPS típicos numa RTX 2060, instável; otimização em andamento |
+| Engasgos | 🔧 Na primeira vez que cada shader é compilado (cutscenes e áreas novas) |
+| Imagem | 🔧 Alguns efeitos de névoa, água e luz piscam |
+| Linux | ✅ Testado (Nobara/Fedora 44) |
+| Windows | 🧪 Build automático, ainda sem teste em jogo |
 
 ## Download
 
-Ainda não há download: o port ainda não inicia. Quando houver, o **build nightly** sai pelo GitHub Actions a cada mudança:
+O [**build nightly**](https://github.com/HayatoG/iss_pc/releases/tag/nightly) é gerado pelo GitHub Actions a cada mudança e substitui o anterior:
 
-- **Linux x86-64** (glibc 2.39+): `infamous-linux-x86_64.tar.gz`
+- **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 ou mais novos): `infamous-linux-x86_64.tar.gz`
 - **Windows 10/11 64 bits**: `infamous-windows-x86_64.zip`
 
 ## Arquivos do jogo necessários
@@ -48,22 +73,25 @@ Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use *
 | `art/` (`cache/`, `movies/`, `ui/`) | base + update | conteúdo do jogo |
 | `playgo.pgm`, `sce_discmap.plt`, `sce_discmap_patch.plt` | base + update | mapa de arquivos e instalação |
 
-**Do firmware do console:** nada. Este jogo não usa módulos do sistema do PS4.
+**Do firmware do console:** nada. O áudio usa o nosso AudioOut + Ajm; o jogo não importa `libSceNgs2` nem outro módulo do sistema do PS4.
 
-A lista completa e o passo a passo estão em [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+A lista completa e o passo a passo, que também vão nas notas de cada Release, estão em [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+
+**PC:** placa de vídeo com Vulkan 1.3 (6 GB de VRAM recomendados) e ~33 GB livres.
 
 ## Como jogar
 
-Ainda não dá para jogar. Quando o port iniciar:
-
 1. Extraia o pacote.
-2. Abra o **inFAMOUS Second Son**, escolha a pasta do jogo e o idioma, e clique em **Jogar**.
+2. Abra o **inFAMOUS Second Son**, escolha a pasta do jogo e o idioma e clique em **Jogar**. Se a imagem engasgar demais, a opção "Precisão da GPU" tem um modo rápido (sem as partículas da GPU).
 3. No jogo, **F10** liga o contador de FPS, e **Insert** (ou R3 + L2 no controle) abre o menu do port.
+4. Quando o jogo pedir para virar ou sacudir o controle e o seu não tiver sensor: toque em Share (ou L3+R3), use o analógico esquerdo para inclinar e X/A para sacudir, e toque de novo para sair. No teclado: T/G/Y.
+
+O passo a passo completo está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
 
 ## Compilar do código-fonte
 
 ```bash
-git clone --recursive https://github.com/HayatoG/infamous_pc.git && cd infamous_pc
+git clone --recursive https://github.com/HayatoG/iss_pc.git && cd iss_pc
 cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, FreeType, Boost, fmt, Zydis, glslang
 cd .. && ./infamous_launcher.sh        # ou ./run_infamous.sh pelo terminal
 ```
@@ -74,17 +102,19 @@ No Windows, o build roda no MSYS2 CLANG64 ([`port/packaging/windows/README.md`](
 
 | Camada | O que faz | Base |
 |---|---|---|
-| Loader | Carrega o `eboot.bin` e liga os módulos do próprio jogo (`libc`, `Fios2`) | [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) |
-| Runtime | Reimplementa as bibliotecas do PS4 (NpManager, Trophy, Http, Ssl, PlayGo, SaveData, AppContent...) | `port/src/` |
+| Loader | Carrega o `eboot.bin` 1.07 e liga os módulos do próprio jogo (`libc`, `Fios2`) | [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) |
+| Runtime | Reimplementa as bibliotecas do PS4 (NpManager, Trophy, Http, PlayGo, SaveData, AppContent, AudioOut, Ajm...). Específicos do inFAMOUS: `port/src/runtime_infamous.c` | `port/src/` |
 | Vídeo | Traduz os comandos Gnm e os shaders GCN para Vulkan/SPIR-V | núcleo de vídeo do [shadPS4](https://github.com/shadps4-emu/shadPS4) |
 
-O plano está em [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## Próximos passos
+
+O que falta está em [`docs/ROADMAP.md`](docs/ROADMAP.md): desempenho (esperas por leituras da GPU), cache de pipelines em disco contra os engasgos, os efeitos que piscam, o brilho do dreno de drones e os idiomas do jogo no launcher.
 
 ## Créditos e aviso legal
 
 Base de código: [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (FelipePrado0), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) e [shadPS4](https://github.com/shadps4-emu/shadPS4), todos GPL-2.0, assim como este projeto ([LICENSE](port/LICENSE)). Áudio ATRAC9 via [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9); fontes via [FreeType](https://freetype.org).
 
-Este projeto não tem vínculo com a Sony Interactive Entertainment ou a Sucker Punch Productions. inFAMOUS é marca da Sony Interactive Entertainment. Nenhum código, arquivo ou arte do jogo é distribuído aqui.
+Este projeto não tem vínculo com a Sony Interactive Entertainment ou a Sucker Punch Productions. inFAMOUS é marca da Sony Interactive Entertainment. Nenhum código, arquivo ou arte do jogo é distribuído aqui. O ícone é uma arte original do projeto.
 
 ---
 
@@ -92,32 +122,47 @@ Este projeto não tem vínculo com a Sony Interactive Entertainment ou a Sucker 
 
 # inFAMOUS Second Son — native PC port
 
-> **In development — doesn't boot yet.** The game still crashes early in boot. There is nothing to play for now.
+> **Playable, in development.** The game boots, reaches gameplay and gets through the first chapters, but performance is still unstable (20–30 FPS typical on an RTX 2060) and there are known graphics glitches. See the status below.
 
-**inFAMOUS Second Son** (PS4, CUSA00223, update 1.07) running on PC without a CPU emulator: the game's original code runs natively on the processor, the PS4 system is reimplemented, and the GPU is translated to Vulkan. It uses the same core as the [The Last Guardian](https://github.com/HayatoG/tlg_pc) and [Gravity Rush 2](https://github.com/HayatoG/gr2_pc) ports.
+**inFAMOUS Second Son** (PS4, CUSA00223, base game 1.00 + update 1.07) running on PC without a CPU emulator: the game's original code runs natively on the processor, the PS4 system is reimplemented, and the GPU is translated to Vulkan. It uses the same core as the [The Last Guardian](https://github.com/HayatoG/tlg_pc) and [Gravity Rush 2](https://github.com/HayatoG/gr2_pc) ports.
 
 > **No game files come with this project.** To play, you need your own copy, dumped from your own PS4.
 
 By **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g)
 
-No screenshots yet: they will be added once the game shows its first frame.
+The screenshots are at the top of this page.
+
+## What's new
+
+- **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes. This is what gets you past the graffiti ("Hold Wireless Controller Sideways") and the other motion prompts.
+- **Sticks:** a 10% dead zone against drift (`TLG_STICK_DEADZONE`, also in the launcher), and the last controller used is the one that counts.
+- **Touchpad without a touchpad:** hold View/Select (or Tab) and move the right stick (or the arrow keys) to swipe, as in "Open Door"; a quick tap still clicks.
+- **Performance:** FPS no longer drops over time (it went from 60 to 6 in 2 minutes: shader variants were never reused), and repeated partial image transitions are skipped.
+- **Precise GPU readbacks by default:** the energy-drain smoke, drones and other GPU-computed particles show up. The fast mode is still in the launcher ("GPU accuracy").
+- **Automatic shader cache:** the cache folder is keyed by the shader recompiler version, and the old cache is deleted on its own after an update.
 
 ## Status
 
 | Area | State |
 |---|---|
-| Loading the 1.07 `eboot.bin` and linking the game's `libc` and `Fios2` | ✅ Works |
-| System functions the game imports | ⏳ ~16 missing (NpManager, PlayGo, Http, NetCtl, AppContent...) |
-| Boot | ❌ Crashes in under 1 s, inside the game's `main` |
-| Graphics, audio, controller, saves | 📋 After boot |
-| Linux | 🧪 Builds; the port is developed there (Nobara/Fedora 44) |
-| Windows | 📋 Planned (same build process as the other ports) |
+| Boot, title, intro and gameplay | ✅ Works; tested up to "Go to Longhouse", with climbing, running, powers and cutscenes |
+| Motion sensor (graffiti, motion prompts) | ✅ Real gyro, or simulated on any controller and the keyboard |
+| Drain smoke, drones and GPU particles | ✅ With precise GPU readbacks (default) |
+| HUD | ✅ Correct |
+| Audio | ✅ Our own AudioOut + Ajm, no firmware file needed |
+| Saves | ✅ The save is created and "Continue" works |
+| Controller | ✅ DualSense, DualShock 4, Xbox and 8BitDo via SDL3 |
+| Performance | 🔧 20–30 FPS typical on an RTX 2060, unstable; optimization ongoing |
+| Stutter | 🔧 The first time each shader is compiled (cutscenes and new areas) |
+| Graphics | 🔧 Some fog, water and light effects flicker |
+| Linux | ✅ Tested (Nobara/Fedora 44) |
+| Windows | 🧪 Automatic build, not yet tested in game |
 
 ## Download
 
-No download yet: the port does not boot. Once it does, the **nightly build** will come from GitHub Actions on every change:
+The [**nightly build**](https://github.com/HayatoG/iss_pc/releases/tag/nightly) is produced by GitHub Actions on every change and replaces the previous one:
 
-- **Linux x86-64** (glibc 2.39+): `infamous-linux-x86_64.tar.gz`
+- **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 or newer): `infamous-linux-x86_64.tar.gz`
 - **Windows 10/11 64-bit**: `infamous-windows-x86_64.zip`
 
 ## Required game files
@@ -132,22 +177,25 @@ Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in t
 | `art/` (`cache/`, `movies/`, `ui/`) | base + update | game content |
 | `playgo.pgm`, `sce_discmap.plt`, `sce_discmap_patch.plt` | base + update | file map and install info |
 
-**From the console firmware:** nothing. This game uses no PS4 system module.
+**From the console firmware:** nothing. Audio uses our own AudioOut + Ajm; the game imports neither `libSceNgs2` nor any other PS4 system module.
 
-The full list and the step-by-step guide are in [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+The full list and the step-by-step guide, which also go in the notes of every Release, are in [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+
+**PC:** a graphics card with Vulkan 1.3 (6 GB of VRAM recommended) and ~33 GB free.
 
 ## How to play
 
-Not playable yet. Once the port boots:
-
 1. Extract the package.
-2. Open **inFAMOUS Second Son**, pick the game folder and the language, and click **Play**.
+2. Open **inFAMOUS Second Son**, pick the game folder and the language, and click **Play**. If it stutters too much, the "GPU accuracy" option has a fast mode (without GPU particles).
 3. In game, **F10** toggles the FPS counter, and **Insert** (or R3 + L2 on a controller) opens the port's menu.
+4. When the game asks you to turn or shake the controller and yours has no sensor: tap Share (or L3+R3), use the left stick to tilt and cross/A to shake, and tap again to leave. On the keyboard: T/G/Y.
+
+The full guide is in [`README-player.md`](port/packaging/README-player.md), which also ships inside the package.
 
 ## Building from source
 
 ```bash
-git clone --recursive https://github.com/HayatoG/infamous_pc.git && cd infamous_pc
+git clone --recursive https://github.com/HayatoG/iss_pc.git && cd iss_pc
 cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, FreeType, Boost, fmt, Zydis, glslang
 cd .. && ./infamous_launcher.sh        # or ./run_infamous.sh from a terminal
 ```
@@ -158,14 +206,16 @@ On Windows, the build runs in MSYS2 CLANG64 ([`port/packaging/windows/README.md`
 
 | Layer | What it does | Based on |
 |---|---|---|
-| Loader | Loads `eboot.bin` and links the game's own modules (`libc`, `Fios2`) | [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) |
-| Runtime | Reimplements the PS4 libraries (NpManager, Trophy, Http, Ssl, PlayGo, SaveData, AppContent...) | `port/src/` |
+| Loader | Loads the 1.07 `eboot.bin` and links the game's own modules (`libc`, `Fios2`) | [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) |
+| Runtime | Reimplements the PS4 libraries (NpManager, Trophy, Http, PlayGo, SaveData, AppContent, AudioOut, Ajm...). inFAMOUS-specific: `port/src/runtime_infamous.c` | `port/src/` |
 | Video | Translates Gnm commands and GCN shaders to Vulkan/SPIR-V | [shadPS4](https://github.com/shadps4-emu/shadPS4) video core |
 
-The plan is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## Next steps
+
+What is left is in [`docs/ROADMAP.md`](docs/ROADMAP.md): performance (waits on GPU readbacks), an on-disk pipeline cache against the stutter, the flickering effects, the drone-drain glow and the game languages in the launcher.
 
 ## Credits and legal notice
 
 Code base: [tlg_pc](https://github.com/HayatoG/tlg_pc), [gr2_pc](https://github.com/HayatoG/gr2_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (FelipePrado0), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) and [shadPS4](https://github.com/shadps4-emu/shadPS4), all GPL-2.0, as is this project ([LICENSE](port/LICENSE)). ATRAC9 audio via [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9); fonts via [FreeType](https://freetype.org).
 
-This project is not affiliated with Sony Interactive Entertainment or Sucker Punch Productions. inFAMOUS is a trademark of Sony Interactive Entertainment. No game code, files or art are distributed here.
+This project is not affiliated with Sony Interactive Entertainment or Sucker Punch Productions. inFAMOUS is a trademark of Sony Interactive Entertainment. No game code, files or art are distributed here. The icon is original artwork made for this project.
