@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Gravity Rush 2: prepares the image, runs the game for N seconds and, optionally, presses buttons
+# from a script and saves screenshots (raw RGBA display dumps converted to PNG).
+# Usage: scripts/gr2_run.sh [seconds=120] [shots_dir] [press_script]
+#   press_script: lines "<second> <buttons...>" (e.g. "40 cross", "60 options"); each press lasts 0.3 s.
+# Only one game instance may run at a time on this machine: the script waits for any other.
+set -uo pipefail
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+port=$root/port
+seconds=${1:-120}; shots=${2:-}; script=${3:-}
+dump=$root/dump
+while pgrep -x tlg-probe >/dev/null; do echo "waiting for another game instance..."; sleep 10; done
+(cd "$port/scripts" &&
+ python3 prepare.py "$dump" --out ../out >/dev/null &&
+ python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx libSceJobManager.prx \
+     "$dump/sysdata/libSceSecure.prx" "$dump/system_lib/libSceNgs2.sprx" >/dev/null &&
+ python3 content_profile.py "$dump" --out ../out >/dev/null) || { echo "prepare failed" >&2; exit 1; }
+mkdir -p "$port/user" "$port/out/logs"
+log=$port/out/logs/gr2-$(date +%Y%m%d-%H%M%S).log
+ln -sfn "$log" "$port/out/last_run.log"
+export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=2 TLG_GC_BUDGET_MB=5600 TLG_UPSCALER=off TLG_JITTER=0 \
+       TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_NGS2=native TLG_LANGUAGE=${TLG_LANGUAGE:-1}
+pad=$port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
+if [[ -n $shots ]]; then
+    mkdir -p "$shots"; export TLG_FRAME_DUMP_TRIGGER=$shots/trigger TLG_DUMP_DIR=$shots
+fi
+(cd "$port/user" && exec "$port/out/tlg-probe" "$port/out/boot-linked.bin" --app0 "$dump" --user . \
+    --content-profile "$port/out/content.bin" --timeout "$seconds") > "$log" 2>&1 &
+game=$!
+start=$(date +%s)
+if [[ -n $script && -f $script ]]; then
+    while read -r at buttons; do
+        [[ -z $at || $at == \#* ]] && continue
+        while (( $(date +%s) - start < at )); do sleep 0.2; done
+        kill -0 "$game" 2>/dev/null || break
+        if [[ $buttons == shot ]]; then [[ -n $shots ]] && touch "$shots/trigger"; continue; fi
+        echo "$buttons" > "$pad"; sleep 0.3; : > "$pad"
+        echo "[$(( $(date +%s) - start ))s] $buttons"
+    done < "$script"
+fi
+wait "$game"; code=$?
+if [[ -n $shots ]]; then
+    python3 - "$shots" <<'EOF'
+import sys, re
+from pathlib import Path
+from PIL import Image
+for raw in Path(sys.argv[1]).glob('display_*.raw'):
+    m = re.search(r'_(\d+)x(\d+)\.raw$', raw.name); w, h = int(m[1]), int(m[2])
+    d = raw.read_bytes()
+    if len(d) >= w * h * 4:
+        Image.frombytes('RGBA', (w, h), d[:w*h*4]).convert('RGB').save(raw.with_suffix('.png'))
+EOF
+fi
+echo "exit $code; log: $log"
