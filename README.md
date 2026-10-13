@@ -57,7 +57,7 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | **Qualidade de imagem** | ✅ imagem nativa: o tremor e as piscadas sumiram ao desligar o FSR3, o jitter e os motion vectors do port de GoW3, e ao subir o orçamento de VRAM (`run_tlg.sh`) |
 | **Lança do Trico → cutscene** | ✅ corrigida a leitura curta de textura (assert `JsTex.cpp:459`), confirmado jogando |
 | **Saves** | ✅ autosave + `Continue` volta ao ponto certo (SaveDataMemory2) |
-| **Áudio** | 🔄 em andamento (NGS2) |
+| **Áudio** | ✅ funcionando na intro e no gameplay: `libSceNgs2.sprx` do firmware do próprio console linkado como módulo nativo (mixer, efeitos e VAG originais) + AJM do runtime (ATRAC9 via LibAtrac9) |
 | Desempenho | 30 FPS estáveis; engasgos pontuais (20–70 ms) por falhas de leitura do modo Precise → otimizar com readback direcionado (`AsyncMap`) |
 
 ---
