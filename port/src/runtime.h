@@ -57,6 +57,8 @@ uintptr_t runtime_gr2_resolve(const char *name);
 uintptr_t runtime_gr2_np_resolve(const char *name);
 uintptr_t runtime_gr2_font_resolve(const char *name);
 uintptr_t runtime_gr2_json_resolve(const char *name);
+uintptr_t runtime_gr2_audio3d_resolve(const char *name);
+void runtime_gr2_audio3d_report(void);
 void runtime_file_report(void);
 void runtime_file_configure(const char *app0, const char *user);
 int runtime_file_mount(const char *guest, const char *host);
@@ -93,6 +95,10 @@ int runtime_mp3_decode(Mp3Decoder *decoder, const unsigned char *data, int size,
 uintptr_t runtime_videodec_resolve(const char *name);
 uintptr_t runtime_audio_resolve(const char *name);
 void runtime_audio_report(void);
+/* Host-side AudioOut ports (48 kHz; format as sceAudioOutOpen's param): handle or error. */
+int32_t runtime_audio_host_open(int32_t type, uint32_t frames, uint32_t format);
+int32_t runtime_audio_host_output(int32_t handle, const void *data, int pace);
+int32_t runtime_audio_host_close(int32_t handle);
 uintptr_t runtime_pad_resolve(const char *name);
 void runtime_pad_report(void);
 uintptr_t runtime_rtc_resolve(const char *name);

@@ -79,6 +79,7 @@ void runtime_report(void) {
     runtime_memory_report();
     runtime_ajm_report();
     runtime_audio_report();
+    runtime_gr2_audio3d_report();
     runtime_pad_report();
     runtime_savedata_report();
     runtime_file_report();
@@ -250,6 +251,9 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (save) return save;
     uintptr_t file = runtime_file_resolve(name);
     if (file) return file;
+    /* Before runtime_tlg: its Audio3d entries are placeholders kept for TLG-only builds. */
+    uintptr_t gr2_audio3d = runtime_gr2_audio3d_resolve(name);
+    if (gr2_audio3d) return gr2_audio3d;
     uintptr_t tlg = runtime_tlg_resolve(name);
     if (tlg) return tlg;
     uintptr_t gr2 = runtime_gr2_resolve(name);
