@@ -916,3 +916,6 @@
 {"yb2cRhagD1I#libSceGnmDriver","sceGnmDrawInitDefaultHardwareState350"},
 {"yhFCnaz5daw#libSceGnmDriver","sceGnmUnregisterAllResourcesForOwner"},
 {"fJgP+wqifno#libSceDiscMap","sceDiscMap_7C980FFB0AA27E7A"},
+{"7Xl257M4VNI#libkernel","pthread_equal"},
+{"WB66evu8bsU#libkernel","sceKernelGetCompiledSdkVersion"},
+{"pztV4AF18iI#libSceLibcInternal","sincosf"},

@@ -202,6 +202,11 @@ def link(game, out, module_names=DEFAULT_MODULES):
         if not found and identity and identity[1][0] == 'libSceLibcInternal':
             candidates = by_nid.get((identity[0], 'libc'), [])
             found = candidates[0] if len(candidates) == 1 else None
+        if not found and identity:
+            # tlg: system modules from the console firmware (libSceNgs2.sprx) export newer library
+            # versions than the game imports; same NID and library name is the same function.
+            candidates = by_nid.get((identity[0], identity[1][0]), [])
+            found = candidates[0] if len(candidates) == 1 else None
         if found:
             bindings.append((index, found[0], found[1]))
         else:

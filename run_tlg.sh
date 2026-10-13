@@ -11,7 +11,16 @@ out=$port/out
 [[ -x $out/tlg-probe ]] || { echo "Compile primeiro: (cd port && bash build.sh)" >&2; exit 1; }
 [[ -f $game/eboot.bin ]] || { echo "Sem eboot.bin em $game" >&2; exit 1; }
 python3 "$port/scripts/prepare.py" "$game" --out "$out" >/dev/null
-python3 "$port/scripts/link_modules.py" "$game" --out "$out" >/dev/null
+# Áudio: o libSceNgs2.sprx do firmware do próprio console (dump/system_lib) é linkado como módulo
+# nativo (som original, com efeitos). Sem ele, ou com TLG_NGS2=hle, o NGS2 fica mudo (placeholder).
+syslib=${TLG_SYSTEM_LIB_DIR:-$root/dump/system_lib}
+modules=(libc.prx libSceFios2.prx)
+if [[ ${TLG_NGS2:-native} != hle && -f $syslib/libSceNgs2.sprx ]]; then
+    modules+=("$syslib/libSceNgs2.sprx"); export TLG_NGS2=native
+else
+    export TLG_NGS2=hle
+fi
+python3 "$port/scripts/link_modules.py" "$game" --out "$out" --modules "${modules[@]}" >/dev/null
 python3 "$port/scripts/content_profile.py" "$game" --out "$out" >/dev/null
 mkdir -p "$port/user"
 # O cache de pipeline binário (VK_KHR_pipeline_binary) trava no driver NVIDIA 595: desligado.

@@ -8,6 +8,7 @@
 #define _GNU_SOURCE
 #include "runtime.h"
 #include <errno.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -209,6 +210,16 @@ static ABI int32_t libc_heap_trace_info(HeapTraceInfo *info) {
     return 0;
 }
 
+/* Needed by libSceNgs2.sprx (console firmware module, TLG_NGS2=native). */
+static ABI int32_t compiled_sdk_version(int32_t *version) {
+    if (!version) return KERR_EINVAL;
+    *version = 0x04008061; /* the SDK the game's own modules report (FIOS2 log) */
+    return 0;
+}
+static ABI int32_t posix_pthread_equal(void *a, void *b) { return a == b; }
+/* libSceLibcInternal export the game's libc.prx does not carry. */
+static ABI void guest_sincosf(float x, float *s, float *c) { *s = sinf(x); *c = cosf(x); }
+
 /* ---- System services ---- */
 static ABI int32_t load_exec(const char *path,char *const *argv) {
     printf("Runtime: sceSystemServiceLoadExec(%s%s) -> restart\n",path ? path : "(null)",argv && argv[0] ? " ..." : "");
@@ -301,6 +312,8 @@ static const RuntimeExport exports[]={
     {"sceKernelInternalMemoryGetModuleSegmentInfo",module_segment_info},
     {"sceKernelConvertUtcToLocaltime",utc_to_local}, {"sceKernelConvertLocaltimeToUtc",local_to_utc},
     {"sceLibcHeapGetTraceInfo",libc_heap_trace_info},
+    {"sceKernelGetCompiledSdkVersion",compiled_sdk_version}, {"pthread_equal",posix_pthread_equal},
+    {"sincosf",guest_sincosf},
     {"sceSystemServiceLoadExec",load_exec},
     {"sceAudioOutSetMixLevelPadSpk",pad_speaker_mix}, {"scePadSetMotionSensorState",pad_motion_sensor},
     {"sceDiscMap_7C980FFB0AA27E7A",discmap_7c98},
