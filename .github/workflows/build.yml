@@ -61,8 +61,8 @@ jobs:
         run: bash packaging/linux/package.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: gr2-linux-x86_64
-          path: port/dist/gr2-linux-x86_64.tar.gz
+          name: infamous-linux-x86_64
+          path: port/dist/infamous-linux-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 3
 
@@ -111,8 +111,8 @@ jobs:
           bash packaging/windows/package.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: gr2-windows-x86_64
-          path: port/dist/gr2-windows-x86_64.zip
+          name: infamous-windows-x86_64
+          path: port/dist/infamous-windows-x86_64.zip
           if-no-files-found: error
           retention-days: 3
 
@@ -140,14 +140,14 @@ jobs:
         run: |
           set -euo pipefail
           ls -la dist
-          test -f dist/gr2-linux-x86_64.tar.gz && test -f dist/gr2-windows-x86_64.zip
+          test -f dist/infamous-linux-x86_64.tar.gz && test -f dist/infamous-windows-x86_64.zip
           short=${GITHUB_SHA::7}
           cat > notes.md <<NOTES
           Build automático do commit ${short}. **Nenhum arquivo do jogo incluído**: veja o README-player.md dentro do pacote para o que copiar do seu PS4.
           Automatic build of commit ${short}. **No game files included**: see README-player.md inside the package for what to copy from your PS4.
 
-          - Linux x86-64 (glibc 2.39+): \`gr2-linux-x86_64.tar.gz\`
-          - Windows 10/11 64-bit: \`gr2-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
+          - Linux x86-64 (glibc 2.39+): \`infamous-linux-x86_64.tar.gz\`
+          - Windows 10/11 64-bit: \`infamous-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
 
           NOTES
           # The list of game files the player needs (docs/ARQUIVOS_NECESSARIOS.md), before the download.
