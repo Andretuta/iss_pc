@@ -53,6 +53,25 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | **Primeiro boot no PC** | ✅ `trico main() start...` → boot em 0,41 s → engine rodando a ~28,7 fps (trava de 30), 1148 frames em 40 s sem falhas (NGS2 mudo) |
 | **Imagem na tela** | ✅ logo da Japan Studio, loading e **menu inicial** renderizados corretamente na RTX 2060 (fundo 3D da caverna, DOF, texto) |
 | **New Game → intro** | ✅ a cutscene de abertura roda; ~3 min sem falhas (DualSense via SDL3; som ainda mudo) |
+| **Intro → gameplay** | ❌ **bloqueio atual**: crash determinístico na entrada do gameplay (com ou sem pular a intro). Ver "Bloqueio atual" abaixo |
+
+---
+
+## Bloqueio atual: readback GPU→CPU
+
+O crash acontece no fim da intro, ou ao pulá-la. Dados coletados:
+
+- **Onde:** `0x12719aa` (spinlock), com ponteiro nulo + 0x10, chamado de `0x1c4cdd1` em `FUN_01c4c570` (renderer).
+- **O que o código faz:** lê um contador e uma lista de itens via `JsComputeContext::AsyncMap` (`0x2473600`). Os dois
+  buffers são **escritos pela GPU** (compute assíncrono) e lidos pela CPU sem espera. Cada item traz um índice
+  (`>>16`) para a tabela de objetos em `param_2+0x31e60`.
+- **Por que quebra:** no modo `GOW3_READBACKS=1` (Relaxed, o padrão do gow3_pc), páginas escritas pela GPU não ficam
+  protegidas. A CPU lê dados velhos, e o índice aponta para uma entrada nula.
+- **`GOW3_READBACKS=2` (Precise):** sincroniza na leitura, mas trava no frame 2 (deadlock no tradutor).
+- **Próximo passo:** corrigir o deadlock do modo Precise, ou aplicar readback só nos buffers mapeados por
+  `AsyncMap` (por exemplo, protegendo as páginas desses buffers quando um compute ou cópia os escreve).
+
+Também foram corrigidos no caminho: o formato de dados reservado (`data_fmt 15`) e o estouro do RecordChunk.
 
 ---
 
