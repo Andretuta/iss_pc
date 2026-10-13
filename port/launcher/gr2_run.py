@@ -185,6 +185,20 @@ def prepare(settings, log=print):
     return modules
 
 
+def window_icon(settings):
+    """The game's own icon0.png converted to BMP (SDL's built-in format) in out/; None if absent."""
+    source = Path(settings['game_dir']) / 'sce_sys' / 'icon0.png'
+    target = OUT_DIR / 'window_icon.bmp'
+    try:
+        if source.is_file() and (not target.is_file() or target.stat().st_mtime < source.stat().st_mtime):
+            from PIL import Image  # optional: without Pillow the window keeps the default icon
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            Image.open(source).convert('RGB').resize((128, 128)).save(target)
+        return target if target.is_file() else None
+    except Exception:
+        return None
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
@@ -195,6 +209,12 @@ def build_env(settings, extra=None):
         env['TLG_UI_LANG'] = settings['ui_language']
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
+    # Window name, app id (matches gr2-pc.desktop for Alt+Tab and the dock) and icon.
+    env.setdefault('TLG_APP_NAME', 'Gravity Rush 2')
+    env.setdefault('TLG_APP_ID', 'gr2-pc')
+    icon = window_icon(settings)
+    if icon:
+        env.setdefault('TLG_WINDOW_ICON', str(icon))
     if settings.get('gs_outline_off', True):
         env.setdefault('TLG_SKIP_ADJACENCY', '1')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
