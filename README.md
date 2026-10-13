@@ -43,7 +43,7 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 |---|---|
 | Dump do eboot/prx (base 1.00 e update 1.03), decriptografados | ✅ ELF verificados |
 | Dump dos psarc do update 1.03 | ✅ completos |
-| Dump dos psarc do jogo base | ⚠️ `trico_001/002/003` truncados pelo FTP. Novo dump via USB (Itemzflow) em andamento |
+| Dump dos psarc do jogo base | ✅ completos: `trico_001/002/003` vieram do dump USB (Itemzflow), verificados contra o FTP |
 | Análise Ghidra (GhidraOrbis + REA) do eboot 1.03 | ✅ auto-análise em ~9 min (heap de 16 GB) |
 | Mapeamento: loop principal e threads | ✅ [`analysis/01_main_loop_threads.md`](analysis/01_main_loop_threads.md) |
 | Mapeamento: renderização / GNM | ✅ [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md) |
@@ -52,7 +52,7 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | Loader + runtime (base gow3_pc em `port/`) | ✅ compila no Nobara; 391/391 imports resolvidas (`Imports: 0 missing`) |
 | **Primeiro boot no PC** | ✅ `trico main() start...` → boot em 0,41 s → engine rodando a ~28,7 fps (trava de 30), 1148 frames em 40 s sem falhas (NGS2 mudo) |
 | **Imagem na tela** | ✅ logo da Japan Studio, loading e **menu inicial** renderizados corretamente na RTX 2060 (fundo 3D da caverna, DOF, texto) |
-| Gameplay (New Game) | 🔄 aguardando psarc 001/002/003 completos (dump USB) |
+| **New Game → intro** | ✅ a cutscene de abertura roda; ~3 min sem falhas (DualSense via SDL3; som ainda mudo) |
 
 ---
 
