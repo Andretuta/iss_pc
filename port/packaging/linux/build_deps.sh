@@ -19,9 +19,9 @@ cmake -S sdl -B sdl/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PR
     -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
 ninja -C sdl/build install
 
-# Zydis 5 has no release tag yet: the snapshot Fedora 44 packages (zydis-5.0.0 git 5091440).
+# Zydis 5 has no release tag yet: a pinned master commit (ZYDIS_VERSION 5.0.0).
 git clone -q https://github.com/zyantific/zydis.git zydis
-git -C zydis checkout -q 5091440
+git -C zydis checkout -q a95bb71
 git -C zydis submodule update -q --init --recursive
 cmake -S zydis -B zydis/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DZYDIS_BUILD_SHARED_LIB=ON -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF -DZYDIS_BUILD_TESTS=OFF \
@@ -42,7 +42,7 @@ cmake -S vma -B vma/build -G Ninja -DCMAKE_INSTALL_PREFIX="$PREFIX"
 ninja -C vma/build install
 
 fetch https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.gz ffmpeg
-(cd ffmpeg && ./configure --prefix="$PREFIX" --enable-shared --disable-static --disable-programs \
+(cd ffmpeg && ./configure --prefix="$PREFIX" --enable-shared --disable-static --disable-programs --disable-avdevice --disable-avfilter \
     --disable-doc --disable-network --disable-autodetect --enable-zlib --disable-everything \
     --enable-decoder=h264,mp3,mp3float,png --enable-parser=h264,mpegaudio,png \
     --enable-demuxer=h264,mp3,image2 --enable-protocol=file \

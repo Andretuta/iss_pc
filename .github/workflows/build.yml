@@ -25,9 +25,9 @@ jobs:
     env:
       CC: gcc-14
       CXX: g++-14
-      PKG_CONFIG_PATH: /opt/tlgdeps/lib/pkgconfig:/opt/tlgdeps/lib/x86_64-linux-gnu/pkgconfig
+      PKG_CONFIG_PATH: /opt/tlgdeps/lib/pkgconfig:/opt/tlgdeps/lib64/pkgconfig:/opt/tlgdeps/lib/x86_64-linux-gnu/pkgconfig
       CMAKE_PREFIX_PATH: /opt/tlgdeps
-      LD_LIBRARY_PATH: /opt/tlgdeps/lib:/opt/tlgdeps/lib/x86_64-linux-gnu
+      LD_LIBRARY_PATH: /opt/tlgdeps/lib:/opt/tlgdeps/lib64:/opt/tlgdeps/lib/x86_64-linux-gnu
     steps:
       - uses: actions/checkout@v4
         with:
