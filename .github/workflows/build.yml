@@ -1,0 +1,142 @@
+# Builds the Linux and Windows packages on every push to main and publishes them as the
+# "nightly" pre-release, replacing the previous one (release and tag). A tag v* publishes a
+# versioned release that is kept. No game or console file is ever built in or uploaded.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: port
+    env:
+      CC: gcc-14
+      CXX: g++-14
+      PKG_CONFIG_PATH: /opt/tlgdeps/lib/pkgconfig:/opt/tlgdeps/lib/x86_64-linux-gnu/pkgconfig
+      CMAKE_PREFIX_PATH: /opt/tlgdeps
+      LD_LIBRARY_PATH: /opt/tlgdeps/lib:/opt/tlgdeps/lib/x86_64-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 cmake ninja-build pkg-config nasm \
+            curl git python3-venv python3-tk libvulkan-dev glslang-tools libboost-dev librobin-map-dev \
+            libxxhash-dev zlib1g-dev libx11-dev libxcb1-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libdecor-0-dev libegl-dev libgl-dev libdrm-dev libgbm-dev libpulse-dev libasound2-dev \
+            libpipewire-0.3-dev libudev-dev libdbus-1-dev libusb-1.0-0-dev
+      - name: Cache built libraries
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: /opt/tlgdeps
+          key: tlgdeps-ubuntu2404-${{ hashFiles('port/packaging/linux/build_deps.sh') }}
+      - name: Build libraries (SDL3, Zydis, fmt, FFmpeg)
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p /opt/tlgdeps && sudo chown "$USER" /opt/tlgdeps
+          bash packaging/linux/build_deps.sh
+      - name: Build
+        run: TLG_LTO=OFF TLG_PGO=off bash build.sh
+      - name: Package
+        run: bash packaging/linux/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tlg-linux-x86_64
+          path: port/dist/tlg-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+        working-directory: port
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.12'
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            git patch
+            mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-python
+            mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader
+            mingw-w64-clang-x86_64-vulkan-memory-allocator mingw-w64-clang-x86_64-glslang
+            mingw-w64-clang-x86_64-sdl3 mingw-w64-clang-x86_64-fmt mingw-w64-clang-x86_64-boost
+            mingw-w64-clang-x86_64-robin-map mingw-w64-clang-x86_64-xxhash mingw-w64-clang-x86_64-ffmpeg
+            mingw-w64-clang-x86_64-zydis mingw-w64-clang-x86_64-spirv-tools
+            mingw-w64-clang-x86_64-spirv-headers mingw-w64-clang-x86_64-spirv-cross
+      - name: Build
+        env:
+          MSYS2_ROOT: ${{ runner.temp }}/msys64
+        run: |
+          export MSYS2_ROOT=$(cygpath -u "$MSYS2_ROOT")
+          TLG_LTO=OFF bash build.sh
+      - name: Package
+        env:
+          MSYS2_ROOT: ${{ runner.temp }}/msys64
+          WINPYTHON_WIN: ${{ steps.python.outputs.python-path }}
+        run: |
+          export MSYS2_ROOT=$(cygpath -u "$MSYS2_ROOT")
+          export WINPYTHON=$(cygpath -u "$WINPYTHON_WIN")
+          bash packaging/windows/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tlg-windows-x86_64
+          path: port/dist/tlg-windows-x86_64.zip
+          if-no-files-found: error
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la dist
+          short=${GITHUB_SHA::7}
+          cat > notes.md <<NOTES
+          Build automático do commit ${short}. **Nenhum arquivo do jogo incluído**: veja o README-player.md dentro do pacote para o que copiar do seu PS4.
+          Automatic build of commit ${short}. **No game files included**: see README-player.md inside the package for what to copy from your PS4.
+
+          - Linux x86-64 (glibc 2.39+): \`tlg-linux-x86_64.tar.gz\`
+          - Windows 10/11 64-bit: \`tlg-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
+          NOTES
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md --prerelease
+          else
+            # One nightly at a time: the previous release and its tag go first.
+            gh release delete nightly --cleanup-tag --yes || true
+            gh release create nightly dist/* --target "$GITHUB_SHA" --prerelease \
+              --title "Nightly ($(date -u +%Y-%m-%d) · ${short})" --notes-file notes.md
+          fi

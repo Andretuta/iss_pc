@@ -215,6 +215,9 @@ class Launcher:
             if icon:
                 self.icon = tk.PhotoImage(file=str(icon)).subsample(4)  # 512 -> 128
                 self.root.iconphoto(True, self.icon)
+            elif (tlg_run.PORT_DIR / 'launcher' / 'tlg.png').is_file():  # the port's own icon
+                self.icon = tk.PhotoImage(file=str(tlg_run.PORT_DIR / 'launcher' / 'tlg.png'))
+                self.root.iconphoto(True, self.icon)
             picture = art_path(self.settings, 'pic1.png') or art_path(self.settings, 'pic0.png')
             if picture:
                 full = tk.PhotoImage(file=str(picture))
@@ -344,6 +347,13 @@ class Launcher:
 
 
 def main():
+    # Packaged executable roles: --script <file> runs a preparation script, --play starts the
+    # game with the saved settings and no launcher window (shortcuts, Steam).
+    args = sys.argv[1:]
+    if args[:1] == ['--script'] and len(args) > 1:
+        sys.exit(tlg_run.run_script(args[1:]))
+    if args[:1] == ['--play']:
+        sys.exit(tlg_run.main(args[1:]))
     root = tk.Tk(className='tlg-pc')  # matches StartupWMClass in the desktop entry
     try:
         ttk.Style().theme_use('clam')

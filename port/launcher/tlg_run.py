@@ -17,7 +17,9 @@ from pathlib import Path
 import subprocess
 import sys
 
-PORT_DIR = Path(__file__).resolve().parent.parent
+# A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
+FROZEN = bool(getattr(sys, 'frozen', False))
+PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 REPO_DIR = PORT_DIR.parent
 OUT_DIR = PORT_DIR / 'out'
 USER_DIR = PORT_DIR / 'user'
@@ -40,8 +42,10 @@ DEFAULT_ENV = {
 }
 
 DEFAULT_SETTINGS = {
-    'game_dir': str(REPO_DIR / 'game' / 'CUSA03627'),
-    'system_lib_dir': str(REPO_DIR / 'dump' / 'system_lib'),
+    # Source tree: the merged game view and the console modules of ~/decomp. Package: the player
+    # picks the game folder; libSceNgs2.sprx goes in system_lib/ next to the executable.
+    'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA03627'),
+    'system_lib_dir': str(PORT_DIR / 'system_lib') if FROZEN else str(REPO_DIR / 'dump' / 'system_lib'),
     'game_language': 'pt_BR',
     'ui_language': 'auto',         # auto | pt_BR | en_US
     'show_fps': False,
@@ -107,24 +111,69 @@ def update_ini(path, values):
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
+def python_command(script):
+    """How to run one of scripts/*.py: the packaged executable runs them itself (--script)."""
+    if FROZEN:
+        return [sys.executable, '--script', str(script)]
+    return [sys.executable, str(script)]
+
+
+def attach_stdio():
+    """A windowed Windows executable starts without sys.stdout; inherited pipes still exist."""
+    if os.name != 'nt':
+        return
+    import ctypes
+    import msvcrt
+    for name, std in (('stdout', -11), ('stderr', -12)):
+        if getattr(sys, name) is not None:
+            continue
+        stream = None
+        handle = ctypes.windll.kernel32.GetStdHandle(std)
+        if handle and handle != ctypes.c_void_p(-1).value:
+            try:
+                stream = open(msvcrt.open_osfhandle(handle, os.O_WRONLY), 'w', encoding='utf-8',
+                              errors='replace', buffering=1)
+            except OSError:
+                stream = None
+        setattr(sys, name, stream or open(os.devnull, 'w'))
+
+
+NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)  # no console flashing for the scripts
+
+
+def run_script(argv):
+    """--script <path> [args]: runs a preparation script inside the packaged executable."""
+    import runpy
+    attach_stdio()
+    script = Path(argv[0])
+    sys.argv = [str(script), *argv[1:]]
+    sys.path.insert(0, str(script.parent))
+    try:
+        runpy.run_path(str(script), run_name='__main__')
+    except SystemExit as stop:
+        return stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
+    return 0
+
+
 def prepare(settings, log=print):
     """Builds out/boot-linked.bin and out/content.bin; returns the module list that was linked."""
     game = settings['game_dir']
-    py = sys.executable
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
     ngs2 = ngs2_module(settings)
     if ngs2:
         modules.append(str(ngs2))
     steps = [
-        [py, str(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
-        [py, str(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
-        [py, str(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
+        [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
+        [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
+        [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
     ]
     for step in steps:
-        result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True)
+        result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
+                                creationflags=NO_WINDOW)
         if result.returncode:
-            raise RuntimeError(f'{Path(step[1]).name}: {result.stderr.strip() or result.stdout.strip()}')
+            name = next(Path(arg).name for arg in step if arg.endswith('.py'))
+            raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
         for line in result.stdout.splitlines():
             log(line)
     return modules
@@ -140,7 +189,12 @@ def build_env(settings, extra=None):
         env['TLG_UI_LANG'] = settings['ui_language']
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
-    env.setdefault('TLG_RESTART_COMMAND', f'"{sys.executable}" "{Path(__file__).resolve()}"')
+    restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
+    env.setdefault('TLG_RESTART_COMMAND', restart)
+    # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
+    bundled = OUT_DIR / 'lib'
+    if os.name != 'nt' and bundled.is_dir():
+        env['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, [str(bundled), os.environ.get('LD_LIBRARY_PATH')]))
     if extra:
         env.update(extra)
     return env
@@ -180,8 +234,10 @@ def launch(settings, seconds=0, extra_env=None):
     return process, log
 
 
-def main():
-    seconds = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    attach_stdio()
+    seconds = int(argv[0]) if argv and argv[0].isdigit() else 0
     settings = load_settings()
     if os.environ.get('TLG_GAME_DIR'):
         settings['game_dir'] = os.environ['TLG_GAME_DIR']

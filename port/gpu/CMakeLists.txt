@@ -239,7 +239,7 @@ if (WIN32)
     target_link_libraries(audio-downmix-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
     add_executable(tlg-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/tlg-gpu-capabilities.rc)
     target_link_libraries(tlg-gpu-capabilities PRIVATE Vulkan::Vulkan)
-    # "Play God of War III.exe": the game with the launcher's saved settings, no launcher window.
+    # "Play The Last Guardian.exe": the game with the launcher's saved settings, no launcher window.
     add_executable(tlg-play WIN32 ../packaging/windows/play.c ../packaging/windows/play.rc)
     target_compile_options(tlg-play PRIVATE -municode)
     target_link_options(tlg-play PRIVATE -municode)

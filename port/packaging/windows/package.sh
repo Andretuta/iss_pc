@@ -1,87 +1,61 @@
 #!/usr/bin/env bash
-# Builds dist/tlg-windows/ (and dist/tlg-windows.zip): God of War III.exe (the launcher, frozen
-# with PyInstaller so players need no Python), tlg-probe.exe with the MSYS2 CLANG64 DLLs it needs,
-# the preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
-# Freezing uses a Windows Python 3.10+ (python.org; WINPYTHON overrides) and a private venv in
-# out/pyenv with PyInstaller. The temporal upscalers are off, so neither the FSR 4 assets nor the
-# DLSS runtime are packaged.
+# Builds dist/tlg-windows-x86_64.zip after `bash build.sh` in an MSYS2 CLANG64 shell:
+# "The Last Guardian.exe" (the launcher, frozen with PyInstaller so players need no Python),
+# "Play The Last Guardian.exe" (starts the game with the saved settings), out/tlg-probe.exe with
+# the CLANG64 DLLs it loads, the preparation scripts and the player README. No game or console
+# file may ship. Freezing uses a Windows Python 3.10+ (python.org or actions/setup-python;
+# WINPYTHON overrides) and a private venv in out/pyenv.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 source ./msys2-env.sh
 [[ -f out/tlg-probe.exe && -f out/tlg-gpu-capabilities.exe && -f out/tlg-play.exe ]] || { echo 'Build first: bash build.sh' >&2; exit 1; }
+name=${TLG_PACKAGE_NAME:-tlg-windows-x86_64}
 
-# A Windows Python (not MSYS2's) for PyInstaller.
 python=${WINPYTHON:-}
 if [[ -z $python ]]; then
-    for candidate in /c/Python3*/python.exe "${LOCALAPPDATA:-/c/Users/$USER/AppData/Local}"/Programs/Python/Python3*/python.exe; do
+    for candidate in /c/Python3*/python.exe "${LOCALAPPDATA:-/c/Users/$USER/AppData/Local}"/Programs/Python/Python3*/python.exe \
+                     /c/hostedtoolcache/windows/Python/3*/x64/python.exe; do
         [[ -x $candidate ]] && python=$candidate
     done
 fi
 [[ -n $python ]] || { echo 'Need a Windows Python 3 (python.org) or WINPYTHON=path\to\python.exe' >&2; exit 1; }
-# Windows Python needs USERPROFILE (some MSYS2 shells start without it).
 export USERPROFILE=${USERPROFILE:-$(cygpath -w "/c/Users/$(id -un)")}
 if [[ ! -x out/pyenv/Scripts/python.exe ]]; then
     "$python" -m venv out/pyenv
 fi
 out/pyenv/Scripts/python.exe -m pip install -q --disable-pip-version-check pyinstaller
-# The scripts run inside God of War III.exe (--script): the standard modules they import come along.
 hidden=()
 for module in argparse base64 collections hashlib json re shutil struct tempfile xml.etree.ElementTree \
-              urllib.request ctypes.wintypes; do
+              urllib.request runpy ctypes.wintypes msvcrt; do
     hidden+=(--hidden-import "$module")
 done
 out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
-    --name "God of War III" --icon "$(cygpath -w "$PWD/launcher/tlg.ico")" --distpath out/pyi-dist \
-    --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" "${hidden[@]}" \
-    "$(cygpath -w "$PWD/launcher/tlg_launcher_win.py")"
+    --name "The Last Guardian" --icon "$(cygpath -w "$PWD/launcher/tlg.ico")" --distpath out/pyi-dist \
+    --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" \
+    --paths "$(cygpath -w "$PWD/launcher")" "${hidden[@]}" "$(cygpath -w "$PWD/launcher/tlg_launcher.py")"
 
-# The package is assembled in a fresh staging folder and zipped from there; dist/tlg-windows
-# (a playable copy that may hold saves and settings) is only refreshed afterwards.
-dest=out/stage/tlg-windows
+dest=out/stage/$name
 rm -rf -- out/stage
-mkdir -p "$dest/bin" "$dest/launcher"
-cp -r "out/pyi-dist/God of War III/." "$dest/"
-llvm-strip -o "$dest/Play God of War III.exe" out/tlg-play.exe
-cp launcher/tlg.ico launcher/tlg.png launcher/gowfont.ttf "$dest/launcher/"
-# The executables without debug information (out/ keeps the symbols for crash reports).
+mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
+cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
+llvm-strip -o "$dest/Play The Last Guardian.exe" out/tlg-play.exe
+cp launcher/tlg.ico launcher/tlg.png "$dest/launcher/"
+# The executables without debug information, where tlg_run.py looks for them (out/).
 for exe in tlg-probe.exe tlg-gpu-capabilities.exe; do
-    llvm-strip --strip-debug -o "$dest/bin/$exe" "out/$exe"
+    llvm-strip --strip-debug -o "$dest/out/$exe" "out/$exe"
 done
 # Every DLL the executables load from the CLANG64 tree (SDL3, FFmpeg, Vulkan loader, ...).
-ldd "$dest/bin/tlg-probe.exe" "$dest/bin/tlg-gpu-capabilities.exe" |
+ldd "$dest/out/tlg-probe.exe" "$dest/out/tlg-gpu-capabilities.exe" |
     awk '/\/clang64\/bin\// {print $3}' | sort -u | while read -r dll; do
-        cp -u "$dll" "$dest/bin/"
+        cp -u "$dll" "$dest/out/"
     done
-cp -r scripts patches "$dest/"
-cp run.py LICENSE README.md packaging/windows/README-Windows.txt "$dest/"
+cp -r scripts "$dest/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
-# No game files and nothing a player made (saves, shader caches built from the game's shaders,
-# settings, logs) may ship: stop when one is found.
-forbidden=$(find "$dest" \( -iname eboot.bin -o -iname sce_module -o -iname sce_sys -o -iname savedata \
-    -o -iname user -o -iname cache -o -iname '*.log' -o -iname tlg.ini -o -iname settings.json \
-    -o -iname mods.json -o -iname patches.json -o -iname fsr4_shaders -o -iname 'nvngx_dlss*.dll' \
-    -o -iname '*.spv' -o -iname '*.pkg' -o -iname '*.sprx' -o -iname '*.prx' \) -print)
-if [[ -n $forbidden ]]; then
-    echo "Package holds files that must not ship:" >&2
-    echo "$forbidden" >&2
-    exit 1
-fi
+cp LICENSE packaging/README-player.md "$dest/"
+printf '%s\r\n' 'Coloque aqui o libSceNgs2.sprx do firmware do seu PS4 (/system/common/lib) para ter som.' \
+    'Put libSceNgs2.sprx from your PS4 firmware (/system/common/lib) here for audio.' > "$dest/system_lib/LEIA-ME.txt"
+bash packaging/check_package.sh "$dest"
 mkdir -p dist
-rm -f dist/tlg-windows.zip
-(cd out/stage && powershell -NoProfile -Command \
-    "Compress-Archive -Path tlg-windows -DestinationPath ../../dist/tlg-windows.zip")
-
-# Refresh dist/tlg-windows, keeping what players create there (saves, settings, mods), and
-# only while nothing runs from it: deleting a running launcher's files breaks it.
-play=dist/tlg-windows
-running=$(powershell -NoProfile -Command \
-    "@(Get-Process | Where-Object { \$_.Path -like '$(cygpath -w "$PWD/$play")\\*' }).Count" | tr -d '\r')
-if [[ ${running:-0} != 0 ]]; then
-    echo "dist/tlg-windows is in use ($running processes): not refreshed; the zip is ready." >&2
-else
-    mkdir -p "$play"
-    find "$play" -mindepth 1 -maxdepth 1 ! -name user ! -name mods ! -name tlg.ini \
-        ! -name mods.json ! -name patches.json -exec rm -rf {} +
-    cp -r "$dest/." "$play/"
-fi
-du -sh "$dest" dist/tlg-windows.zip
+rm -f "dist/$name.zip"
+(cd out/stage && powershell -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '../../dist/$name.zip'")
+du -sh "$dest" "dist/$name.zip"
