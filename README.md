@@ -333,6 +333,19 @@ Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as thr
 
 ---
 
+## Planos futuros
+
+| Plano | Detalhes |
+|---|---|
+| **60 FPS / FPS livre** | comparar o eboot 1.00 (sem trava de 30) com o 1.03 e desfazer a trava |
+| **Readback direcionado** | aplicar o modo Precise só nos buffers do `AsyncMap`, para reduzir engasgos de 20–70 ms |
+| **Windows** | build e empacotamento (o código herdado já suporta MSYS2/clang64) |
+| **macOS Apple Silicon (ARM)** | via Rosetta 2 + MoltenVK; ver [docs/issues/mac-apple-silicon.md](docs/issues/mac-apple-silicon.md) |
+| **Limpeza do código GoW3** | remover os hooks de cheats/orbs/vida do God of War III que ainda estão no runtime |
+| **Empacotamento Linux** | AppImage/Flatpak com o launcher e atalho no menu de aplicativos |
+
+---
+
 ## Estrutura do repositório
 
 ```
