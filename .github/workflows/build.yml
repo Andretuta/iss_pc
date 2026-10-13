@@ -4,9 +4,8 @@
 name: Build
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
+  # Gravity Rush 2: the packaging scripts still produce The Last Guardian's package names, so
+  # builds only run when started by hand until packaging/ is adapted (see docs/ROADMAP.md).
   workflow_dispatch:
 
 concurrency:
