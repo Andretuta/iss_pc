@@ -275,9 +275,25 @@ static void dump_frames(ucontext_t *uc) {
     char arg[]="  tid=0000000000000000 rdi=0000000000000000\n";
     write_hex(arg+6,tid); write_hex(arg+27,(uint64_t)uc->uc_mcontext.gregs[REG_RDI]);
     { ssize_t written_=write(2,arg,sizeof(arg)-1); (void)written_; }
+    {   /* Thread name (the process is terminating: stdio-free reads are enough). */
+        char path[64], name[32]={0};
+        snprintf(path,sizeof(path),"/proc/self/task/%lu/comm",(unsigned long)tid);
+        int fd=open(path,O_RDONLY);
+        if (fd>=0) { ssize_t got=read(fd,name,sizeof(name)-1); (void)got; close(fd); }
+        char head[96]; snprintf(head,sizeof(head),"  tid=%lu name=%s",(unsigned long)tid,name[0] ? name : "?\n");
+        { ssize_t written_=write(2,head,strlen(head)); (void)written_; }
+    }
     for (int depth=0; depth<24; ++depth) {
         write_hex(line+6,tid); write_hex(line+27,rip); write_hex(line+59,rip-(uintptr_t)image); write_hex(line+90,rip-exe_base);
         { ssize_t written_=write(2,line,sizeof(line)-1); (void)written_; }
+        Dl_info where;
+        if (rip-(uintptr_t)image>=0x10000000 && dladdr((void *)rip,&where) && where.dli_fname) {
+            char sym[320];
+            const char *file=strrchr(where.dli_fname,'/');
+            snprintf(sym,sizeof(sym),"      = %s+0x%lx (%s)\n",file ? file+1 : where.dli_fname,
+                     (unsigned long)(rip-(uintptr_t)where.dli_fbase),where.dli_sname ? where.dli_sname : "?");
+            ssize_t written_=write(2,sym,strlen(sym)); (void)written_;
+        }
         uintptr_t frame[2];
         struct iovec local={frame,sizeof(frame)}, remote={(void *)rbp,sizeof(frame)};
         if (!rbp || process_vm_readv(getpid(),&local,1,&remote,1,0)!=(ssize_t)sizeof(frame)) break;
