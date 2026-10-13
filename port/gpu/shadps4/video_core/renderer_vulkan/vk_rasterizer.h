@@ -237,6 +237,7 @@ private:
     /// The compute registers of the dispatch being recorded.
     const AmdGpu::ComputeProgram& CsRegs() const;
     static void RunDrawPacket(void* rasterizer, const u8* packet, u32 size);
+    static void SchedulerOwnerHook(void* rasterizer, void* caller);
     struct RingBinding;
     void CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                              boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out);

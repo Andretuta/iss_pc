@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+#include <unordered_set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
 #include "tlg_toggles.h"
@@ -67,6 +71,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     if (DrawPipeWanted()) {
         constant_ring = std::make_unique<ConstantRing>(instance, scheduler);
         draw_pipe = std::make_unique<DrawPipe>(&RunDrawPacket, this);
+        scheduler.SetOwnerHook(&SchedulerOwnerHook, this);
     }
     // tlg: this thread joins the texture binding helper before it changes image state.
     runtime.SetImageAccessHook(&JoinBindHelper, this);
@@ -407,6 +412,43 @@ namespace {
 /// Stage A: cycles waited per drain site (TLG_FRAME_STATS), keyed by function name and line.
 std::unordered_map<const char*, std::unordered_map<u32, u64>> drain_sites;
 } // namespace
+
+void Rasterizer::SchedulerOwnerHook(void* context, void* caller) {
+    auto* self = static_cast<Rasterizer*>(context);
+    const bool stage_a = self->OnStageA();
+    if (!self->draw_pipe || (stage_a && self->draw_pipe->Idle())) {
+        return;
+    }
+    // Each caller is reported once: the site that skipped DrainDrawPipe.
+    static std::mutex reported_mutex;
+    static std::unordered_set<void*> reported;
+    bool report;
+    {
+        std::scoped_lock lk{reported_mutex};
+        report = reported.insert(caller).second;
+    }
+    if (report) {
+        const char* module = "?";
+        const char* name = "?";
+        uintptr_t offset = reinterpret_cast<uintptr_t>(caller);
+#ifndef _WIN32
+        Dl_info info{};
+        if (dladdr(caller, &info)) {
+            module = info.dli_fname ? info.dli_fname : module;
+            name = info.dli_sname ? info.dli_sname : name;
+            offset -= reinterpret_cast<uintptr_t>(info.dli_fbase);
+        }
+#endif
+        std::fprintf(stderr,
+                     "tlg: scheduler used %s while draw packets are in flight, from %s+%#lx "
+                     "(%s)%s\n",
+                     stage_a ? "on the GPU command thread" : "by another thread", module,
+                     static_cast<unsigned long>(offset), name, stage_a ? "; draining first" : "");
+    }
+    if (stage_a) {
+        self->DrainDrawPipe(DrawPipe::ReasonRasterizer, __LINE__, __func__);
+    }
+}
 
 void Rasterizer::DrainDrawPipe(u32 reason, u32 line, const char* function) {
     if (!draw_pipe || !OnStageA()) {

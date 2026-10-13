@@ -24,6 +24,7 @@
 #include "common/unique_function.h"
 #include "video_core/amdgpu/regs_color.h"
 #include "video_core/amdgpu/regs_primitive.h"
+#include "video_core/renderer_vulkan/vk_draw_pipe.h"
 #include "video_core/renderer_vulkan/vk_resource_pool.h"
 #include "video_core/renderer_vulkan/vk_semaphore.h"
 
@@ -706,6 +707,15 @@ public:
         this->on_submit = std::move(on_submit);
     }
 
+    /// tlg: while draw packets are in flight the draw recording thread (stage B) owns the
+    /// deferred recording state (record_chunk, full_chunks). A call from any other thread
+    /// first runs `hook(context, caller)`: the rasterizer drains the pipe on stage A and logs
+    /// the caller, so two threads never use record_chunk at once (EmitVertexBuffers crash).
+    void SetOwnerHook(void (*hook)(void*, void*), void* context) {
+        owner_hook = hook;
+        owner_context = context;
+    }
+
     /// Returns the current render state.
     const RenderState& GetRenderState() const {
         return render_state;
@@ -721,6 +731,7 @@ public:
     /// records directly (Record() included, so callers may mix both) until the next
     /// KickRecording() or submission.
     [[gnu::noinline]] vk::CommandBuffer CommandBuffer() {
+        CheckOwner(__builtin_return_address(0));
         if (recording_threaded && !direct_mode) {
             SyncRecording();
             direct_mode = true;
@@ -737,6 +748,7 @@ public:
     /// everything it uses (capture by value): it may run later on the recording thread.
     template <typename Func>
     void Record(Func&& func) {
+        CheckOwner(__builtin_return_address(0));
         if (!recording_threaded || direct_mode) {
             func(current_cmdbuf);
             return;
@@ -764,6 +776,7 @@ public:
     /// Makes room for `bytes` of RecordData() plus the command that uses them in the current
     /// chunk: data and command must share a chunk, which is recycled once executed.
     void ReserveRecordData(size_t bytes) {
+        CheckOwner(__builtin_return_address(0));
         if (!IsRecordingDeferred()) {
             return;
         }
@@ -922,6 +935,14 @@ private:
     bool is_rendering = false;
     // tlg: threaded recording
     std::unique_ptr<RecordChunk> record_chunk;
+    void (*owner_hook)(void*, void*) = nullptr;
+    void* owner_context = nullptr;
+
+    [[gnu::always_inline]] void CheckOwner(void* caller) {
+        if (owner_hook && !DrawPipe::OnStageB()) [[unlikely]] {
+            owner_hook(owner_context, caller);
+        }
+    }
     std::vector<std::unique_ptr<RecordChunk>> full_chunks;
     std::mutex recorder_mutex;
     std::condition_variable_any recorder_cv;

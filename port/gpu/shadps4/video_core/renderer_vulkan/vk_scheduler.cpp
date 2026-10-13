@@ -230,6 +230,7 @@ void Scheduler::KickRecording(bool force) {
     if (!recording_threaded) {
         return;
     }
+    CheckOwner(__builtin_return_address(0));
     // Callers kick where nobody holds the raw command buffer: deferral resumes.
     direct_mode = false;
     // Batches of tens of KiB keep the queue handoff cheap relative to the work it carries.
