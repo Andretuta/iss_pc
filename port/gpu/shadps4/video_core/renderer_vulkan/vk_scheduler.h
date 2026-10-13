@@ -767,7 +767,15 @@ public:
         if (!IsRecordingDeferred()) {
             return;
         }
-        ASSERT(bytes + 1024 <= RecordChunk::Capacity);
+        if (bytes + 1024 > RecordChunk::Capacity) {
+            // Too large for a chunk (The Last Guardian issues copies with thousands of regions):
+            // record directly until the next kick. RecordData() then returns the caller's span,
+            // which outlives the command because Record() runs it immediately in direct mode.
+            SyncRecording();
+            direct_mode = true;
+            direct_recordings.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
         if (RecordChunk::Capacity - record_chunk->Size() < bytes + 1024) {
             full_chunks.push_back(std::move(record_chunk));
             record_chunk = AcquireChunk();
@@ -784,6 +792,9 @@ public:
         // Room for the data and the command that follows it, so both stay in one chunk.
         const size_t bytes = data.size_bytes();
         ReserveRecordData(bytes + alignof(T));
+        if (!IsRecordingDeferred()) {
+            return data; // ReserveRecordData switched to direct recording (oversized data)
+        }
         auto* dst = static_cast<T*>(record_chunk->Allocate(bytes, alignof(T)));
         std::memcpy(dst, data.data(), bytes);
         return {dst, data.size()};
