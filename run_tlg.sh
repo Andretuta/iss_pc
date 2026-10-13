@@ -20,9 +20,9 @@ export TLG_PIPELINE_BINARIES=${TLG_PIPELINE_BINARIES:-0}
 # O TLG lê na CPU resultados de compute da GPU (JsComputeContext::AsyncMap): readbacks precisos.
 export TLG_READBACKS=${TLG_READBACKS:-2}
 # Orçamento do cache de texturas: o cálculo padrão pressiona a partir de ~2 GB de uso total, e o TLG
-# usa ~3,5 GB (texturas descartadas e recarregadas = engasgos e glitches). 5200 MB serve para 6 GB de
+# usa ~3,5 GB (texturas descartadas e recarregadas = engasgos e glitches). 5600 MB serve para 6 GB de
 # VRAM; ajuste para outras placas (ex.: 7000 em 8 GB).
-export TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-5200}
+export TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-5600}
 # Imagem nativa do jogo: sem os extras do port de GoW3 (upscaler FSR3/TAA, jitter de câmera e
 # motion vectors injetados). Eles foram feitos para o pipeline do GoW3 e no TLG causavam tremor.
 export TLG_UPSCALER=${TLG_UPSCALER:-off}

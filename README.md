@@ -313,7 +313,7 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão no `run_t
 | Opção | Padrão TLG | O que faz |
 |---|---|---|
 | `TLG_READBACKS` | `2` (Precise) | sincronização GPU→CPU; o TLG precisa do 2 (`AsyncMap`); `1` = Relaxed (crash na entrada do gameplay) |
-| `TLG_GC_BUDGET_MB` | `5200` | orçamento do cache de texturas em MB (6 GB de VRAM); ex.: `7000` para 8 GB |
+| `TLG_GC_BUDGET_MB` | `5600` | orçamento do cache de texturas em MB (6 GB de VRAM); ex.: `7000` para 8 GB |
 | `TLG_UPSCALER` | `off` | `off`, `fsr3`, `taa`… (os upscalers do port de GoW3 causam tremor no TLG) |
 | `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
 | `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
