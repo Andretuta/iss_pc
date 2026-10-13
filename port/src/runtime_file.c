@@ -294,11 +294,29 @@ static void touch_for_write(void *buffer,uint64_t size) {
         *b=*b;
     }
 }
+/* Reads `size` bytes (offset<0: at the file position), re-touching the rest of the destination
+ * after a short read or EFAULT: with precise readbacks the GPU tracker can protect a page again
+ * between touch_for_write and the kernel copy, which then stops early without an error. The
+ * game treats a short texture read as fatal (JsTex.cpp ASSERT readSize == sizeAlign.m_size). */
+static ssize_t full_io(int h,void *buffer,uint64_t size,int64_t offset) {
+    unsigned char *at=buffer;
+    uint64_t done=0;
+    for (int stalls=0; done<size && stalls<64;) {
+        touch_for_write(at+done,size-done);
+        ssize_t n=offset<0 ? host_read(h,at+done,size-done) : pread(h,at+done,size-done,offset+(int64_t)done);
+        if (n<0) {
+            if (errno==EINTR || errno==EFAULT) { ++stalls; continue; }
+            return done ? (ssize_t)done : -1;
+        }
+        if (n==0) break; /* end of file */
+        done+=(uint64_t)n;
+    }
+    return (ssize_t)done;
+}
 static int64_t do_read(int fd,void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
-    touch_for_write(buffer,size);
-    ssize_t n=host_read(h,buffer,size);
+    ssize_t n=full_io(h,buffer,size,-1);
     if (n<0) { if (audio_trace()) printf("Audio trace: read(fd %d, %llu) failed, errno %d\n",fd,(unsigned long long)size,errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
@@ -306,8 +324,7 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
 static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
-    touch_for_write(buffer,size);
-    ssize_t n=pread(h,buffer,size,offset);
+    ssize_t n=full_io(h,buffer,size,offset);
     if (n<0) { if (audio_trace()) printf("Audio trace: pread(fd %d, %llu @%lld) failed, errno %d\n",fd,(unsigned long long)size,(long long)offset,errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
