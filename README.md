@@ -51,7 +51,8 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | Mapeamento: I/O, psarc, controle, saves, sistema | ✅ [`analysis/04_io_input_saves_system.md`](analysis/04_io_input_saves_system.md) |
 | Loader + runtime (base gow3_pc em `port/`) | ✅ compila no Nobara; 391/391 imports resolvidas (`Imports: 0 missing`) |
 | **Primeiro boot no PC** | ✅ `trico main() start...` → boot em 0,41 s → engine rodando a ~28,7 fps (trava de 30), 1148 frames em 40 s sem falhas (NGS2 mudo) |
-| Imagem na tela / jogabilidade | 🔄 a verificar visualmente; psarc 001/002/003 completos chegando via USB |
+| **Imagem na tela** | ✅ logo da Japan Studio, loading e **menu inicial** renderizados corretamente na RTX 2060 (fundo 3D da caverna, DOF, texto) |
+| Gameplay (New Game) | 🔄 aguardando psarc 001/002/003 completos (dump USB) |
 
 ---
 
