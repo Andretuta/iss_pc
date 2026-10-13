@@ -350,6 +350,7 @@ Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as thr
 
 ```
 tlg_launcher.sh      launcher gráfico (pt_BR/en_US): pasta do jogo, idiomas, vídeo, áudio, Jogar
+scripts/install_desktop.sh  atalho no menu de aplicativos, com o ícone oficial lido do seu dump
 run_tlg.sh           roda direto pelo terminal (./run_tlg.sh [segundos]), com as mesmas configurações
 port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)
 README.md            este documento (status + achados)

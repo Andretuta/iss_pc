@@ -64,6 +64,14 @@ UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']
 
 
+def art_path(settings, name):
+    """Official art from the user's own dump (sce_sys); never shipped with the port."""
+    for folder in (Path(settings['game_dir']) / 'sce_sys', tlg_run.REPO_DIR / 'dump' / 'sce_sys'):
+        if (folder / name).is_file():
+            return folder / name
+    return None
+
+
 def system_is_portuguese():
     for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
         value = os.environ.get(name)
@@ -99,12 +107,15 @@ class Launcher:
             child.destroy()
         root = self.root
         root.title(self.t('title'))
-        root.minsize(640, 560)
+        root.minsize(680, 760)
         pad = {'padx': 8, 'pady': 4}
         main = ttk.Frame(root, padding=12)
         main.pack(fill='both', expand=True)
         main.columnconfigure(0, weight=1)
 
+        self.load_art()
+        if self.banner:
+            ttk.Label(main, image=self.banner).grid(sticky='ew', pady=(0, 6))
         ttk.Label(main, text='The Last Guardian', font=('TkDefaultFont', 18, 'bold')).grid(sticky='w')
         self.status = ttk.Label(main, text='', foreground='#555')
         self.status.grid(sticky='w', pady=(0, 8))
@@ -166,6 +177,28 @@ class Launcher:
         self.log.pack(side='left', fill='both', expand=True)
         scroll.pack(side='right', fill='y')
         self.refresh_status()
+
+    def load_art(self):
+        """Window icon (icon0.png) and a 640x180 banner cut from pic1.png, when the dump has them."""
+        self.banner = getattr(self, 'banner', None)
+        if getattr(self, 'art_loaded', False):
+            return
+        self.art_loaded = True
+        try:
+            icon = art_path(self.settings, 'icon0.png')
+            if icon:
+                self.icon = tk.PhotoImage(file=str(icon)).subsample(4)  # 512 -> 128
+                self.root.iconphoto(True, self.icon)
+            picture = art_path(self.settings, 'pic1.png') or art_path(self.settings, 'pic0.png')
+            if picture:
+                full = tk.PhotoImage(file=str(picture))
+                band = full.width() * 9 // 32           # a 32:9 band from the middle of the image
+                top = (full.height() - band) // 2
+                self.banner = tk.PhotoImage()
+                self.banner.tk.call(self.banner, 'copy', full, '-from', 0, top, full.width(), top + band,
+                                    '-subsample', 3, 3)  # Tk command: same on every Python version
+        except tk.TclError:
+            self.banner = None
 
     def combo(self, parent, row, key, values, label, on_change=None):
         ttk.Label(parent, text=self.t(key)).grid(row=row, column=0, sticky='w')
@@ -285,7 +318,7 @@ class Launcher:
 
 
 def main():
-    root = tk.Tk()
+    root = tk.Tk(className='tlg-pc')  # matches StartupWMClass in the desktop entry
     try:
         ttk.Style().theme_use('clam')
     except tk.TclError:
