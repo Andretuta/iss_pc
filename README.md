@@ -19,6 +19,9 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 |---|---|
 | ![Tela de título](docs/screenshots/01-titulo.jpg) | ![Menu de pausa](docs/screenshots/02-menu.jpg) |
 | ![Kat nas ruínas](docs/screenshots/03-ruinas.jpg) | ![Gameplay com legenda em português](docs/screenshots/04-gameplay.jpg) |
+| ![Cena em quadrinhos: a capitã](docs/screenshots/05-quadrinho-capita.jpg) | ![Cena em quadrinhos: Kat acorda](docs/screenshots/06-quadrinho-kat.jpg) |
+
+![Navios voadores da vila de mineradores](docs/screenshots/07-navios.jpg)
 
 <sub>Capturas na resolução nativa (1920×1080), direto da GPU, no Linux com uma RTX 2060, com o jogo em português.</sub>
 
