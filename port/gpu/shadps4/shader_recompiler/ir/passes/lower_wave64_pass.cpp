@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <string>
 #include "common/logging/classes.h"
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/ir/basic_block.h"
@@ -118,6 +119,44 @@ void LowerWave64BallotPass(IR::Program& program, const RuntimeInfo& runtime_info
     const u32 num_threads = size_x * size_y * size_z;
     if (num_threads <= 32) {
         return;
+    }
+
+    // tlg: one line per compute shader wider than a 32-lane wave that uses lane operations:
+    // the candidates when wave64 code misbehaves on 32-wide hardware (flickering lights).
+    {
+        u32 counts[12]{};
+        static constexpr const char* names[12]{"Ballot", "GetExec", "SetExec", "GroupAny",
+                                               "ReadFirstLane", "ReadLaneImm", "ReadLaneVar",
+                                               "WriteLane", "Shuffle", "ShuffleXor", "LaneId",
+                                               "LtMask"};
+        for (IR::Block* block : program.blocks) {
+            for (IR::Inst& inst : block->Instructions()) {
+                switch (inst.GetOpcode()) {
+                case IR::Opcode::Ballot: ++counts[0]; break;
+                case IR::Opcode::GetExec: ++counts[1]; break;
+                case IR::Opcode::SetExec: ++counts[2]; break;
+                case IR::Opcode::GroupAny: ++counts[3]; break;
+                case IR::Opcode::ReadFirstLane: ++counts[4]; break;
+                case IR::Opcode::ReadLane: ++counts[inst.Arg(1).IsImmediate() ? 5 : 6]; break;
+                case IR::Opcode::WriteLane: ++counts[7]; break;
+                case IR::Opcode::Shuffle: ++counts[8]; break;
+                case IR::Opcode::ShuffleXor: ++counts[9]; break;
+                case IR::Opcode::LaneId: ++counts[10]; break;
+                case IR::Opcode::GetAttributeU32:
+                    if (inst.Arg(0).Attribute() == IR::Attribute::SubgroupLtMask) ++counts[11];
+                    break;
+                default: break;
+                }
+            }
+        }
+        std::string used;
+        for (int i = 0; i < 12; ++i) {
+            if (counts[i]) used += fmt::format("{}{} {}", used.empty() ? "" : ", ", names[i], counts[i]);
+        }
+        if (!used.empty()) {
+            LOG_WARNING(Render_Recompiler, "tlg: wave64 compute shader {:#x} ({} threads, {}x{}x{}): {}",
+                        program.info.pgm_hash, num_threads, size_x, size_y, size_z, used);
+        }
     }
 
     std::vector<IR::Inst*> worklist;
