@@ -293,110 +293,48 @@ std::string OverlayText() {
 
 constexpr const char* Unsupported = "Unavailable: game version or code signature mismatch.";
 
-void GameTab() {
-    auto& s = TlgSettings::Get();
-    ImGui::SeparatorText("Cheats");
-    if (BeginRows("##cheats")) {
-        static const char* const names[] = {"Infinite health", "Infinite magic", "Infinite item meter",
-                                            "Infinite Rage of Sparta", "Max red orbs",
-                                            "Unlock Very Hard", "Infinite Double Jumps"};
-        static const char* const helps[] = {
-            "Health stays full. Only Kratos is protected. Turning it off does not undo past refills.",
-            "Magic stays full.", "The item meter (bow, Helios' head, boots) stays full.",
-            "Rage of Sparta stays full.", "Red orbs stay at the maximum.",
-            "Enable before opening New Game. Does not change an existing save difficulty.",
-            "Repeat air jumps without landing. Turn off for normal movement."};
-        for (unsigned cheat = 0; cheat < TLG_CHEAT_COUNT; ++cheat) {
-            const bool available = (s.cheats_supported.load() & (1u << cheat)) != 0;
-            ImGui::BeginDisabled(!available);
-            CheckRow(names[cheat], s.cheats[cheat], available ? helps[cheat] : Unsupported);
-            ImGui::EndDisabled();
-        }
-        ImGui::EndTable();
-    }
-
-    ImGui::SeparatorText("Multipliers");
-    if (ImGui::Button("Reset all to 1x")) {
-        for (auto* m : {&s.red_orb_multiplier, &s.green_orb_multiplier, &s.blue_orb_multiplier,
-                        &s.gold_orb_multiplier, &s.damage_dealt, &s.damage_taken}) {
-            *m = 1.0f;
-        }
-        dirty = true;
-    }
-    Help("Every multiplier back to 1x (the game's normal values).");
-    if (BeginRows("##multipliers")) {
-        const bool max_orbs = (s.cheats_supported.load() & (1u << 4)) && s.cheats[4].load();
-        ImGui::BeginDisabled(!s.red_orbs_supported.load() || max_orbs);
-        MultiplierRow("Red orbs", s.red_orb_multiplier,
-                      !s.red_orbs_supported.load() ? Unsupported
-                      : max_orbs ? "Turn off Max red orbs to use the multiplier."
-                                 : "Red orbs gained. Orbs you have and prices stay the same.");
-        ImGui::EndDisabled();
-        ImGui::BeginDisabled(!s.orb_pickup_supported.load());
-        const char* pickup = s.orb_pickup_supported.load() ? nullptr : Unsupported;
-        MultiplierRow("Green orbs (health)", s.green_orb_multiplier,
-                      pickup ? pickup : "Health from each green orb. The bar stays within its maximum.");
-        MultiplierRow("Blue orbs (magic)", s.blue_orb_multiplier,
-                      pickup ? pickup : "Magic from each blue orb. The bar stays within its maximum.");
-        MultiplierRow("Gold orbs (Rage of Sparta)", s.gold_orb_multiplier,
-                      pickup ? pickup : "Rage of Sparta from each gold orb. The bar stays within its maximum.");
-        ImGui::EndDisabled();
-        ImGui::BeginDisabled(!s.damage_supported.load());
-        const char* damage = s.damage_supported.load() ? nullptr : Unsupported;
-        MultiplierRow("Damage dealt", s.damage_dealt, damage ? damage : "Damage Kratos does to enemies.");
-        MultiplierRow("Damage taken", s.damage_taken, damage ? damage : "Damage Kratos takes.");
-        ImGui::EndDisabled();
-        ImGui::EndTable();
-    }
-
-    ImGui::SeparatorText("HUD");
-    if (BeginRows("##hud")) {
-        ImGui::BeginDisabled(!s.actor_watch_supported.load());
-        CheckRow("Enemy health bar", s.enemy_health_bar,
-                 s.actor_watch_supported.load() ? "A thin bar at the top for the last enemy hit." : Unsupported);
-        ImGui::EndDisabled();
-        ImGui::EndTable();
-    }
-}
 
 void ImageTab() {
     namespace G = TlgGraphics;
     auto& s = TlgSettings::Get();
-    ImGui::SeparatorText("Display");
+    ImGui::SeparatorText("Tela");
     if (BeginRows("##display")) {
-        ChoiceRow("Display mode", s.display_mode, G::DisplayModeNames.data(), nullptr, G::DisplayModeCount,
-                  "Windowed, borderless window or exclusive fullscreen.");
-        CheckRow("VSync", s.vsync, "Waits for the monitor: no tearing, a little more input delay.");
+        static const char* const modes[] = {"Janela", "Janela sem borda", "Tela cheia"};
+        ChoiceRow("Modo de exibição", s.display_mode, G::DisplayModeCount == 3 ? modes : G::DisplayModeNames.data(),
+                  nullptr, G::DisplayModeCount, "Janela, janela sem borda ou tela cheia exclusiva.");
+        CheckRow("VSync", s.vsync, "Espera o monitor: sem tearing, um pouco mais de atraso de entrada.");
         ImGui::EndTable();
     }
     const int iw = s.image_width, ih = s.image_height, ww = s.window_width, wh = s.window_height;
     const bool upscaling = iw < ww && ih < wh;
     const bool downscaling = iw > ww || ih > wh;
     const bool rcas_blocked = s.rcas && !s.rcas_applied;
-    ImGui::SeparatorText("Scaling and sharpening");
+    // tlg: only spatial filters on the final image. The temporal upscalers (FSR 3/4, TAA, DLSS) were
+    // built for GoW3's pipeline and make TLG's image shake, so they are not offered here.
+    ImGui::SeparatorText("Escala e nitidez");
     if (BeginRows("##scaling")) {
-        CheckRow("Upscale with FSR 1", s.fsr1,
-                 "Enlarges a smaller game image to the window. For more FPS: Render resolution 720p + FSR 1.");
+        CheckRow("Ampliar com FSR 1", s.fsr1,
+                 "Amplia a imagem do jogo quando ela é menor que a janela (filtro espacial, sem tremor).");
         ImGui::BeginDisabled(rcas_blocked);
-        CheckRow("Sharpening (RCAS)", s.rcas,
-                 rcas_blocked && downscaling ? "No effect: the game's image is larger than the window."
-                 : rcas_blocked              ? "Needs FSR 1: the game's image is smaller than the window."
-                                             : "Sharpens the final image.");
+        CheckRow("Nitidez (RCAS)", s.rcas,
+                 rcas_blocked && downscaling ? "Sem efeito: a imagem do jogo é maior que a janela."
+                 : rcas_blocked              ? "Precisa do FSR 1: a imagem do jogo é menor que a janela."
+                                             : "Deixa a imagem final mais nítida.");
         ImGui::EndDisabled();
         ImGui::BeginDisabled(!s.rcas || rcas_blocked);
-        SliderRow("Sharpening strength", s.rcas_strength, 0, 100, "%d%%", "How strong the sharpening is.");
+        SliderRow("Intensidade da nitidez", s.rcas_strength, 0, 100, "%d%%", "Quão forte é a nitidez.");
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
-    ImGui::SeparatorText("Information");
+    ImGui::SeparatorText("Informações");
     if (BeginRows("##image_info")) {
         char text[96];
         std::snprintf(text, sizeof(text), "%d x %d", iw, ih);
-        InfoRow("Game image", text);
+        InfoRow("Imagem do jogo", text);
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
-        InfoRow("Window", text);
-        InfoRow("FSR 1", !s.fsr1 ? "off" : upscaling ? "active" : "no effect (image not smaller than window)");
-        InfoRow("Sharpening", s.rcas_applied ? "applied" : "not applied");
+        InfoRow("Janela", text);
+        InfoRow("FSR 1", !s.fsr1 ? "desligado" : upscaling ? "ativo" : "sem efeito (imagem não é menor que a janela)");
+        InfoRow("Nitidez", s.rcas_applied ? "aplicada" : "não aplicada");
         ImGui::EndTable();
     }
 }
@@ -404,39 +342,18 @@ void ImageTab() {
 void PerformanceTab() {
     namespace G = TlgGraphics;
     auto& s = TlgSettings::Get();
-    ImGui::SeparatorText("Live");
+    // tlg: GoW3's render-resolution and engine-frame-rate patches and the readback shortcuts are not
+    // offered: they do not apply to TLG, and the readback ones crash it (it needs precise readbacks).
+    ImGui::SeparatorText("Em tempo real");
     if (BeginRows("##live")) {
-        static const char* const fps_labels[] = {"30", "60", "120", "240", "Unlimited"};
-        ChoiceRow("Frame rate limit", s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
-                  "Caps the frame rate. The engine frame rate (below) is the highest it can go.");
-        const int effective = G::EffectiveFps(s.fps_limit, s.applied_engine_fps);
-        if (s.fps_limit == 0 || effective < s.fps_limit) {
-            char text[48];
-            std::snprintf(text, sizeof(text), "%d FPS (engine frame rate)", effective);
-            InfoRow("Effective limit", text);
-        }
-        if (s.applied_engine_fps < s.startup_engine_fps) {
-            InfoRow("Engine frame rate", "60 FPS: the frame rate patch is not available for this game build");
-        }
-        static const char* const queued_labels[] = {"1 (lowest latency)", "2", "Unlimited"};
-        ChoiceRow("Frames queued", s.frames_queued, queued_labels, G::FramesQueued.data(),
-                  int(G::FramesQueued.size()), "More frames queued: steadier FPS, slower response to input.");
-        CheckRow("Compile new shaders in the background", s.async_shaders,
-                 "Fewer stutters in new areas; an object or effect may appear a moment later.");
-        ImGui::EndTable();
-    }
-    ImGui::SeparatorText("Applied on restart");
-    if (BeginRows("##restart")) {
-        static const char* const resolution_labels[] = {"Native (1080p)", "480p", "720p", "1440p", "1800p", "4K"};
-        ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
-                  "The resolution the game draws at. Higher is sharper and slower.");
-        static const char* const engine_labels[] = {"60 (original)", "120", "240"};
-        ChoiceRow("Engine frame rate", s.engine_fps, engine_labels, G::EngineFps.data(), int(G::EngineFps.size()),
-                  "The highest frame rate the game itself runs at.");
-        CheckRow("Game reads GPU data without waiting", s.stale_readback,
-                 "Big FPS gain. Switch it off if lighting or objects look wrong.");
-        CheckRow("Deferred GPU readbacks", s.deferred_readback,
-                 "Fewer waits for the GPU. Switch it off if textures or shadows look wrong.");
+        static const char* const fps_labels[] = {"30", "60", "120", "240", "Sem limite"};
+        ChoiceRow("Limite de FPS", s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
+                  "Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4).");
+        static const char* const queued_labels[] = {"1 (menor atraso)", "2", "Sem limite"};
+        ChoiceRow("Quadros na fila", s.frames_queued, queued_labels, G::FramesQueued.data(),
+                  int(G::FramesQueued.size()), "Mais quadros na fila: FPS mais estável, resposta mais lenta.");
+        CheckRow("Compilar shaders novos em segundo plano", s.async_shaders,
+                 "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois.");
         ImGui::EndTable();
     }
 }
@@ -445,15 +362,15 @@ void OverlayTab() {
     namespace P = TlgPerfStats;
     auto& s = TlgSettings::Get();
     if (BeginRows("##overlay_on")) {
-        CheckRow("Show overlay", s.show_fps, "The performance overlay in a corner of the screen.");
+        CheckRow("Mostrar overlay (F10)", s.show_fps, "O overlay de desempenho num canto da tela.");
         ImGui::EndTable();
     }
     ImGui::BeginDisabled(!s.show_fps);
-    ImGui::SeparatorText("What to show");
+    ImGui::SeparatorText("O que mostrar");
     if (ImGui::BeginTable("##overlay_items", 2, ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableNextColumn();
-        static const char* const names[] = {"FPS", "Frametime", "Upscaler", "GPU (name and use)", "CPU (game)",
-                                            "RAM (game / total)", "VRAM (used / available)"};
+        static const char* const names[] = {"FPS", "Tempo de quadro", "Upscaler", "GPU (nome e uso)", "CPU (jogo)",
+                                            "RAM (jogo / total)", "VRAM (usada / disponível)"};
         for (unsigned item = 0; item < 7; ++item) {
             const unsigned bit = 1u << item;
             bool on = (s.overlay_items & bit) != 0;
@@ -463,52 +380,40 @@ void OverlayTab() {
             }
         }
         ImGui::TableNextColumn();
-        ImGui::TextDisabled("Preview");
+        ImGui::TextDisabled("Prévia");
         ImGui::BeginChild("##preview", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
         ImGui::SetWindowFontScale(s.overlay_scale / 100.0f);
         const std::string text = OverlayText();
-        ImGui::TextUnformatted(text.empty() ? "(nothing selected)" : text.c_str());
+        ImGui::TextUnformatted(text.empty() ? "(nada selecionado)" : text.c_str());
         ImGui::SetWindowFontScale(1.0f);
         ImGui::EndChild();
         ImGui::EndTable();
     }
-    ImGui::SeparatorText("Appearance");
+    ImGui::SeparatorText("Aparência");
     if (BeginRows("##appearance")) {
-        SliderRow("Font size", s.overlay_scale, 50, 300, "%d%%", "Size of the overlay text.");
-        static const char* const corners[] = {"Top left", "Top right", "Bottom left", "Bottom right"};
-        ChoiceRow("Corner", s.overlay_corner, corners, nullptr, 4, "Where the overlay sits.");
-        SliderRow("Background opacity", s.overlay_opacity, 0, 100, "%d%%", "0% is no background.");
-        static const char* const layouts[] = {"One line", "One item per line"};
-        ChoiceRow("Layout", s.overlay_layout, layouts, nullptr, 2, "Items side by side or stacked.");
+        SliderRow("Tamanho da fonte", s.overlay_scale, 50, 300, "%d%%", "Tamanho do texto do overlay.");
+        static const char* const corners[] = {"Superior esquerdo", "Superior direito", "Inferior esquerdo", "Inferior direito"};
+        ChoiceRow("Canto", s.overlay_corner, corners, nullptr, 4, "Onde o overlay fica.");
+        SliderRow("Opacidade do fundo", s.overlay_opacity, 0, 100, "%d%%", "0% é sem fundo.");
+        static const char* const layouts[] = {"Uma linha", "Um item por linha"};
+        ChoiceRow("Disposição", s.overlay_layout, layouts, nullptr, 2, "Itens lado a lado ou empilhados.");
         ImGui::EndTable();
     }
     ImGui::EndDisabled();
-    ImGui::SeparatorText("About");
+    ImGui::SeparatorText("Sobre");
     if (BeginRows("##about")) {
         const auto& elf = Common::ElfInfo::Instance();
         char text[160];
         std::snprintf(text, sizeof(text), "%.*s v%.*s", int(elf.GameSerial().size()), elf.GameSerial().data(),
                       int(elf.AppVer().size()), elf.AppVer().data());
-        InfoRow("Game", text);
+        InfoRow("Jogo", text);
         const u32 total = background_total;
         if (total) {
-            std::snprintf(text, sizeof(text), "loading %u%%", u32(u64(background_done) * 100 / total));
+            std::snprintf(text, sizeof(text), "carregando %u%%", u32(u64(background_done) * 100 / total));
         } else {
-            std::snprintf(text, sizeof(text), "ready");
+            std::snprintf(text, sizeof(text), "pronto");
         }
-        InfoRow("Shader cache", text);
-        std::string hooks;
-        const auto add = [&](bool on, const char* name) {
-            if (on) {
-                hooks += hooks.empty() ? name : std::string(", ") + name;
-            }
-        };
-        add(s.cheats_supported.load() != 0, "cheats");
-        add(s.red_orbs_supported.load(), "red orbs");
-        add(s.orb_pickup_supported.load(), "orb pickups");
-        add(s.damage_supported.load(), "damage");
-        add(s.actor_watch_supported.load(), "enemy health");
-        InfoRow("Game hooks", hooks.empty() ? "none" : hooks.c_str());
+        InfoRow("Cache de shaders", text);
         ImGui::EndTable();
     }
 }
@@ -533,14 +438,14 @@ void Menu() {
     // tlg: the game's own title (param.sfo), not a fixed one.
     static const std::string heading = [] {
         const std::string_view title = Common::ElfInfo::Instance().Title();
-        return std::string(title.empty() ? "God of War III" : title) + "  (Insert / R3+L2)";
+        return std::string(title.empty() ? "The Last Guardian" : title) + "  (Insert / R3+L2)";
     }();
     if (!ImGui::Begin(heading.c_str(), &keep_open, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
         return;
     }
     footer_help = nullptr;
-    constexpr int TabCount = 4;
+    constexpr int TabCount = 3;
     const ImGuiIO& io = ImGui::GetIO();
     if (!io.WantTextInput) {
         const int step = ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false) || ImGui::IsKeyPressed(ImGuiKey_E, false) ? 1
@@ -553,7 +458,7 @@ void Menu() {
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
     if (ImGui::BeginTabBar("##tabs")) {
-        static const char* const tabs[TabCount] = {"Game", "Image", "Performance", "Overlay"};
+        static const char* const tabs[TabCount] = {"Overlay", "Imagem", "Desempenho"};
         for (int tab = 0; tab < TabCount; ++tab) {
             const ImGuiTabItemFlags flags = requested_tab == tab ? ImGuiTabItemFlags_SetSelected : 0;
             if (!ImGui::BeginTabItem(tabs[tab], nullptr, flags)) {
@@ -565,7 +470,6 @@ void Menu() {
             }
             if (ImGui::BeginChild("##body", ImVec2(0, -footer))) {
                 switch (tab) {
-                case 0: GameTab(); break;
                 case 1: ImageTab(); break;
                 case 2: PerformanceTab(); break;
                 default: OverlayTab(); break;
@@ -584,14 +488,14 @@ void Menu() {
 
     ImGui::Separator();
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", footer_help ? footer_help : "L1 / R1 or Q / E: switch tabs. Settings are saved in tlg.ini.");
+    ImGui::TextDisabled("%s", footer_help ? footer_help : "L1 / R1 ou Q / E: trocar de aba. As configurações ficam salvas em tlg.ini.");
     ImGui::PopTextWrapPos();
     if (const int changes = RestartChanges()) {
         ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.45f, 1.0f), "%d change%s need%s a restart (unsaved progress is lost).",
                            changes, changes == 1 ? "" : "s", changes == 1 ? "s" : "");
         ImGui::SameLine();
         ImGui::BeginDisabled(!std::getenv("TLG_RESTART_COMMAND"));
-        if (ImGui::Button("Apply and restart")) {
+        if (ImGui::Button("Aplicar e reiniciar")) {
             // The new launch confirms the options once the game shows; run.py restores the
             // previous ones if it never does (restart_unconfirmed).
             s.restart_unconfirmed = true;
@@ -602,9 +506,9 @@ void Menu() {
     } else {
         ImGui::NewLine();
     }
-    const float close_width = ImGui::CalcTextSize("Close").x + ImGui::GetStyle().FramePadding.x * 2;
+    const float close_width = ImGui::CalcTextSize("Fechar").x + ImGui::GetStyle().FramePadding.x * 2;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - close_width);
-    if (ImGui::Button("Close")) {
+    if (ImGui::Button("Fechar")) {
         keep_open = false;
     }
     ImGui::End();
@@ -971,6 +875,12 @@ bool HandleEvent(const SDL_Event& event) {
         }();
         if (down && !event.key.repeat && capture_key && event.key.key == SDLK_F11) {
             Vulkan::FrameCapture::Request();
+            return true;
+        }
+        // tlg: F10 shows or hides the performance overlay (FPS counter) at any time.
+        if (down && !event.key.repeat && event.key.key == SDLK_F10) {
+            auto& settings = TlgSettings::Get();
+            settings.show_fps = !settings.show_fps;
             return true;
         }
         if (down && !event.key.repeat &&
