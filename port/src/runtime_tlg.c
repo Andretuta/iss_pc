@@ -1,9 +1,10 @@
 /* System-library functions first needed by The Last Guardian (CUSA03627 v1.03).
  *
- * Event flags are a complete implementation. NGS2 and Audio3d are silent placeholders that let
- * the game's sndx engine initialize and run (AudioOut still paces the audio thread); the real
- * NGS2 mixer is separate work (see analysis/03_audio.md). Everything else is a small contract
- * the game needs at boot: kernel queries, time-zone conversion, PlayGo dialog, LoadExec.
+ * Event flags are a complete implementation. NGS2 is a silent placeholder that lets the game's
+ * sndx engine initialize and run (AudioOut still paces the audio thread); TLG_NGS2=native links
+ * the firmware's NGS2 instead (see analysis/03_audio.md). Audio3d lives in runtime_gr2_audio3d.c.
+ * Everything else is a small contract the game needs at boot: kernel queries, time-zone
+ * conversion, PlayGo dialog, LoadExec.
  */
 #define _GNU_SOURCE
 #include "runtime.h"
@@ -316,10 +317,6 @@ static ABI int32_t ngs2_voice_state(Ngs2Handle *voice,void *state,uint64_t size)
     memset(state,0,size); return 0; /* stateFlags 0: voice idle */
 }
 
-/* ---- Audio3d: not used by the game (sndx loadAudio3d=0); fail cleanly if it ever is ---- */
-#define AUDIO3D_NOT_READY ((int32_t)0x80EA0003)
-static ABI int32_t audio3d_unused(void) { once("sceAudio3d* call (unsupported)"); return AUDIO3D_NOT_READY; }
-
 static const RuntimeExport exports[]={
     {"sceKernelCreateEventFlag",ef_create}, {"sceKernelDeleteEventFlag",ef_delete},
     {"sceKernelSetEventFlag",ef_set}, {"sceKernelClearEventFlag",ef_clear},
@@ -344,12 +341,6 @@ static const RuntimeExport exports[]={
     {"sceNgs2RackCreate",ngs2_rack_create}, {"sceNgs2RackCreateWithAllocator",ngs2_rack_create},
     {"sceNgs2RackDestroy",ngs2_rack_destroy}, {"sceNgs2RackGetVoiceHandle",ngs2_voice_handle},
     {"sceNgs2VoiceControl",ngs2_voice_control}, {"sceNgs2VoiceGetState",ngs2_voice_state},
-    {"sceAudio3dInitialize",audio3d_unused}, {"sceAudio3dTerminate",audio3d_unused},
-    {"sceAudio3dGetDefaultOpenParameters",audio3d_unused}, {"sceAudio3dPortOpen",audio3d_unused},
-    {"sceAudio3dPortClose",audio3d_unused}, {"sceAudio3dPortPush",audio3d_unused},
-    {"sceAudio3dPortAdvance",audio3d_unused}, {"sceAudio3dPortGetQueueLevel",audio3d_unused},
-    {"sceAudio3dPortSetAttribute",audio3d_unused}, {"sceAudio3dObjectReserve",audio3d_unused},
-    {"sceAudio3dObjectUnreserve",audio3d_unused}, {"sceAudio3dObjectSetAttributes",audio3d_unused},
 };
 /* TLG_NGS2=native: libSceNgs2.sprx from the user's console firmware is linked as a module
  * (run_tlg.sh), so its exports must win over the silent placeholders above. */
