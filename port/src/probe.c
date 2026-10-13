@@ -224,6 +224,27 @@ static void fault(int sig, siginfo_t *info, void *context) {
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
     if (gpu_enabled) gow3gpu_dump_guest_writes(context);
+    /* Guest call chain: the eboot keeps frame pointers, so follow rbp (reads cannot fault). */
+    if (rip - (uintptr_t)image < 0x10000000) {
+        uintptr_t rbp = (uintptr_t)uc->uc_mcontext.gregs[REG_RBP];
+        static const char *regs[] = {"rax","rbx","rcx","rdx","rsi","rdi","rbp","rsp"};
+        const int ids[] = {REG_RAX,REG_RBX,REG_RCX,REG_RDX,REG_RSI,REG_RDI,REG_RBP,REG_RSP};
+        for (int r = 0; r < 8; ++r) {
+            snprintf(line, sizeof(line), "  %s=%016llx%s", regs[r], (unsigned long long)uc->uc_mcontext.gregs[ids[r]], r == 3 || r == 7 ? "\n" : " ");
+            ssize_t written_=write(2, line, strlen(line)); (void)written_;
+        }
+        for (int depth = 0; depth < 24 && rbp; ++depth) {
+            uintptr_t frame[2];
+            struct iovec local = {frame, sizeof(frame)}, remote = {(void *)rbp, sizeof(frame)};
+            if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame) || frame[0] <= rbp) break;
+            if (frame[1] - (uintptr_t)image < 0x10000000)
+                snprintf(line, sizeof(line), "  guest #%d return 0x%lx\n", depth, (unsigned long)(frame[1] - (uintptr_t)image));
+            else
+                snprintf(line, sizeof(line), "  guest #%d return %p (host)\n", depth, (void *)frame[1]);
+            ssize_t written_=write(2, line, strlen(line)); (void)written_;
+            rbp = frame[0];
+        }
+    }
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
     int depth = backtrace(frames, 32);
