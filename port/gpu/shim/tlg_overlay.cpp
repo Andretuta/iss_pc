@@ -274,6 +274,19 @@ const char* UpscalerLabel(int upscaler) {
     }
 }
 
+
+// tlg: menu language. TLG_UI_LANG=pt_BR or en_US; otherwise the system locale (LANG/LC_*):
+// Portuguese when it starts with "pt", English otherwise.
+bool UiPortuguese() {
+    static const bool pt = [] {
+        for (const char* name : {"TLG_UI_LANG", "LC_ALL", "LC_MESSAGES", "LANG"}) {
+            if (const char* v = std::getenv(name); v && *v) return v[0] == 'p' && v[1] == 't';
+        }
+        return false;
+    }();
+    return pt;
+}
+const char* TL(const char* en, const char* pt) { return UiPortuguese() ? pt : en; }
 const Vulkan::Instance* overlay_instance = nullptr; // for the overlay's measurements
 
 // The performance overlay's text with the current settings (also the menu's preview).
@@ -297,12 +310,12 @@ constexpr const char* Unsupported = "Unavailable: game version or code signature
 void ImageTab() {
     namespace G = TlgGraphics;
     auto& s = TlgSettings::Get();
-    ImGui::SeparatorText("Tela");
+    ImGui::SeparatorText(TL("Display", "Tela"));
     if (BeginRows("##display")) {
-        static const char* const modes[] = {"Janela", "Janela sem borda", "Tela cheia"};
-        ChoiceRow("Modo de exibição", s.display_mode, G::DisplayModeCount == 3 ? modes : G::DisplayModeNames.data(),
-                  nullptr, G::DisplayModeCount, "Janela, janela sem borda ou tela cheia exclusiva.");
-        CheckRow("VSync", s.vsync, "Espera o monitor: sem tearing, um pouco mais de atraso de entrada.");
+        static const char* const modes[] = {TL("Windowed", "Janela"), TL("Borderless window", "Janela sem borda"), TL("Fullscreen", "Tela cheia")};
+        ChoiceRow(TL("Display mode", "Modo de exibição"), s.display_mode, G::DisplayModeCount == 3 ? modes : G::DisplayModeNames.data(),
+                  nullptr, G::DisplayModeCount, TL("Windowed, borderless window or exclusive fullscreen.", "Janela, janela sem borda ou tela cheia exclusiva."));
+        CheckRow("VSync", s.vsync, TL("Waits for the monitor: no tearing, a little more input delay.", "Espera o monitor: sem tearing, um pouco mais de atraso de entrada."));
         ImGui::EndTable();
     }
     const int iw = s.image_width, ih = s.image_height, ww = s.window_width, wh = s.window_height;
@@ -311,30 +324,30 @@ void ImageTab() {
     const bool rcas_blocked = s.rcas && !s.rcas_applied;
     // tlg: only spatial filters on the final image. The temporal upscalers (FSR 3/4, TAA, DLSS) were
     // built for GoW3's pipeline and make TLG's image shake, so they are not offered here.
-    ImGui::SeparatorText("Escala e nitidez");
+    ImGui::SeparatorText(TL("Scaling and sharpening", "Escala e nitidez"));
     if (BeginRows("##scaling")) {
-        CheckRow("Ampliar com FSR 1", s.fsr1,
-                 "Amplia a imagem do jogo quando ela é menor que a janela (filtro espacial, sem tremor).");
+        CheckRow(TL("Upscale with FSR 1", "Ampliar com FSR 1"), s.fsr1,
+                 TL("Enlarges the game image when it is smaller than the window (spatial filter, no shimmer).", "Amplia a imagem do jogo quando ela é menor que a janela (filtro espacial, sem tremor)."));
         ImGui::BeginDisabled(rcas_blocked);
-        CheckRow("Nitidez (RCAS)", s.rcas,
-                 rcas_blocked && downscaling ? "Sem efeito: a imagem do jogo é maior que a janela."
-                 : rcas_blocked              ? "Precisa do FSR 1: a imagem do jogo é menor que a janela."
-                                             : "Deixa a imagem final mais nítida.");
+        CheckRow(TL("Sharpening (RCAS)", "Nitidez (RCAS)"), s.rcas,
+                 rcas_blocked && downscaling ? TL("No effect: the game's image is larger than the window.", "Sem efeito: a imagem do jogo é maior que a janela.")
+                 : rcas_blocked              ? TL("Needs FSR 1: the game's image is smaller than the window.", "Precisa do FSR 1: a imagem do jogo é menor que a janela.")
+                                             : TL("Sharpens the final image.", "Deixa a imagem final mais nítida."));
         ImGui::EndDisabled();
         ImGui::BeginDisabled(!s.rcas || rcas_blocked);
-        SliderRow("Intensidade da nitidez", s.rcas_strength, 0, 100, "%d%%", "Quão forte é a nitidez.");
+        SliderRow(TL("Sharpening strength", "Intensidade da nitidez"), s.rcas_strength, 0, 100, "%d%%", TL("How strong the sharpening is.", "Quão forte é a nitidez."));
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
-    ImGui::SeparatorText("Informações");
+    ImGui::SeparatorText(TL("Information", "Informações"));
     if (BeginRows("##image_info")) {
         char text[96];
         std::snprintf(text, sizeof(text), "%d x %d", iw, ih);
-        InfoRow("Imagem do jogo", text);
+        InfoRow(TL("Game image", "Imagem do jogo"), text);
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
-        InfoRow("Janela", text);
-        InfoRow("FSR 1", !s.fsr1 ? "desligado" : upscaling ? "ativo" : "sem efeito (imagem não é menor que a janela)");
-        InfoRow("Nitidez", s.rcas_applied ? "aplicada" : "não aplicada");
+        InfoRow(TL("Windowed", "Janela"), text);
+        InfoRow("FSR 1", !s.fsr1 ? TL("off", "desligado") : upscaling ? TL("active", "ativo") : TL("no effect (image not smaller than window)", "sem efeito (imagem não é menor que a janela)"));
+        InfoRow(TL("Sharpening", "Nitidez"), s.rcas_applied ? TL("applied", "aplicada") : TL("not applied", "não aplicada"));
         ImGui::EndTable();
     }
 }
@@ -344,16 +357,16 @@ void PerformanceTab() {
     auto& s = TlgSettings::Get();
     // tlg: GoW3's render-resolution and engine-frame-rate patches and the readback shortcuts are not
     // offered: they do not apply to TLG, and the readback ones crash it (it needs precise readbacks).
-    ImGui::SeparatorText("Em tempo real");
+    ImGui::SeparatorText(TL("Live", "Em tempo real"));
     if (BeginRows("##live")) {
-        static const char* const fps_labels[] = {"30", "60", "120", "240", "Sem limite"};
-        ChoiceRow("Limite de FPS", s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
-                  "Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4).");
-        static const char* const queued_labels[] = {"1 (menor atraso)", "2", "Sem limite"};
-        ChoiceRow("Quadros na fila", s.frames_queued, queued_labels, G::FramesQueued.data(),
-                  int(G::FramesQueued.size()), "Mais quadros na fila: FPS mais estável, resposta mais lenta.");
-        CheckRow("Compilar shaders novos em segundo plano", s.async_shaders,
-                 "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois.");
+        static const char* const fps_labels[] = {"30", "60", "120", "240", TL("Unlimited", "Sem limite")};
+        ChoiceRow(TL("Frame rate limit", "Limite de FPS"), s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
+                  TL("Caps the presented frames. The game runs at 30 FPS (as on PS4).", "Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4)."));
+        static const char* const queued_labels[] = {TL("1 (lowest latency)", "1 (menor atraso)"), "2", TL("Unlimited", "Sem limite")};
+        ChoiceRow(TL("Frames queued", "Quadros na fila"), s.frames_queued, queued_labels, G::FramesQueued.data(),
+                  int(G::FramesQueued.size()), TL("More frames queued: steadier FPS, slower response to input.", "Mais quadros na fila: FPS mais estável, resposta mais lenta."));
+        CheckRow(TL("Compile new shaders in the background", "Compilar shaders novos em segundo plano"), s.async_shaders,
+                 TL("Fewer stutters in new areas; an object or effect may appear a moment later.", "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois."));
         ImGui::EndTable();
     }
 }
@@ -362,15 +375,15 @@ void OverlayTab() {
     namespace P = TlgPerfStats;
     auto& s = TlgSettings::Get();
     if (BeginRows("##overlay_on")) {
-        CheckRow("Mostrar overlay (F10)", s.show_fps, "O overlay de desempenho num canto da tela.");
+        CheckRow(TL("Show overlay (F10)", "Mostrar overlay (F10)"), s.show_fps, TL("The performance overlay in a corner of the screen.", "O overlay de desempenho num canto da tela."));
         ImGui::EndTable();
     }
     ImGui::BeginDisabled(!s.show_fps);
-    ImGui::SeparatorText("O que mostrar");
+    ImGui::SeparatorText(TL("What to show", "O que mostrar"));
     if (ImGui::BeginTable("##overlay_items", 2, ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableNextColumn();
-        static const char* const names[] = {"FPS", "Tempo de quadro", "Upscaler", "GPU (nome e uso)", "CPU (jogo)",
-                                            "RAM (jogo / total)", "VRAM (usada / disponível)"};
+        static const char* const names[] = {"FPS", TL("Frametime", "Tempo de quadro"), "Upscaler", TL("GPU (name and use)", "GPU (nome e uso)"), TL("CPU (game)", "CPU (jogo)"),
+                                            TL("RAM (game / total)", "RAM (jogo / total)"), TL("VRAM (used / available)", "VRAM (usada / disponível)")};
         for (unsigned item = 0; item < 7; ++item) {
             const unsigned bit = 1u << item;
             bool on = (s.overlay_items & bit) != 0;
@@ -380,40 +393,40 @@ void OverlayTab() {
             }
         }
         ImGui::TableNextColumn();
-        ImGui::TextDisabled("Prévia");
+        ImGui::TextDisabled(TL("Preview", "Prévia"));
         ImGui::BeginChild("##preview", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
         ImGui::SetWindowFontScale(s.overlay_scale / 100.0f);
         const std::string text = OverlayText();
-        ImGui::TextUnformatted(text.empty() ? "(nada selecionado)" : text.c_str());
+        ImGui::TextUnformatted(text.empty() ? TL("(nothing selected)", "(nada selecionado)") : text.c_str());
         ImGui::SetWindowFontScale(1.0f);
         ImGui::EndChild();
         ImGui::EndTable();
     }
-    ImGui::SeparatorText("Aparência");
+    ImGui::SeparatorText(TL("Appearance", "Aparência"));
     if (BeginRows("##appearance")) {
-        SliderRow("Tamanho da fonte", s.overlay_scale, 50, 300, "%d%%", "Tamanho do texto do overlay.");
-        static const char* const corners[] = {"Superior esquerdo", "Superior direito", "Inferior esquerdo", "Inferior direito"};
-        ChoiceRow("Canto", s.overlay_corner, corners, nullptr, 4, "Onde o overlay fica.");
-        SliderRow("Opacidade do fundo", s.overlay_opacity, 0, 100, "%d%%", "0% é sem fundo.");
-        static const char* const layouts[] = {"Uma linha", "Um item por linha"};
-        ChoiceRow("Disposição", s.overlay_layout, layouts, nullptr, 2, "Itens lado a lado ou empilhados.");
+        SliderRow(TL("Font size", "Tamanho da fonte"), s.overlay_scale, 50, 300, "%d%%", TL("Size of the overlay text.", "Tamanho do texto do overlay."));
+        static const char* const corners[] = {TL("Top left", "Superior esquerdo"), TL("Top right", "Superior direito"), TL("Bottom left", "Inferior esquerdo"), TL("Bottom right", "Inferior direito")};
+        ChoiceRow(TL("Corner", "Canto"), s.overlay_corner, corners, nullptr, 4, TL("Where the overlay sits.", "Onde o overlay fica."));
+        SliderRow(TL("Background opacity", "Opacidade do fundo"), s.overlay_opacity, 0, 100, "%d%%", TL("0% is no background.", "0% é sem fundo."));
+        static const char* const layouts[] = {TL("One line", "Uma linha"), TL("One item per line", "Um item por linha")};
+        ChoiceRow(TL("Layout", "Disposição"), s.overlay_layout, layouts, nullptr, 2, TL("Items side by side or stacked.", "Itens lado a lado ou empilhados."));
         ImGui::EndTable();
     }
     ImGui::EndDisabled();
-    ImGui::SeparatorText("Sobre");
+    ImGui::SeparatorText(TL("About", "Sobre"));
     if (BeginRows("##about")) {
         const auto& elf = Common::ElfInfo::Instance();
         char text[160];
         std::snprintf(text, sizeof(text), "%.*s v%.*s", int(elf.GameSerial().size()), elf.GameSerial().data(),
                       int(elf.AppVer().size()), elf.AppVer().data());
-        InfoRow("Jogo", text);
+        InfoRow(TL("Game", "Jogo"), text);
         const u32 total = background_total;
         if (total) {
-            std::snprintf(text, sizeof(text), "carregando %u%%", u32(u64(background_done) * 100 / total));
+            std::snprintf(text, sizeof(text), TL("loading %u%%", "carregando %u%%"), u32(u64(background_done) * 100 / total));
         } else {
-            std::snprintf(text, sizeof(text), "pronto");
+            std::snprintf(text, sizeof(text), TL("ready", "pronto"));
         }
-        InfoRow("Cache de shaders", text);
+        InfoRow(TL("Shader cache", "Cache de shaders"), text);
         ImGui::EndTable();
     }
 }
@@ -458,7 +471,7 @@ void Menu() {
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
     if (ImGui::BeginTabBar("##tabs")) {
-        static const char* const tabs[TabCount] = {"Overlay", "Imagem", "Desempenho"};
+        static const char* const tabs[TabCount] = {"Overlay", TL("Image", "Imagem"), TL("Performance", "Desempenho")};
         for (int tab = 0; tab < TabCount; ++tab) {
             const ImGuiTabItemFlags flags = requested_tab == tab ? ImGuiTabItemFlags_SetSelected : 0;
             if (!ImGui::BeginTabItem(tabs[tab], nullptr, flags)) {
@@ -488,14 +501,14 @@ void Menu() {
 
     ImGui::Separator();
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", footer_help ? footer_help : "L1 / R1 ou Q / E: trocar de aba. As configurações ficam salvas em tlg.ini.");
+    ImGui::TextDisabled("%s", footer_help ? footer_help : TL("L1 / R1 or Q / E: switch tabs. Settings are saved in tlg.ini.", "L1 / R1 ou Q / E: trocar de aba. As configurações ficam salvas em tlg.ini."));
     ImGui::PopTextWrapPos();
     if (const int changes = RestartChanges()) {
         ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.45f, 1.0f), "%d change%s need%s a restart (unsaved progress is lost).",
                            changes, changes == 1 ? "" : "s", changes == 1 ? "s" : "");
         ImGui::SameLine();
         ImGui::BeginDisabled(!std::getenv("TLG_RESTART_COMMAND"));
-        if (ImGui::Button("Aplicar e reiniciar")) {
+        if (ImGui::Button(TL("Apply and restart", "Aplicar e reiniciar"))) {
             // The new launch confirms the options once the game shows; run.py restores the
             // previous ones if it never does (restart_unconfirmed).
             s.restart_unconfirmed = true;
@@ -506,9 +519,9 @@ void Menu() {
     } else {
         ImGui::NewLine();
     }
-    const float close_width = ImGui::CalcTextSize("Fechar").x + ImGui::GetStyle().FramePadding.x * 2;
+    const float close_width = ImGui::CalcTextSize(TL("Close", "Fechar")).x + ImGui::GetStyle().FramePadding.x * 2;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - close_width);
-    if (ImGui::Button("Fechar")) {
+    if (ImGui::Button(TL("Close", "Fechar"))) {
         keep_open = false;
     }
     ImGui::End();
