@@ -305,10 +305,8 @@ static void dump_frames(ucontext_t *uc) {
     }
 }
 static void thread_dump(int sig, siginfo_t *info, void *context) { (void)sig; (void)info; dump_frames(context); }
-static void watchdog(int sig, siginfo_t *info, void *context) {
-    (void)info;
-    const char head[]="STOP: watchdog timeout; thread stacks:\n";
-    { ssize_t written_=write(2,head,sizeof(head)-1); (void)written_; }
+static void dump_all_threads(void *context, const char *head) {
+    { ssize_t written_=write(2,head,strlen(head)); (void)written_; }
     dump_frames(context);
     int dir=open("/proc/self/task",O_RDONLY|O_DIRECTORY);
     char buffer[4096];
@@ -321,8 +319,20 @@ static void watchdog(int sig, siginfo_t *info, void *context) {
             if (tid>0 && tid!=self) { syscall(SYS_tgkill,getpid(),tid,SIGUSR2); usleep(20000); }
             at+=d->reclen;
         }
+    if (dir>=0) close(dir);
     usleep(100000);
+}
+static void watchdog(int sig, siginfo_t *info, void *context) {
+    (void)info;
+    dump_all_threads(context, "STOP: watchdog timeout; thread stacks:\n");
     _exit(128 + sig);
+}
+/* kill -USR1 <pid>: dump every thread's stack into the log and keep running (diagnose hangs). */
+static void dump_request(int sig, siginfo_t *info, void *context) {
+    (void)sig; (void)info;
+    dump_all_threads(context, "DUMP: thread stacks on request (SIGUSR1); the game keeps running\n");
+    const char tail[]="DUMP: end\n";
+    ssize_t written_=write(2,tail,sizeof(tail)-1); (void)written_;
 }
 #endif
 /* param.sfo lookup: string or integer value of key, 0 when absent. */
@@ -664,6 +674,8 @@ int main(int argc, char **argv) {
     if (dladdr((void *)main,&self_info)) exe_base=(uintptr_t)self_info.dli_fbase;
     struct sigaction dump = {0}; dump.sa_sigaction = thread_dump; dump.sa_flags = SA_SIGINFO|SA_RESTART;
     sigemptyset(&dump.sa_mask); sigaction(SIGUSR2, &dump, NULL);
+    struct sigaction request = {0}; request.sa_sigaction = dump_request; request.sa_flags = SA_SIGINFO|SA_RESTART;
+    sigemptyset(&request.sa_mask); sigaction(SIGUSR1, &request, NULL);
     struct sigaction alarm_action = {0}; alarm_action.sa_sigaction = watchdog; alarm_action.sa_flags = SA_SIGINFO;
     sigemptyset(&alarm_action.sa_mask); sigaction(SIGALRM, &alarm_action, NULL);
     alarm(timeout_seconds); /* 0 disables the watchdog */
