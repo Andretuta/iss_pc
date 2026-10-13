@@ -57,6 +57,7 @@ uintptr_t runtime_gr2_resolve(const char *name);
 uintptr_t runtime_gr2_np_resolve(const char *name);
 uintptr_t runtime_gr2_font_resolve(const char *name);
 uintptr_t runtime_gr2_json_resolve(const char *name);
+uintptr_t runtime_infamous_resolve(const char *name);
 uintptr_t runtime_gr2_audio3d_resolve(const char *name);
 void runtime_gr2_audio3d_report(void);
 void runtime_file_report(void);
