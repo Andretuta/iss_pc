@@ -59,8 +59,10 @@ TEXT = {
     'error': ('Error', 'Erro'),
     'port_by': ('PC port by HayatoG', 'Port para PC por HayatoG'),
     'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
+    'discord': ('Discord community', 'Comunidade no Discord'),
 }
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
+DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
 GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
                        'fr_CA': 'Français (Canada)'}
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
@@ -132,10 +134,11 @@ class Launcher:
         credits = ttk.Frame(header)
         credits.pack(side='right', anchor='ne')
         ttk.Label(credits, text=self.t('port_by'), foreground='#777').pack(anchor='e')
-        link = ttk.Label(credits, text=self.t('channel'), foreground='#2a6fdb', cursor='hand2',
-                         font=('TkDefaultFont', 10, 'underline'))
-        link.pack(anchor='e')
-        link.bind('<Button-1>', lambda _: webbrowser.open(CHANNEL_URL))
+        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL)):
+            link = ttk.Label(credits, text=self.t(key), foreground='#2a6fdb', cursor='hand2',
+                             font=('TkDefaultFont', 10, 'underline'))
+            link.pack(anchor='e')
+            link.bind('<Button-1>', lambda _, u=url: webbrowser.open(u))
         self.status = ttk.Label(titles, text='', foreground='#555', wraplength=420, justify='left')
         self.status.pack(anchor='w', pady=(10, 0))
 

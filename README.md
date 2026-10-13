@@ -6,7 +6,7 @@ usando a cópia do próprio usuário.
 > **Nenhum arquivo do jogo é versionado aqui.** Isso inclui eboot, prx, psarc e saída bruta de descompilação.
 > Para rodar, cada pessoa precisa do próprio dump. Veja `.gitignore`.
 
-Por HayatoG — canal no YouTube: [@hayatog-dev](https://www.youtube.com/@hayatog-dev).
+Por HayatoG — canal no YouTube: [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord: [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g).
 
 _Última atualização: 2026-10-13._ Resumo do que foi feito e do que falta: [docs/PROGRESSO.md](docs/PROGRESSO.md).
 
