@@ -254,12 +254,14 @@ static void load_button_maps(void) {
  * leans on gravity. Without sensors the tilt is simulated, so motion prompts can be passed with
  * any controller or the keyboard:
  *   keyboard: T / G hold the controller turned sideways (to one side / the other), Y shakes it;
- *   gamepad: hold TLG_MOTION_BUTTON (default "misc1": Share/Capture; any SDL button name) and the
- *   right stick tilts it (hidden from the game meanwhile); that button + south (A/cross) shakes.
+ *   gamepad: "sensor mode", toggled by a tap on TLG_MOTION_BUTTON (default "misc1": Share/Capture;
+ *   any SDL button name) or on L3+R3 together. While it is on, the left stick tilts the controller
+ *   and the bottom face button (cross / A / Nintendo B) shakes it; both are hidden from the game,
+ *   so the character neither walks nor jumps. A notice on screen tells the mode.
  * TLG_MOTION=off disables real sensors (simulation still works). */
 static int injected_motion; /* TLG_PAD_FILE tokens: 1 tilt_right (T), 2 tilt_left (G), 4 shake (Y) */
 typedef struct { float w, x, y, z; } Quat;
-static struct { Quat q; float roll, pitch; uint64_t last_us; int sensors, warned; } motion={{1,0,0,0},0,0,0,-1,0};
+static struct { Quat q; float roll, pitch; uint64_t last_us; int sensors, warned, mode, toggle_held; } motion={{1,0,0,0},0,0,0,-1,0,0,0};
 static Quat quat_mul(Quat a, Quat b) {
     return (Quat){a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z, a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
                   a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x, a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w};
@@ -305,12 +307,28 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
     if ((k && k[SDL_SCANCODE_T]) || (injected_motion & 1)) { roll=1.5708f; simulated=1; }
     if ((k && k[SDL_SCANCODE_G]) || (injected_motion & 2)) { roll=-1.5708f; simulated=1; }
     if ((k && k[SDL_SCANCODE_Y]) || (injected_motion & 4)) { shake=1; simulated=1; }
-    if (g && motion_button()>=0 && SDL_GetGamepadButton(g,(SDL_GamepadButton)motion_button())) {
-        roll=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)/32767.f*1.5708f;
-        pitch=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f*1.5708f;
-        if (SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_SOUTH)) { shake=1; d->buttons&=~(uint32_t)BTN_CROSS; }
-        d->right_x=d->right_y=128;
-        simulated=1;
+    if (g) {
+        const int sticks=SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_LEFT_STICK) && SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+        const int toggle=sticks || (motion_button()>=0 && SDL_GetGamepadButton(g,(SDL_GamepadButton)motion_button()));
+        if (toggle && !motion.toggle_held) {
+            motion.mode=!motion.mode;
+            const char *lang=getenv("TLG_UI_LANG");
+            const int pt=!(lang && !strncmp(lang,"en",2));
+            tlggpu_overlay_notice(motion.mode ? (pt ? "Modo sensor LIGADO: analógico esquerdo inclina, X/A sacode"
+                                                    : "Sensor mode ON: left stick tilts, cross/A shakes")
+                                              : (pt ? "Modo sensor desligado" : "Sensor mode off"), 3.0f);
+            printf("Runtime: sensor mode %s\n",motion.mode ? "on" : "off");
+        }
+        motion.toggle_held=toggle;
+        if (sticks) d->buttons&=~(uint32_t)(BTN_L3|BTN_R3);
+        if (motion.mode) {
+            roll=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTX)/32767.f*1.5708f;
+            pitch=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTY)/32767.f*1.5708f;
+            if (SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_SOUTH)) shake=1;
+            d->buttons&=~(uint32_t)BTN_CROSS;
+            d->left_x=d->left_y=128;
+            simulated=1;
+        }
     }
     if (real && !simulated) {
         /* Integrate the gyro, then pull slowly toward the measured gravity (complementary filter). */

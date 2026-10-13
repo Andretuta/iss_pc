@@ -37,7 +37,16 @@ TEXT = {
     'vsync': ('VSync', 'VSync'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
-    'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
+    'vram_hint': ('3500 for 6 GB cards, 5000 for 8 GB', '3500 para placas de 6 GB, 5000 para 8 GB'),
+    'controller': ('Controller', 'Controle'),
+    'deadzone': ('Stick dead zone', 'Zona morta dos analógicos'),
+    'deadzone_hint': ('Raise it if the character or camera moves on its own (stick drift).',
+                      'Aumente se o personagem ou a câmera se mexer sozinho (drift).'),
+    'sensor_hint': ('Motion sensor: DualShock/DualSense gyro works as is. Without a sensor, tap Share '
+                    'or L3+R3 for sensor mode (left stick tilts, cross/A shakes); keyboard T/G/Y.',
+                    'Sensor de movimento: o giroscópio do DualShock/DualSense funciona direto. Sem sensor, '
+                    'toque em Share ou L3+R3 para o modo sensor (analógico esquerdo inclina, X/A sacode); '
+                    'teclado T/G/Y.'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),
     'logs': ('Logs folder', 'Pasta de logs'),
@@ -152,6 +161,25 @@ class Launcher:
             ttk.Entry(game, textvariable=var).grid(row=row * 2 + 1, column=0, sticky='ew', pady=(0, 6))
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
                 row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
+
+        pad_box = ttk.LabelFrame(left, text=self.t('controller'), padding=8)
+        pad_box.grid(sticky='ew', pady=(0, 8))
+        pad_box.columnconfigure(0, weight=1)
+        ttk.Label(pad_box, text=self.t('deadzone')).grid(row=0, column=0, columnspan=2, sticky='w')
+        zone = tk.IntVar(value=int(self.settings.get('stick_deadzone', 10)))
+        self.vars['stick_deadzone'] = zone
+        zone_text = ttk.Label(pad_box, text=f'{zone.get()}%', width=5)
+        zone_text.grid(row=1, column=1, sticky='e')
+
+        def zone_moved(value):
+            zone.set(int(round(float(value))))
+            zone_text.configure(text=f'{zone.get()}%')
+            self.changed()
+        ttk.Scale(pad_box, from_=0, to=40, variable=zone, command=zone_moved).grid(row=1, column=0, sticky='ew')
+        ttk.Label(pad_box, text=self.t('deadzone_hint'), foreground='#777', wraplength=260, justify='left').grid(
+            row=2, column=0, columnspan=2, sticky='w')
+        ttk.Label(pad_box, text=self.t('sensor_hint'), foreground='#777', wraplength=260, justify='left').grid(
+            row=3, column=0, columnspan=2, sticky='w', pady=(6, 0))
 
         middle = ttk.Frame(main)
         middle.grid(row=2, column=1, sticky='nsew', **pad)
