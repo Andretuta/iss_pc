@@ -23,8 +23,13 @@ ninja -C sdl/build install
 git clone -q https://github.com/zyantific/zydis.git zydis
 git -C zydis checkout -q a95bb71
 git -C zydis submodule update -q --init --recursive
+# Zycore (bundled submodule) is installed on its own, static + PIC, so zydis-config.cmake's
+# find_dependency(Zycore) resolves and the Zycore headers that Zydis.h includes are present.
+cmake -S zydis/dependencies/zycore -B zycore/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DZYCORE_BUILD_SHARED_LIB=OFF -DZYCORE_BUILD_EXAMPLES=OFF -DZYCORE_BUILD_TESTS=OFF
+ninja -C zycore/build install
 cmake -S zydis -B zydis/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-    -DZYDIS_BUILD_SHARED_LIB=ON -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF -DZYDIS_BUILD_TESTS=OFF \
+    -DCMAKE_PREFIX_PATH="$PREFIX" -DZYAN_SYSTEM_ZYCORE=ON -DZYDIS_BUILD_SHARED_LIB=ON -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF -DZYDIS_BUILD_TESTS=OFF \
     -DZYDIS_BUILD_DOXYGEN=OFF
 ninja -C zydis/build install
 
