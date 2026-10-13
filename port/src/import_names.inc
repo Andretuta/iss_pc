@@ -1124,6 +1124,7 @@
 {"2mkA5bryKXk#libSceNpToolkit","_ZN3sce7Toolkit2NP9Utilities6FutureI18SceNpTssDataStatusE3getEv"},
 {"gV-s05bBN9U#libSceNpToolkit","_ZN3sce7Toolkit2NP9Utilities6FutureINS1_7TssDataEEC1Ev"},
 {"+xSBfYO4clQ#libSceNpToolkit","_ZN3sce7Toolkit2NP9Utilities6FutureI18SceNpTssDataStatusEC1Ev"},
+{"czlBWbAx1aU#libSceNpToolkit","_ZN3sce7Toolkit2NP9Utilities6FutureINS1_23CheckAvailabilityResultEED1Ev"},
 {"wzvqT4UqKX8#libkernel","sceKernelLoadStartModule"},
 {"XKDzFiGAvhU#libSceSecure","sceLibSecureCryptographyMessagePadding"},
 {"t4lnn4rB+U0#libSceSecure","sceLibSecureDestroy"},
