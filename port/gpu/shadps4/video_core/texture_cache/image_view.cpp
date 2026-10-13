@@ -63,7 +63,7 @@ ImageViewInfo::ImageViewInfo(const AmdGpu::Image& image, const Shader::ImageReso
     range.base.layer = std::min<u32>(image.base_array, image.NumLayers() - 1);
     range.extent.levels = image.NumViewLevels(desc.is_array);
     range.extent.layers = image.NumViewLayers(desc.is_array);
-    type = image.GetHostViewType(desc.is_array);
+    type = image.GetViewType(desc.is_array);
     min_lod = static_cast<u32>(image.min_lod);
 
     if (!is_storage) {
@@ -145,7 +145,11 @@ ImageView::ImageView(const Vulkan::Instance& instance, const ImageViewInfo& info
     const vk::ImageViewCreateInfo image_view_ci = {
         .pNext = &usage_ci,
         .image = image.GetImage(),
-        .viewType = ConvertImageViewType(info.type),
+        // tlg: views of a block-compressed 1D image are 2D (the image is 2D in Vulkan).
+        .viewType = image.info.props.is_host_2d
+                        ? (info.type == AmdGpu::ImageType::Color1DArray ? vk::ImageViewType::e2DArray
+                                                                         : vk::ImageViewType::e2D)
+                        : ConvertImageViewType(info.type),
         .format = instance.GetSupportedFormat(format, image.format_features),
         .components = info.mapping,
         .subresourceRange{

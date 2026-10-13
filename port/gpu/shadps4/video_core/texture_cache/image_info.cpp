@@ -125,7 +125,8 @@ ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& de
         pixel_format = LiverpoolToVK::PromoteFormatToDepth(pixel_format);
         props.is_depth = true;
     }
-    type = image.IsBlock1D() ? AmdGpu::ImageType::Color2D : image.GetBaseType();
+    type = image.GetBaseType();
+    props.is_host_2d = image.IsBlock1D();
     if (image.IsBlock1D()) {
         // tlg: diagnostics for the BC 1D -> 2D promotion (one line per distinct shape).
         static std::mutex seen_mutex;
