@@ -4,8 +4,8 @@
 set -uo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 after=${1:-60}
-pad=$root/port/out/pad_input.txt; : > "$pad"; export GOW3_PAD_FILE=$pad
-if [[ -n ${TOGGLES:-} ]]; then echo "$TOGGLES" > "$root/port/out/toggles.txt"; export GOW3_TOGGLE_FILE=$root/port/out/toggles.txt; fi
+pad=$root/port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
+if [[ -n ${TOGGLES:-} ]]; then echo "$TOGGLES" > "$root/port/out/toggles.txt"; export TLG_TOGGLE_FILE=$root/port/out/toggles.txt; fi
 press() { echo "$1" > "$pad"; sleep "${2:-0.25}"; : > "$pad"; sleep 0.8; echo "[$(date +%T)] $1"; }
 "$root/run_tlg.sh" $((45 + 30 + after + 20)) > /dev/null 2>&1 &
 game=$!

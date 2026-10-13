@@ -622,8 +622,34 @@ void runtime_restart(void) {
 #endif
 }
 
+/* The Last Guardian: every option is spelled TLG_<NAME>; the code inherited from gow3_pc reads
+ * GOW3_<NAME>, so each TLG_ variable is copied to its internal name before anything reads it.
+ * (run_tlg.sh does the same for the GPU library's load-time initializers.) */
+extern char **environ;
+static void tlg_env_aliases(void) {
+    size_t n = 0;
+    for (char **e = environ; *e; ++e) ++n;
+    char **copy = calloc(n + 1, sizeof(*copy));
+    if (!copy) return;
+    for (size_t i = 0; i < n; ++i) copy[i] = strdup(environ[i]);
+    for (size_t i = 0; i < n; ++i) {
+        char *eq = copy[i] ? strchr(copy[i], '=') : NULL;
+        if (eq && !strncmp(copy[i], "TLG_", 4)) {
+            char name[160];
+            snprintf(name, sizeof(name), "GOW3_%.*s", (int)(eq - copy[i] - 4), copy[i] + 4);
+#ifdef _WIN32
+            _putenv_s(name, eq + 1);
+#else
+            setenv(name, eq + 1, 1);
+#endif
+        }
+        free(copy[i]);
+    }
+    free(copy);
+}
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
+    tlg_env_aliases();
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */

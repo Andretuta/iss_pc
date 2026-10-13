@@ -306,6 +306,30 @@ São ordens de grandeza, não compromissos. Os riscos estão listados abaixo da 
 
 ---
 
+## Opções (variáveis `TLG_*`)
+
+Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão no `run_tlg.sh` e foram validados jogando.
+
+| Opção | Padrão TLG | O que faz |
+|---|---|---|
+| `TLG_READBACKS` | `2` (Precise) | sincronização GPU→CPU; o TLG precisa do 2 (`AsyncMap`); `1` = Relaxed (crash na entrada do gameplay) |
+| `TLG_GC_BUDGET_MB` | `5200` | orçamento do cache de texturas em MB (6 GB de VRAM); ex.: `7000` para 8 GB |
+| `TLG_UPSCALER` | `off` | `off`, `fsr3`, `taa`… (os upscalers do port de GoW3 causam tremor no TLG) |
+| `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
+| `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
+| `TLG_FRAME_STATS` | `1` | FPS e diagnóstico de engasgos no log a cada 5 s |
+| `TLG_PAD_FILE` | — | entrada roteirizada do controle (testes automáticos) |
+| `TLG_TOGGLE_FILE` | — | máscara de otimizações desligadas, lida em tempo real |
+| `TLG_GAME_DIR` | `game/CUSA03627` | pasta do jogo (visão unificada base + 1.03) |
+
+Qualquer outra opção do código herdado também funciona com o prefixo `TLG_`: o launcher e o loader traduzem
+`TLG_X` para o nome interno `GOW3_X`.
+
+Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as threads no log, e
+`scripts/watch_session.sh` faz isso sozinho quando o jogo fica 20 s sem frames.
+
+---
+
 ## Estrutura do repositório
 
 ```
