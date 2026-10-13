@@ -336,7 +336,8 @@ Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as thr
 ## Estrutura do repositório
 
 ```
-run_tlg.sh           prepara, linka e roda o jogo (./run_tlg.sh [segundos])
+tlg_launcher.sh      launcher gráfico (pt_BR/en_US): pasta do jogo, idiomas, vídeo, áudio, Jogar
+run_tlg.sh           roda direto pelo terminal (./run_tlg.sh [segundos]), com as mesmas configurações
 port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)
 README.md            este documento (status + achados)
 analysis/            relatórios de engenharia reversa (.md) e listas de imports (.json)
