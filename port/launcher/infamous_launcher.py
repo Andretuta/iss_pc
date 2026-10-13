@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Gravity Rush 2 launcher (Tkinter, Linux and Windows), in pt_BR and en_US.
+"""inFAMOUS Second Son launcher (Tkinter, Linux and Windows), in pt_BR and en_US.
 
-Game folder, game and interface language, display, FPS overlay, VRAM budget and native audio;
-Play starts the game through gr2_run.py (the same code path as run_gr2.sh) and shows its log.
-Settings live in ~/.config/tlg-launcher/settings.json (%APPDATA% on Windows).
+Game folder, game and interface language, display, FPS overlay and VRAM budget; Play starts the
+game through infamous_run.py (the same code path as run_infamous.sh) and shows its log.
+Settings live in ~/.config/infamous-launcher/settings.json (%APPDATA% on Windows).
 """
 import locale
 import os
@@ -18,14 +18,12 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gr2_run as tlg_run  # noqa: E402  (same API as the TLG core)
+import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
 
 TEXT = {
-    'title': ('Gravity Rush 2 — PC', 'Gravity Rush 2 — PC'),
-    'gs_outline_off': ('Turn off the geometry-shader outline (fixes black streaks)', 'Desligar o contorno do geometry shader (corrige as linhas pretas)'),
+    'title': ('inFAMOUS Second Son — PC', 'inFAMOUS Second Son — PC'),
     'game': ('Game', 'Jogo'),
     'game_dir': ('Game folder', 'Pasta do jogo'),
-    'system_lib_dir': ('Console system modules', 'Módulos do sistema do console'),
     'browse': ('Browse…', 'Procurar…'),
     'language': ('Language', 'Idioma'),
     'game_language': ('Game language (voice and text)', 'Idioma do jogo (voz e texto)'),
@@ -40,15 +38,11 @@ TEXT = {
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
-    'audio': ('Audio', 'Áudio'),
-    'native_audio': ('Native audio (libSceNgs2.sprx from your console)', 'Áudio nativo (libSceNgs2.sprx do seu console)'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),
     'logs': ('Logs folder', 'Pasta de logs'),
     'quit': ('Quit', 'Sair'),
     'ready': ('Ready to play.', 'Pronto para jogar.'),
-    'audio_native': ('Audio: native (console module found).', 'Áudio: nativo (módulo do console encontrado).'),
-    'audio_silent': ('Audio: silent (libSceNgs2.sprx not found).', 'Áudio: mudo (libSceNgs2.sprx não encontrado).'),
     'missing': ('Missing', 'Faltando'),
     'not_built': ('Port not built (run build.sh)', 'Port não compilado (rode o build.sh)'),
     'preparing': ('Preparing the game…', 'Preparando o jogo…'),
@@ -110,7 +104,7 @@ class Launcher:
 
     # -- window -----------------------------------------------------------------------------
     def build(self):
-        """Horizontal layout: banner on top; Game + Audio | Language + Video | game log; buttons below."""
+        """Horizontal layout: banner on top; Game | Language + Video | game log; buttons below."""
         for child in self.root.winfo_children():
             child.destroy()
         root = self.root
@@ -130,8 +124,8 @@ class Launcher:
             ttk.Label(header, image=self.banner).pack(side='left', padx=(0, 14))
         titles = ttk.Frame(header)
         titles.pack(side='left', fill='y')
-        ttk.Label(titles, text='Gravity Rush 2', font=('TkDefaultFont', 22, 'bold')).pack(anchor='w')
-        ttk.Label(titles, text='PC — CUSA03694 v1.00', foreground='#777').pack(anchor='w')
+        ttk.Label(titles, text='inFAMOUS Second Son', font=('TkDefaultFont', 22, 'bold')).pack(anchor='w')
+        ttk.Label(titles, text='PC — CUSA00223 v1.07', foreground='#777').pack(anchor='w')
         credits = ttk.Frame(header)
         credits.pack(side='right', anchor='ne')
         ttk.Label(credits, text=self.t('port_by'), foreground='#777').pack(anchor='e')
@@ -150,7 +144,7 @@ class Launcher:
         game = ttk.LabelFrame(left, text=self.t('game'), padding=8)
         game.grid(sticky='ew', pady=(0, 8))
         game.columnconfigure(0, weight=1)
-        for row, key in enumerate(('game_dir', 'system_lib_dir')):
+        for row, key in enumerate(('game_dir',)):
             ttk.Label(game, text=self.t(key)).grid(row=row * 2, column=0, columnspan=2, sticky='w')
             var = tk.StringVar(value=self.settings[key])
             var.trace_add('write', lambda *_: self.changed())
@@ -158,9 +152,6 @@ class Launcher:
             ttk.Entry(game, textvariable=var).grid(row=row * 2 + 1, column=0, sticky='ew', pady=(0, 6))
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
                 row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
-        audio = ttk.LabelFrame(left, text=self.t('audio'), padding=8)
-        audio.grid(sticky='ew')
-        self.check(audio, 0, 'native_audio')
 
         middle = ttk.Frame(main)
         middle.grid(row=2, column=1, sticky='nsew', **pad)
@@ -177,7 +168,6 @@ class Launcher:
         self.combo(video, 0, 'display_mode', DISPLAY_MODES, lambda k: self.t(k))
         self.check(video, 1, 'vsync')
         self.check(video, 2, 'show_fps')
-        self.check(video, 5, 'gs_outline_off')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -207,7 +197,7 @@ class Launcher:
         self.refresh_status()
 
     def load_art(self):
-        """Window icon (the port's tlg.png) and a 480x135 banner (a band of pic1.png from the dump, when present)."""
+        """Window icon (the game's icon0.png, else the port's infamous.png) and a 480x135 banner (a band of pic1.png from the dump, when present)."""
         self.banner = getattr(self, 'banner', None)
         if getattr(self, 'art_loaded', False):
             return
@@ -217,8 +207,8 @@ class Launcher:
             if icon and icon.is_file():
                 self.icon = tk.PhotoImage(file=str(icon)).subsample(4)
                 self.root.iconphoto(True, self.icon)
-            elif (tlg_run.PORT_DIR / 'launcher' / 'gr2.png').is_file():  # the port's own icon
-                self.icon = tk.PhotoImage(file=str(tlg_run.PORT_DIR / 'launcher' / 'gr2.png'))
+            elif (tlg_run.PORT_DIR / 'launcher' / 'infamous.png').is_file():  # the port's own icon
+                self.icon = tk.PhotoImage(file=str(tlg_run.PORT_DIR / 'launcher' / 'infamous.png'))
                 self.root.iconphoto(True, self.icon)
             picture = art_path(self.settings, 'pic1.png') or art_path(self.settings, 'pic0.png')
             if picture:
@@ -272,8 +262,7 @@ class Launcher:
                              for k, d in problems)
         else:
             text = self.t('ready')
-        audio = self.t('audio_native') if tlg_run.ngs2_module(self.settings) else self.t('audio_silent')
-        self.status.configure(text=f'{text}  {audio}')
+        self.status.configure(text=text)
         self.play_button.configure(state='disabled' if problems or self.process else 'normal')
 
     def browse(self, key):
@@ -356,7 +345,7 @@ def main():
         sys.exit(tlg_run.run_script(args[1:]))
     if args[:1] == ['--play']:
         sys.exit(tlg_run.main(args[1:]))
-    root = tk.Tk(className='gr2-pc')  # matches StartupWMClass in the desktop entry
+    root = tk.Tk(className='infamous-pc')  # matches StartupWMClass in the desktop entry
     try:
         ttk.Style().theme_use('clam')
     except tk.TclError:

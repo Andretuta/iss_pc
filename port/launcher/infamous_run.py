@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Prepare and run Gravity Rush 2 (CUSA03694) through the native loader.
+"""Prepare and run inFAMOUS Second Son (CUSA00223) through the native loader.
 
-Shared by the command line (run_gr2.sh -> `gr2_run.py [seconds]`) and the launcher window
-(gr2_launcher.py), so both start the game the same way:
+Shared by the command line (run_infamous.sh -> `infamous_run.py [seconds]`) and the launcher
+window (infamous_launcher.py), so both start the game the same way:
   1. prepare.py / link_modules.py / content_profile.py build out/boot-linked.bin from the game
-     folder (eboot + the game's libc, Fios2, JobManager and sysdata/libSceSecure, and
-     libSceNgs2.sprx from the console firmware when present: native audio);
+     folder (eboot + the game's own libc and Fios2; no console firmware module is needed);
   2. the TLG defaults below become TLG_* environment variables (each one validated in play);
   3. tlg-probe runs with its output in out/logs/run-<date>.log (last_run.log points to it).
 """
@@ -27,10 +26,11 @@ LOG_DIR = OUT_DIR / 'logs'
 PROBE = OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
 KEEP_LOGS = 30
 
-# Game language: PS4 system language ids the game ships voice/text archives for.
+# Game language: PS4 system language ids (sceSystemServiceParamGetInt LANG). The list the game
+# really ships voice/text for is still to be checked against the dump.
 GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
 
-# TLG defaults (see README "Opções" and the reasons in each comment).
+# TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
     'TLG_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
     'TLG_READBACKS': '2',          # the game reads GPU compute results on the CPU (AsyncMap)
@@ -40,28 +40,25 @@ DEFAULT_ENV = {
     'TLG_OBJECT_MOTION': '0',
     'TLG_FRAME_STATS': '1',        # FPS in the log every 5 s (scripts/watch_session.sh heartbeat)
 }
-# Gravity Rush 2: the comic outline pass (geometry shader with adjacency) is mistranslated and
-# draws black streaks near characters (docs/BUG_LINHAS_PRETAS.md); off by default until fixed.
+
+# The game's own modules from sce_module/, linked into the image.
+MODULES = ['libc.prx', 'libSceFios2.prx']
 
 DEFAULT_SETTINGS = {
-    # Source tree: the merged game view and the console modules of ~/decomp. Package: the player
-    # picks the game folder; libSceNgs2.sprx goes in system_lib/ next to the executable.
-    'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA03694'),
-    'system_lib_dir': str(PORT_DIR / 'system_lib') if FROZEN else str(REPO_DIR / 'dump' / 'system_lib'),
-    'gs_outline_off': True,        # TLG_SKIP_ADJACENCY: no black streaks (outline pass)
+    # Source tree: the merged game view (base 1.00 + update 1.07). Package: the player picks it.
+    'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA00223'),
     'game_language': 'pt_BR',
     'ui_language': 'auto',         # auto | pt_BR | en_US
     'show_fps': False,
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
     'vsync': True,
     'vram_budget_mb': 5600,
-    'native_audio': True,
 }
 
 
 def config_path():
     base = Path(os.environ.get('APPDATA') or os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
-    return base / 'gr2-launcher' / 'settings.json'
+    return base / 'infamous-launcher' / 'settings.json'
 
 
 def load_settings():
@@ -85,22 +82,12 @@ def check_game(game_dir):
     problems = []
     if not (game / 'eboot.bin').is_file():
         problems.append(('missing', 'eboot.bin'))
-    for module in ('libc.prx', 'libSceFios2.prx', 'libSceJobManager.prx'):
+    for module in MODULES:
         if not (game / 'sce_module' / module).is_file():
             problems.append(('missing', f'sce_module/{module}'))
-    if not (game / 'sysdata' / 'libSceSecure.prx').is_file():
-        problems.append(('missing', 'sysdata/libSceSecure.prx'))
-    for archive in ('Gravite2_Chunk0.psarc', 'Gravite2_Chunk1.psarc'):
-        if not (game / archive).is_file():
-            problems.append(('missing', archive))
     if not PROBE.is_file():
         problems.append(('not_built', str(PROBE)))
     return problems
-
-
-def ngs2_module(settings):
-    path = Path(settings['system_lib_dir']) / 'libSceNgs2.sprx'
-    return path if settings.get('native_audio', True) and path.is_file() else None
 
 
 def update_ini(path, values):
@@ -164,11 +151,7 @@ def prepare(settings, log=print):
     """Builds out/boot-linked.bin and out/content.bin; returns the module list that was linked."""
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
-    modules = ['libc.prx', 'libSceFios2.prx', 'libSceJobManager.prx',
-               str(Path(game) / 'sysdata' / 'libSceSecure.prx')]
-    ngs2 = ngs2_module(settings)
-    if ngs2:
-        modules.append(str(ngs2))
+    modules = list(MODULES)
     steps = [
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
@@ -190,10 +173,12 @@ def window_icon(settings):
     source = Path(settings['game_dir']) / 'sce_sys' / 'icon0.png'
     target = OUT_DIR / 'window_icon.bmp'
     try:
-        if source.is_file() and (not target.is_file() or target.stat().st_mtime < source.stat().st_mtime):
+        # Stamped with the source's time: a different dump (or a copy keeping old times) redoes it.
+        if source.is_file() and (not target.is_file() or target.stat().st_mtime != source.stat().st_mtime):
             from PIL import Image  # optional: without Pillow the window keeps the default icon
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             Image.open(source).convert('RGB').resize((128, 128)).save(target)
+            os.utime(target, (source.stat().st_atime, source.stat().st_mtime))
         return target if target.is_file() else None
     except Exception:
         return None
@@ -207,16 +192,13 @@ def build_env(settings, extra=None):
     env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
-    env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
-    # Window name, app id (matches gr2-pc.desktop for Alt+Tab and the dock) and icon.
-    env.setdefault('TLG_APP_NAME', 'Gravity Rush 2')
-    env.setdefault('TLG_APP_ID', 'gr2-pc')
+    # Window name, app id (matches infamous-pc.desktop for Alt+Tab and the dock) and icon.
+    env.setdefault('TLG_APP_NAME', 'inFAMOUS Second Son')
+    env.setdefault('TLG_APP_ID', 'infamous-pc')
     icon = window_icon(settings)
     if icon:
         env.setdefault('TLG_WINDOW_ICON', str(icon))
-    if settings.get('gs_outline_off', True):
-        env.setdefault('TLG_SKIP_ADJACENCY', '1')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
@@ -269,8 +251,6 @@ def main(argv=None):
     settings = load_settings()
     if os.environ.get('TLG_GAME_DIR'):
         settings['game_dir'] = os.environ['TLG_GAME_DIR']
-    if os.environ.get('TLG_NGS2') == 'hle':
-        settings['native_audio'] = False
     problems = check_game(settings['game_dir'])
     if problems:
         for kind, detail in problems:
