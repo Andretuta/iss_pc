@@ -38,6 +38,10 @@ TEXT = {
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('3500 for 6 GB cards, 5000 for 8 GB', '3500 para placas de 6 GB, 5000 para 8 GB'),
+    'gpu_readbacks': ('GPU accuracy', 'Precisão da GPU'),
+    'readbacks_0': ('Fast (recommended)', 'Rápido (recomendado)'),
+    'readbacks_1': ('Relaxed', 'Intermediário'),
+    'readbacks_2': ('Precise (slower)', 'Preciso (mais lento)'),
     'controller': ('Controller', 'Controle'),
     'deadzone': ('Stick dead zone', 'Zona morta dos analógicos'),
     'deadzone_hint': ('Raise it if the character or camera moves on its own (stick drift).',
@@ -196,6 +200,7 @@ class Launcher:
         self.combo(video, 0, 'display_mode', DISPLAY_MODES, lambda k: self.t(k))
         self.check(video, 1, 'vsync')
         self.check(video, 2, 'show_fps')
+        self.combo(video, 5, 'gpu_readbacks', ['0', '1', '2'], lambda k: self.t('readbacks_' + k))
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram

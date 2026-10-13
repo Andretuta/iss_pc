@@ -33,7 +33,6 @@ GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
 # TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
     'TLG_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
-    'TLG_READBACKS': '2',          # the game reads GPU compute results on the CPU (AsyncMap)
     'TLG_GC_BUDGET_MB': '3500',    # texture cache budget; 5600 exhausts 6 GB of VRAM in inFAMOUS
     'TLG_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
     'TLG_JITTER': '0',
@@ -54,6 +53,7 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
     'stick_deadzone': 10,    # percent; runtime_pad.c TLG_STICK_DEADZONE
+    'gpu_readbacks': '0',    # 0 fast (35 FPS), 1 relaxed, 2 precise (21 FPS: the game waits for GPU results)
 }
 
 
@@ -190,6 +190,7 @@ def build_env(settings, extra=None):
     for key, value in DEFAULT_ENV.items():
         env.setdefault(key, value)  # explicit TLG_* in the environment always win
     env['TLG_GC_BUDGET_MB'] = os.environ.get('TLG_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
+    env['TLG_READBACKS'] = os.environ.get('TLG_READBACKS', str(settings.get('gpu_readbacks', '0')))
     env['TLG_STICK_DEADZONE'] = os.environ.get('TLG_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
     env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
