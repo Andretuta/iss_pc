@@ -10,7 +10,7 @@ Requirements
   Nothing else: Python and the libraries are inside this folder.
 
 Starting
-1. Extract this folder anywhere, for example C:\Games\gow3-windows (not inside the zip).
+1. Extract this folder anywhere, for example C:\Games\tlg-windows (not inside the zip).
 2. Open "God of War III.exe". If Windows shows "Windows protected your PC", click More info,
    then Run anyway: the program is not digitally signed.
 3. Click "Choose the game folder", then Browse... next to Game folder, and select the folder
@@ -38,7 +38,7 @@ Next time
 
 Data
 - Saves, shader cache and the log: user\ next to God of War III.exe (keep it when updating).
-- Settings: gow3.ini next to God of War III.exe; launcher options in %APPDATA%\gow3-launcher.
+- Settings: tlg.ini next to God of War III.exe; launcher options in %APPDATA%\tlg-launcher.
 - Generated files (prepared game image, patches): out\.
 
 Problems

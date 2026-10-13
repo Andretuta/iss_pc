@@ -88,7 +88,7 @@ public:
 
     void SetHDR(bool hdr);
 
-    /// gow3: VSync from the in-game menu (Gow3Settings::vsync); recreates the swapchain when it
+    /// tlg: VSync from the in-game menu (TlgSettings::vsync); recreates the swapchain when it
     /// changed. Present thread only.
     void UpdateVsync();
 

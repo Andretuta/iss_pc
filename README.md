@@ -324,8 +324,7 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão no `run_t
 | `TLG_TOGGLE_FILE` | — | máscara de otimizações desligadas, lida em tempo real |
 | `TLG_GAME_DIR` | `game/CUSA03627` | pasta do jogo (visão unificada base + 1.03) |
 
-Qualquer outra opção do código herdado também funciona com o prefixo `TLG_`: o launcher e o loader traduzem
-`TLG_X` para o nome interno `GOW3_X`.
+Todas as opções do código usam o prefixo `TLG_` (o código herdado do gow3_pc foi renomeado).
 
 Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as threads no log, e
 `scripts/watch_session.sh` faz isso sozinho quando o jogo fica 20 s sem frames.

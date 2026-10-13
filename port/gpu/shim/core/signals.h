@@ -1,5 +1,5 @@
-// gow3: fault-handler registry. The C loader's SIGSEGV handler calls
-// gow3gpu_handle_fault() first; registered handlers run in priority order.
+// tlg: fault-handler registry. The C loader's SIGSEGV handler calls
+// tlggpu_handle_fault() first; registered handlers run in priority order.
 #pragma once
 #include <compare>
 #include <set>

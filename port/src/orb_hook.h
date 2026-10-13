@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#ifndef GOW3_ORB_HOOK_H
-#define GOW3_ORB_HOOK_H
+#ifndef TLG_ORB_HOOK_H
+#define TLG_ORB_HOOK_H
 #include <stdint.h>
 #include <string.h>
 
-static const uint32_t gow3_orb_calls[] = {0x6a775, 0x6fa33, 0x6fbd7};
-static const unsigned char gow3_orb_call_bytes[][5] = {
+static const uint32_t tlg_orb_calls[] = {0x6a775, 0x6fa33, 0x6fbd7};
+static const unsigned char tlg_orb_call_bytes[][5] = {
     {0xe8, 0x76, 0x02, 0x00, 0x00},
     {0xe8, 0xb8, 0xaf, 0xff, 0xff},
     {0xe8, 0x14, 0xae, 0xff, 0xff}
 };
-static inline void gow3_orb_build_stub(unsigned char code[26], uintptr_t helper, uintptr_t setter) {
+static inline void tlg_orb_build_stub(unsigned char code[26], uintptr_t helper, uintptr_t setter) {
     static const unsigned char pattern[26] = {
         0x57,0x48,0xb8,0,0,0,0,0,0,0,0,0xff,0xd0,0x5f,
         0x48,0xb8,0,0,0,0,0,0,0,0,0xff,0xe0
@@ -19,14 +19,14 @@ static inline void gow3_orb_build_stub(unsigned char code[26], uintptr_t helper,
     memcpy(code + 3, &helper, 8);
     memcpy(code + 16, &setter, 8);
 }
-static inline int gow3_orb_signatures_match(const unsigned char* image, uint64_t size) {
+static inline int tlg_orb_signatures_match(const unsigned char* image, uint64_t size) {
     static const unsigned char setter[] = {
         0x55,0x48,0x89,0xe5,0xc5,0xfa,0x5d,0x05,0x20,0xa4,0x28,0x00,
         0xc5,0xfa,0x11,0x87,0xe8,0x01,0x00,0x00
     };
     if (size < 0x6fbdc || memcmp(image + 0x6a9f0, setter, sizeof(setter))) return 0;
     for (unsigned i = 0; i < 3; ++i)
-        if (memcmp(image + gow3_orb_calls[i], gow3_orb_call_bytes[i], 5)) return 0;
+        if (memcmp(image + tlg_orb_calls[i], tlg_orb_call_bytes[i], 5)) return 0;
     return 1;
 }
 
@@ -34,20 +34,20 @@ static inline int gow3_orb_signatures_match(const unsigned char* image, uint64_t
  * health (green), xmm1 magic (blue), xmm2 Rage of Sparta (gold), xmm3 red orbs (scaled by the
  * hooks above). The routine adds each positive amount and clamps it to the bar. The stub
  * replaces the prologue at the entry, where rax, xmm4 and the flags are free. */
-enum { GOW3_ORB_PICKUP_OFFSET = 0x6a480, GOW3_ORB_PICKUP_LENGTH = 9 };
-static const unsigned char gow3_orb_pickup_original[GOW3_ORB_PICKUP_LENGTH] = {
+enum { TLG_ORB_PICKUP_OFFSET = 0x6a480, TLG_ORB_PICKUP_LENGTH = 9 };
+static const unsigned char tlg_orb_pickup_original[TLG_ORB_PICKUP_LENGTH] = {
     0x55,                /* push rbp */
     0x48,0x89,0xe5,      /* mov rbp, rsp */
     0x53,                /* push rbx */
     0x48,0x83,0xec,0x18  /* sub rsp, 0x18 */
 };
 
-static inline int gow3_orb_pickup_signature_match(const unsigned char *code, uint64_t size) {
-    return size >= GOW3_ORB_PICKUP_LENGTH && !memcmp(code, gow3_orb_pickup_original, GOW3_ORB_PICKUP_LENGTH);
+static inline int tlg_orb_pickup_signature_match(const unsigned char *code, uint64_t size) {
+    return size >= TLG_ORB_PICKUP_LENGTH && !memcmp(code, tlg_orb_pickup_original, TLG_ORB_PICKUP_LENGTH);
 }
 
 /* Each amount above zero is multiplied by the float at green, blue or gold. */
-static inline unsigned gow3_orb_pickup_build_stub(unsigned char *out, uintptr_t green, uintptr_t blue,
+static inline unsigned tlg_orb_pickup_build_stub(unsigned char *out, uintptr_t green, uintptr_t blue,
                                                   uintptr_t gold, uintptr_t resume) {
     static const unsigned char body[] = {
         0xc5,0xd8,0x57,0xe4,                 /* vxorps xmm4, xmm4, xmm4 */
@@ -71,8 +71,8 @@ static inline unsigned gow3_orb_pickup_build_stub(unsigned char *out, uintptr_t 
     memcpy(out + 26, &blue, 8);
     memcpy(out + 46, &gold, 8);
     n += sizeof(body);
-    memcpy(out + n, gow3_orb_pickup_original, GOW3_ORB_PICKUP_LENGTH);
-    n += GOW3_ORB_PICKUP_LENGTH;
+    memcpy(out + n, tlg_orb_pickup_original, TLG_ORB_PICKUP_LENGTH);
+    n += TLG_ORB_PICKUP_LENGTH;
     memcpy(out + n, jump, sizeof(jump));
     n += sizeof(jump);
     memcpy(out + n, &resume, 8);

@@ -8,8 +8,8 @@ from pathlib import Path
 from patches import (compile_patches, external_patches, external_selection, compile_external,
                      game_profile, selected_patches, patch_requirements)
 
-GOW3 = ROOT / 'patches/God_of_War_III_Remastered.xml'
-GOW3_IDS = {'CUSA01623'}
+TLG = ROOT / 'patches/God_of_War_III_Remastered.xml'
+TLG_IDS = {'CUSA01623'}
 SEGMENTS = [(0, 0x6000000)]
 
 
@@ -38,7 +38,7 @@ class ExternalPatchTests(unittest.TestCase):
             (folder / 'extra.xml').write_text(EXTERNAL)
             (folder / 'other.xml').write_text(EXTERNAL.replace('CUSA01623', 'CUSA99999'))
             (folder / 'broken.xml').write_text('<Patch>')
-            found = external_patches(folder, '01.02', GOW3, GOW3_IDS)
+            found = external_patches(folder, '01.02', TLG, TLG_IDS)
             self.assertEqual([key for key, _, _ in found],
                              ['extra.xml/On', 'extra.xml/Off', 'extra.xml/Mask'])
             # The file's isEnabled; the mask patch is skipped as a whole.
@@ -50,30 +50,30 @@ class ExternalPatchTests(unittest.TestCase):
             self.assertEqual(writes, [(0x2000, (0x12345678).to_bytes(4, 'little'))])
 
     def test_built_in_file_is_not_external(self):
-        self.assertEqual(external_patches(GOW3.parent, '01.02', GOW3, GOW3_IDS), [])
+        self.assertEqual(external_patches(TLG.parent, '01.02', TLG, TLG_IDS), [])
 
 
 class GameProfileTests(unittest.TestCase):
     def test_profiles_by_title_id(self):
-        self.assertEqual(game_profile('CUSA01623')[1:3], (GOW3, '01.02'))
+        self.assertEqual(game_profile('CUSA01623')[1:3], (TLG, '01.02'))
         self.assertIsNone(game_profile('CUSA99999'))
         self.assertIsNone(game_profile(None))
 
-    def test_gow3_defaults_and_extras(self):
-        self.assertEqual(selected_patches(GOW3, '01.02', ''),
+    def test_tlg_defaults_and_extras(self):
+        self.assertEqual(selected_patches(TLG, '01.02', ''),
                          ['Bug Fix - Texture Corruption Fix', 'Skip Any Video With X Button'])
-        self.assertEqual(selected_patches(GOW3, '01.02', 'Resolution Patch - 720p; Skip Any Video With X Button'),
+        self.assertEqual(selected_patches(TLG, '01.02', 'Resolution Patch - 720p; Skip Any Video With X Button'),
                          ['Skip Any Video With X Button', 'Resolution Patch - 720p'])
-        self.assertEqual(selected_patches(GOW3, '01.00', ''), [])
+        self.assertEqual(selected_patches(TLG, '01.00', ''), [])
         # The launcher's selection is exact: unchecked defaults stay off.
-        self.assertEqual(selected_patches(GOW3, '01.02', 'Skip Any Video With X Button', only=True), ['Skip Any Video With X Button'])
-        self.assertEqual(selected_patches(GOW3, '01.02', '', only=True), [])
+        self.assertEqual(selected_patches(TLG, '01.02', 'Skip Any Video With X Button', only=True), ['Skip Any Video With X Button'])
+        self.assertEqual(selected_patches(TLG, '01.02', '', only=True), [])
 
-    def test_gow3_resolution_patch_replaces_texture_fix(self):
-        self.assertEqual(selected_patches(GOW3, '01.02', 'Resolution Patch - 4K'),
+    def test_tlg_resolution_patch_replaces_texture_fix(self):
+        self.assertEqual(selected_patches(TLG, '01.02', 'Resolution Patch - 4K'),
                          ['Skip Any Video With X Button', 'Resolution Patch - 4K'])
         with self.assertRaises(ValueError):
-            selected_patches(GOW3, '01.02', 'Resolution Patch - 4K;Resolution Patch - 720p')
+            selected_patches(TLG, '01.02', 'Resolution Patch - 4K;Resolution Patch - 720p')
 
     def test_eboot_build_check(self):
         from patches import eboot_matches
@@ -104,13 +104,13 @@ class GameProfileTests(unittest.TestCase):
             self.assertFalse(game_patchable(folder))  # no param.sfo: unknown game
             self.assertFalse(game_patchable(None))
 
-    def test_gow3_patches_compile(self):
-        names = [m.get('Name') for m in ET.parse(GOW3).getroot().iter('Metadata')]
-        self.assertTrue(compile_patches(GOW3, names, '01.02', SEGMENTS))
+    def test_tlg_patches_compile(self):
+        names = [m.get('Name') for m in ET.parse(TLG).getroot().iter('Metadata')]
+        self.assertTrue(compile_patches(TLG, names, '01.02', SEGMENTS))
 
-    def test_gow3_skip_intro_targets(self):
+    def test_tlg_skip_intro_targets(self):
         # Ported from the other 01.02 build: every jump must land where this eboot has the code.
-        writes = dict(compile_patches(GOW3, ['Skip Intro'], '01.02', SEGMENTS))
+        writes = dict(compile_patches(TLG, ['Skip Intro'], '01.02', SEGMENTS))
         rel = lambda data, at, end: end + int.from_bytes(data[at:at + 4], 'little', signed=True)
         self.assertEqual(writes[0x184950], bytes.fromhex('eb34'))  # jne over the logo start
         getter = writes[0x0c8440]  # mov [flag], 1; mov eax, 1; ret
@@ -123,10 +123,10 @@ class GameProfileTests(unittest.TestCase):
         self.assertEqual(rel(cave, 2, 0x61217a), 0x1e79258)
         self.assertEqual(rel(cave, 11, 0x61217f), 0x4b4c90)
 
-    @unittest.skipUnless(os.environ.get('GOW3_GAME'), 'GOW3_GAME (game folder) not set')
-    def test_gow3_skip_intro_original_bytes(self):
+    @unittest.skipUnless(os.environ.get('TLG_GAME'), 'TLG_GAME (game folder) not set')
+    def test_tlg_skip_intro_original_bytes(self):
         from prepare import parse_self
-        elf, _, ph, _, _ = parse_self((Path(os.environ['GOW3_GAME']) / 'eboot.bin').read_bytes())
+        elf, _, ph, _, _ = parse_self((Path(os.environ['TLG_GAME']) / 'eboot.bin').read_bytes())
         text = next(p for p in ph if p['type'] == 1 and p['flags'] & 1)
         original = {0x184950: '7534', 0x0c8440: '488d05955b38008b00c3660f1f440000',
                     0x01b36a: 'e821990900', 0x212170: '90' * 15}
@@ -136,10 +136,10 @@ class GameProfileTests(unittest.TestCase):
 
     def test_requirements_from_patch_notes(self):
         # Notes ask for extra direct memory (shadPS4 "DMEM") and a VBlank rate.
-        self.assertEqual(patch_requirements(GOW3, ['Resolution Patch - 4K', 'Skip Any Video With X Button'], '01.02'),
+        self.assertEqual(patch_requirements(TLG, ['Resolution Patch - 4K', 'Skip Any Video With X Button'], '01.02'),
                          (5056 + 6144, None))
-        self.assertEqual(patch_requirements(GOW3, ['Frame Rate Patch - 120 FPS'], '01.02'), (None, 120))
-        self.assertEqual(patch_requirements(GOW3, [], '01.02'), (None, None))
+        self.assertEqual(patch_requirements(TLG, ['Frame Rate Patch - 120 FPS'], '01.02'), (None, 120))
+        self.assertEqual(patch_requirements(TLG, [], '01.02'), (None, None))
 
 
 if __name__ == '__main__':

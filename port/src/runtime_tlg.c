@@ -319,4 +319,17 @@ static const RuntimeExport exports[]={
     {"sceAudio3dPortSetAttribute",audio3d_unused}, {"sceAudio3dObjectReserve",audio3d_unused},
     {"sceAudio3dObjectUnreserve",audio3d_unused}, {"sceAudio3dObjectSetAttributes",audio3d_unused},
 };
-uintptr_t runtime_tlg_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
+/* TLG_NGS2=native: libSceNgs2.sprx from the user's console firmware is linked as a module
+ * (run_tlg.sh), so its exports must win over the silent placeholders above. */
+static int ngs2_native(void) {
+    static int value = -1;
+    if (value < 0) { const char *v = getenv("TLG_NGS2"); value = v && !strcmp(v, "native"); }
+    return value;
+}
+uintptr_t runtime_tlg_resolve(const char *name) {
+    if (ngs2_native()) {
+        const char *symbol = runtime_symbol(name);
+        if (symbol && !strncmp(symbol, "sceNgs2", 7)) return 0;
+    }
+    return RUNTIME_LOOKUP(exports,name);
+}

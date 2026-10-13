@@ -10,7 +10,7 @@
 #include "cheat_hook.h"
 #include "actor_hook.h"
 #include "damage_hook.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/tlggpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -129,7 +129,7 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         fprintf(stderr,"Fault: exception 0x%08lx at %s (thread %lu)\n",record->ExceptionCode,where,GetCurrentThreadId());
     fprintf(stderr,"  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n  rsi=%016llx rdi=%016llx rbp=%016llx rsp=%016llx\n",
             c->Rax,c->Rbx,c->Rcx,c->Rdx,c->Rsi,c->Rdi,c->Rbp,c->Rsp);
-    if (gpu_enabled) gow3gpu_dump_guest_writes(info);
+    if (gpu_enabled) tlggpu_dump_guest_writes(info);
     /* rbp chain (guest and host code keep frame pointers). */
     uintptr_t rbp=(uintptr_t)c->Rbp;
     for (int depth=0; depth<24 && rbp; ++depth) {
@@ -149,17 +149,17 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
     DWORD code=record->ExceptionCode;
     if (code==EXCEPTION_ACCESS_VIOLATION && record->NumberParameters>=2) {
         /* GPU page tracking (write-protected guest pages) is resolved first. */
-        if (gpu_enabled && gow3gpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
+        if (gpu_enabled && tlggpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
         if (runtime_fault_recover) {
             /* A speculative guest memory read (GPU draw preparation) faulted: the thread resumes
-             * in gow3_longjmp, outside the exception dispatcher, back at its recovery point. */
+             * in tlg_longjmp, outside the exception dispatcher, back at its recovery point. */
             unsigned long long *buffer=*runtime_fault_recover;
             runtime_fault_recover=NULL;
             CONTEXT *c=info->ContextRecord;
             c->Rsp=((c->Rsp-128)&~(DWORD64)15)-40;
             c->Rcx=(DWORD64)(uintptr_t)buffer;
             c->Rdx=1;
-            c->Rip=(DWORD64)(uintptr_t)gow3_longjmp;
+            c->Rip=(DWORD64)(uintptr_t)tlg_longjmp;
             return EXCEPTION_CONTINUE_EXECUTION;
         }
     }
@@ -174,7 +174,7 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
                  !module;
         if (ours) return fatal_exception(info);
     }
-    /* GOW3_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
+    /* TLG_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
     if (code==0xC0000008 /* STATUS_INVALID_HANDLE */) return fatal_exception(info);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -211,7 +211,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
         siglongjmp(*recover, 1);
     }
     /* GPU page tracking (write-protected guest pages) is resolved next. */
-    if (gpu_enabled && sig == SIGSEGV && gow3gpu_handle_fault(context, info->si_addr)) return;
+    if (gpu_enabled && sig == SIGSEGV && tlggpu_handle_fault(context, info->si_addr)) return;
     /* The process is terminating: dladdr/snprintf are acceptable here. */
     ucontext_t *uc = context;
     uintptr_t rip = (uintptr_t)uc->uc_mcontext.gregs[REG_RIP];
@@ -226,7 +226,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
-    if (gpu_enabled) gow3gpu_dump_guest_writes(context);
+    if (gpu_enabled) tlggpu_dump_guest_writes(context);
     /* Engine ASSERT (int 0x41): the formatted "file(line): func() ASSERT(cond)" message sits in a
      * stack buffer of the asserting frame; its logger may be null, so print it from here. */
     if (rip - (uintptr_t)image < 0x10000000) {
@@ -387,15 +387,15 @@ static int mapped(Segment *segments, uint64_t count, uint64_t address, uint64_t 
             address - segments[i].address <= segments[i].size - bytes) return 1;
     return 0;
 }
-extern ABI float gow3_orbs_gain(void *player, float requested);
-extern void gow3_orbs_status(int supported);
-extern uintptr_t gow3_cheat_flag(unsigned id);
-extern uintptr_t gow3_actor_slots_address(void);
-extern void gow3_actor_status(int supported);
-extern void gow3_cheat_status(unsigned id);
-extern uintptr_t gow3_damage_multiplier(int taken);
-extern uintptr_t gow3_orb_pickup_multiplier(unsigned kind);
-extern void gow3_stat_multipliers_status(int damage, int orb_pickup);
+extern ABI float tlg_orbs_gain(void *player, float requested);
+extern void tlg_orbs_status(int supported);
+extern uintptr_t tlg_cheat_flag(unsigned id);
+extern uintptr_t tlg_actor_slots_address(void);
+extern void tlg_actor_status(int supported);
+extern void tlg_cheat_status(unsigned id);
+extern uintptr_t tlg_damage_multiplier(int taken);
+extern uintptr_t tlg_orb_pickup_multiplier(unsigned kind);
+extern void tlg_stat_multipliers_status(int damage, int orb_pickup);
 
 static void install_cheats(const char *app0, Segment *segments, uint64_t count, uint64_t size) {
     char path[4096], serial[32] = "", version[32] = "";
@@ -405,29 +405,29 @@ static void install_cheats(const char *app0, Segment *segments, uint64_t count, 
     if (strcmp(serial, "CUSA01623") || strcmp(version, "01.02")) return;
     const char *names[] = {"health", "magic", "item meter", "Rage of Sparta", "red orbs",
                            "Very Hard unlock", "infinite double jumps"};
-    for (unsigned id = 0; id < GOW3_CHEAT_COUNT; ++id) {
+    for (unsigned id = 0; id < TLG_CHEAT_COUNT; ++id) {
         int valid = 1;
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
+        for (unsigned i = 0; i < TLG_CHEAT_HOOK_COUNT; ++i) {
+            const TlgCheatHook *hook = &tlg_cheat_hooks[i];
             if (hook->id != id) continue;
             if (hook->offset > size || hook->length > size - hook->offset ||
                 !mapped(segments, count, hook->offset, hook->length) ||
-                !gow3_cheat_signature_match(hook, image + hook->offset, size - hook->offset)) valid = 0;
+                !tlg_cheat_signature_match(hook, image + hook->offset, size - hook->offset)) valid = 0;
         }
         if (!valid) {
             printf("Cheats: %s unavailable (code signature mismatch)\n", names[id]);
             continue;
         }
         unsigned char *stubs = allocate(page_size);
-        int32_t relative[GOW3_CHEAT_HOOK_COUNT] = {0};
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
+        int32_t relative[TLG_CHEAT_HOOK_COUNT] = {0};
+        for (unsigned i = 0; i < TLG_CHEAT_HOOK_COUNT; ++i) {
+            const TlgCheatHook *hook = &tlg_cheat_hooks[i];
             if (hook->id != id) continue;
             unsigned char *stub = stubs + i * 256;
             int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + hook->offset + 5);
             if (delta < INT32_MIN || delta > INT32_MAX) { valid = 0; break; }
             relative[i] = (int32_t)delta;
-            gow3_cheat_build_stub(stub, hook, gow3_cheat_flag(id),
+            tlg_cheat_build_stub(stub, hook, tlg_cheat_flag(id),
                                  (uintptr_t)(image + hook->offset + hook->length));
         }
         if (!valid) {
@@ -435,14 +435,14 @@ static void install_cheats(const char *app0, Segment *segments, uint64_t count, 
             continue;
         }
         protect(stubs, page_size, 5);
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
+        for (unsigned i = 0; i < TLG_CHEAT_HOOK_COUNT; ++i) {
+            const TlgCheatHook *hook = &tlg_cheat_hooks[i];
             if (hook->id != id) continue;
             image[hook->offset] = 0xe9;
             memcpy(image + hook->offset + 1, &relative[i], 4);
             memset(image + hook->offset + 5, 0x90, hook->length - 5);
         }
-        gow3_cheat_status(id);
+        tlg_cheat_status(id);
         printf("Cheats: %s ready (live toggle, initially disabled unless saved)\n", names[id]);
     }
 }
@@ -454,10 +454,10 @@ static void install_actor_watch(const char *app0, Segment *segments, uint64_t co
     snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
     sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    const uint64_t at = GOW3_ACTOR_HOOK_OFFSET;
+    const uint64_t at = TLG_ACTOR_HOOK_OFFSET;
     if (strcmp(serial, "CUSA01623") || strcmp(version, "01.02") || at > size ||
-        !mapped(segments, count, at, GOW3_ACTOR_HOOK_LENGTH) ||
-        !gow3_actor_signature_match(image + at, size - at)) {
+        !mapped(segments, count, at, TLG_ACTOR_HOOK_LENGTH) ||
+        !tlg_actor_signature_match(image + at, size - at)) {
         printf("Health display: unavailable (game version or code signature mismatch)\n");
         return;
     }
@@ -467,13 +467,13 @@ static void install_actor_watch(const char *app0, Segment *segments, uint64_t co
         printf("Health display: unavailable (hook outside relative-jump range)\n");
         return;
     }
-    gow3_actor_build_stub(stub, gow3_actor_slots_address(), (uintptr_t)(image + at + GOW3_ACTOR_HOOK_LENGTH));
+    tlg_actor_build_stub(stub, tlg_actor_slots_address(), (uintptr_t)(image + at + TLG_ACTOR_HOOK_LENGTH));
     protect(stub, page_size, 5);
     const int32_t relative = (int32_t)delta;
     image[at] = 0xe9;
     memcpy(image + at + 1, &relative, 4);
-    memset(image + at + 5, 0x90, GOW3_ACTOR_HOOK_LENGTH - 5);
-    gow3_actor_status(1);
+    memset(image + at + 5, 0x90, TLG_ACTOR_HOOK_LENGTH - 5);
+    tlg_actor_status(1);
     printf("Health display: damage hook ready (enemy health bar in the menu)\n");
 }
 
@@ -484,22 +484,22 @@ static void install_orb_multiplier(const char *app0, Segment *segments, uint64_t
     sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
     if (strcmp(serial, "CUSA01623") || strcmp(version, "01.02") ||
-        !gow3_orb_signatures_match(image, size)) {
+        !tlg_orb_signatures_match(image, size)) {
         printf("Red orbs: multiplier unavailable (game version or gain signatures mismatch)\n");
         return;
     }
     for (unsigned i = 0; i < 3; ++i) {
-        if (!mapped(segments, count, gow3_orb_calls[i], 5)) return;
+        if (!mapped(segments, count, tlg_orb_calls[i], 5)) return;
     }
     /* SysV call sites: preserve the receiver across the helper, then tail-call the original
      * setter. Its cap and upgrade notifications remain in the game's own code. */
     unsigned char *stub = allocate(page_size);
-    uintptr_t helper = (uintptr_t)gow3_orbs_gain, setter = (uintptr_t)(image + 0x6a9f0);
+    uintptr_t helper = (uintptr_t)tlg_orbs_gain, setter = (uintptr_t)(image + 0x6a9f0);
     unsigned char code[26];
-    gow3_orb_build_stub(code, helper, setter);
+    tlg_orb_build_stub(code, helper, setter);
     int32_t displacements[3];
     for (unsigned i = 0; i < 3; ++i) {
-        int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + gow3_orb_calls[i] + 5);
+        int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + tlg_orb_calls[i] + 5);
         if (delta < INT32_MIN || delta > INT32_MAX) {
             printf("Red orbs: multiplier unavailable (hook outside relative-call range)\n");
             return;
@@ -509,8 +509,8 @@ static void install_orb_multiplier(const char *app0, Segment *segments, uint64_t
     memcpy(stub, code, sizeof(code));
     protect(stub, page_size, 5);
     for (unsigned i = 0; i < 3; ++i)
-        memcpy(image + gow3_orb_calls[i] + 1, &displacements[i], 4);
-    gow3_orbs_status(1);
+        memcpy(image + tlg_orb_calls[i] + 1, &displacements[i], 4);
+    tlg_orbs_status(1);
     printf("Red orbs: live multiplier ready (3 validated gain paths, 0.1x to 100x)\n");
 }
 /* Writes a jump from image+at to `stub`; the rest of the replaced bytes become nops (the stub
@@ -533,25 +533,25 @@ static void install_stat_multipliers(const char *app0, Segment *segments, uint64
     sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
     const int game = !strcmp(serial, "CUSA01623") && !strcmp(version, "01.02");
-    const uint64_t damage_at = GOW3_DAMAGE_HOOK_OFFSET, pickup_at = GOW3_ORB_PICKUP_OFFSET;
-    int damage = game && damage_at < size && mapped(segments, count, damage_at, GOW3_DAMAGE_HOOK_LENGTH) &&
-                 gow3_damage_signature_match(image + damage_at, size - damage_at);
-    int pickup = game && pickup_at < size && mapped(segments, count, pickup_at, GOW3_ORB_PICKUP_LENGTH) &&
-                 gow3_orb_pickup_signature_match(image + pickup_at, size - pickup_at);
+    const uint64_t damage_at = TLG_DAMAGE_HOOK_OFFSET, pickup_at = TLG_ORB_PICKUP_OFFSET;
+    int damage = game && damage_at < size && mapped(segments, count, damage_at, TLG_DAMAGE_HOOK_LENGTH) &&
+                 tlg_damage_signature_match(image + damage_at, size - damage_at);
+    int pickup = game && pickup_at < size && mapped(segments, count, pickup_at, TLG_ORB_PICKUP_LENGTH) &&
+                 tlg_orb_pickup_signature_match(image + pickup_at, size - pickup_at);
     unsigned char *stubs = damage || pickup ? allocate(page_size) : NULL;
     if (damage) {
-        gow3_damage_build_stub(stubs, gow3_damage_multiplier(1), gow3_damage_multiplier(0),
-                               (uintptr_t)(image + damage_at + GOW3_DAMAGE_HOOK_LENGTH));
+        tlg_damage_build_stub(stubs, tlg_damage_multiplier(1), tlg_damage_multiplier(0),
+                               (uintptr_t)(image + damage_at + TLG_DAMAGE_HOOK_LENGTH));
     }
     if (pickup) {
-        gow3_orb_pickup_build_stub(stubs + 256, gow3_orb_pickup_multiplier(0), gow3_orb_pickup_multiplier(1),
-                                   gow3_orb_pickup_multiplier(2),
-                                   (uintptr_t)(image + pickup_at + GOW3_ORB_PICKUP_LENGTH));
+        tlg_orb_pickup_build_stub(stubs + 256, tlg_orb_pickup_multiplier(0), tlg_orb_pickup_multiplier(1),
+                                   tlg_orb_pickup_multiplier(2),
+                                   (uintptr_t)(image + pickup_at + TLG_ORB_PICKUP_LENGTH));
     }
     if (stubs) protect(stubs, page_size, 5);
-    damage = damage && install_jump(damage_at, GOW3_DAMAGE_HOOK_LENGTH, stubs);
-    pickup = pickup && install_jump(pickup_at, GOW3_ORB_PICKUP_LENGTH, stubs + 256);
-    gow3_stat_multipliers_status(damage, pickup);
+    damage = damage && install_jump(damage_at, TLG_DAMAGE_HOOK_LENGTH, stubs);
+    pickup = pickup && install_jump(pickup_at, TLG_ORB_PICKUP_LENGTH, stubs + 256);
+    tlg_stat_multipliers_status(damage, pickup);
     printf("Multipliers: damage %s, green/blue/gold orbs %s\n", damage ? "ready" : "unavailable",
            pickup ? "ready" : "unavailable");
 }
@@ -597,10 +597,10 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
 void runtime_restart(void) {
     fflush(NULL);
 #ifdef _WIN32
-    /* run.py sets GOW3_RESTART_COMMAND: the launch command line, started again (new patches). */
-    const char *command=getenv("GOW3_RESTART_COMMAND");
+    /* run.py sets TLG_RESTART_COMMAND: the launch command line, started again (new patches). */
+    const char *command=getenv("TLG_RESTART_COMMAND");
     puts("Runtime: restarting through run.py");
-    if (!command || !*command) { fputs("runtime_restart: GOW3_RESTART_COMMAND is not set\n",stderr); _exit(1); }
+    if (!command || !*command) { fputs("runtime_restart: TLG_RESTART_COMMAND is not set\n",stderr); _exit(1); }
     char *line=_strdup(command);
     /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
     STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
@@ -622,34 +622,8 @@ void runtime_restart(void) {
 #endif
 }
 
-/* The Last Guardian: every option is spelled TLG_<NAME>; the code inherited from gow3_pc reads
- * GOW3_<NAME>, so each TLG_ variable is copied to its internal name before anything reads it.
- * (run_tlg.sh does the same for the GPU library's load-time initializers.) */
-extern char **environ;
-static void tlg_env_aliases(void) {
-    size_t n = 0;
-    for (char **e = environ; *e; ++e) ++n;
-    char **copy = calloc(n + 1, sizeof(*copy));
-    if (!copy) return;
-    for (size_t i = 0; i < n; ++i) copy[i] = strdup(environ[i]);
-    for (size_t i = 0; i < n; ++i) {
-        char *eq = copy[i] ? strchr(copy[i], '=') : NULL;
-        if (eq && !strncmp(copy[i], "TLG_", 4)) {
-            char name[160];
-            snprintf(name, sizeof(name), "GOW3_%.*s", (int)(eq - copy[i] - 4), copy[i] + 4);
-#ifdef _WIN32
-            _putenv_s(name, eq + 1);
-#else
-            setenv(name, eq + 1, 1);
-#endif
-        }
-        free(copy[i]);
-    }
-    free(copy);
-}
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
-    tlg_env_aliases();
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
@@ -701,17 +675,17 @@ int main(int argc, char **argv) {
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
     }
-    gow3gpu_register_kernel();
+    tlggpu_register_kernel();
 #ifdef _WIN32
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
     AddVectoredExceptionHandler(1, vectored_fault);
     SetUnhandledExceptionFilter(unhandled_fault);
-    if (getenv("GOW3_STRICT_HANDLES")) {
+    if (getenv("TLG_STRICT_HANDLES")) {
         PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY strict={0};
         strict.RaiseExceptionOnInvalidHandleReference=1;
         strict.HandleExceptionsPermanentlyEnabled=1;
         if (!SetProcessMitigationPolicy(ProcessStrictHandleCheckPolicy,&strict,sizeof(strict)))
-            fprintf(stderr,"GOW3_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
+            fprintf(stderr,"TLG_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
     }
     (void)timeout_seconds; /* no watchdog on Windows */
 #else
@@ -839,10 +813,10 @@ int main(int argc, char **argv) {
         sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
-        Gow3GpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
+        TlgGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
-        if (gow3gpu_init(&gpu)) fail("GPU initialization failed");
-        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,gow3gpu_symbol_count());
+        if (tlggpu_init(&gpu)) fail("GPU initialization failed");
+        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,tlggpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);

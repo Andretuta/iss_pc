@@ -214,7 +214,7 @@ def main():
     p.add_argument('--patches-config',type=Path,help='patches.json: enabled/disabled external patches')
     p.add_argument('--extra',default='',help='additional patch names, separated by ";"')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
-    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('GOW3_GAME_DIR','../CUSA01623')))
+    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('TLG_GAME_DIR','../CUSA01623')))
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile(title)
@@ -226,11 +226,11 @@ def main():
     # The patches are byte writes at the addresses of one game build: on another they would
     # corrupt code, so such a game runs unpatched.
     version=game_app_version(a.game_dir)
-    if version!=needed and not os.environ.get('GOW3_FORCE_PATCHES'):
+    if version!=needed and not os.environ.get('TLG_FORCE_PATCHES'):
         write_patches(a.out,[])
         print(f'Patches: game version {version}, {xml.name} is for {needed}: none applied')
         return
-    if not eboot_matches(a.game_dir,profile) and not os.environ.get('GOW3_FORCE_PATCHES'):
+    if not eboot_matches(a.game_dir,profile) and not os.environ.get('TLG_FORCE_PATCHES'):
         write_patches(a.out,[])
         build=unported_build(a.game_dir)
         if build:
@@ -238,7 +238,7 @@ def main():
         else:
             print(f'Patches: eboot.bin is not the build {xml.name} was checked against: none applied')
         return
-    names=selected_patches(xml,needed,a.extra,os.environ.get('GOW3_PATCHES_ONLY')=='1')
+    names=selected_patches(xml,needed,a.extra,os.environ.get('TLG_PATCHES_ONLY')=='1')
     segments=eboot_segments((a.out/'eboot.elf').read_bytes())
     writes=compile_patches(xml,names,needed,segments)
     if a.patches_dir:

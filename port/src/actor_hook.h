@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#ifndef GOW3_ACTOR_HOOK_H
-#define GOW3_ACTOR_HOOK_H
+#ifndef TLG_ACTOR_HOOK_H
+#define TLG_ACTOR_HOOK_H
 #include <stdint.h>
 #include <string.h>
 
@@ -9,8 +9,8 @@
  * r13 is the actor, health at +0x1cc, maximum at +0x1d0, and +0x298 is 0 for the player
  * (the infinite-health cheat refills only those). rax, rdi
  * and the flags are overwritten right after, so the stub may use them. */
-enum { GOW3_ACTOR_HOOK_OFFSET = 0x50417, GOW3_ACTOR_HOOK_LENGTH = 7 };
-static const unsigned char gow3_actor_original[GOW3_ACTOR_HOOK_LENGTH] = {
+enum { TLG_ACTOR_HOOK_OFFSET = 0x50417, TLG_ACTOR_HOOK_LENGTH = 7 };
+static const unsigned char tlg_actor_original[TLG_ACTOR_HOOK_LENGTH] = {
     0x49,0x8b,0x45,0x00,  /* mov rax, [r13] */
     0x4c,0x89,0xef        /* mov rdi, r13 */
 };
@@ -22,18 +22,18 @@ typedef struct {
     float health, max_health;
     uint32_t seq, pad;
     uint64_t reserved;
-} Gow3ActorSlot;
+} TlgActorSlot;
 #ifdef __cplusplus
-static_assert(sizeof(Gow3ActorSlot) == 32, "stub uses a 32-byte stride");
+static_assert(sizeof(TlgActorSlot) == 32, "stub uses a 32-byte stride");
 #else
-_Static_assert(sizeof(Gow3ActorSlot) == 32, "stub uses a 32-byte stride");
+_Static_assert(sizeof(TlgActorSlot) == 32, "stub uses a 32-byte stride");
 #endif
 
-static inline int gow3_actor_signature_match(const unsigned char *code, uint64_t size) {
-    return size >= GOW3_ACTOR_HOOK_LENGTH && !memcmp(code, gow3_actor_original, GOW3_ACTOR_HOOK_LENGTH);
+static inline int tlg_actor_signature_match(const unsigned char *code, uint64_t size) {
+    return size >= TLG_ACTOR_HOOK_LENGTH && !memcmp(code, tlg_actor_original, TLG_ACTOR_HOOK_LENGTH);
 }
 
-static inline unsigned gow3_actor_build_stub(unsigned char *out, uintptr_t slots, uintptr_t resume) {
+static inline unsigned tlg_actor_build_stub(unsigned char *out, uintptr_t slots, uintptr_t resume) {
     static const unsigned char body[] = {
         0x48,0xb8, 0,0,0,0,0,0,0,0,               /* movabs rax, slots */
         0x41,0x80,0xbd,0x98,0x02,0,0, 0x00,       /* cmp byte [r13+0x298], 0 */
@@ -51,8 +51,8 @@ static inline unsigned gow3_actor_build_stub(unsigned char *out, uintptr_t slots
     memcpy(out, body, sizeof(body));
     memcpy(out + 2, &slots, 8);
     n += sizeof(body);
-    memcpy(out + n, gow3_actor_original, GOW3_ACTOR_HOOK_LENGTH);
-    n += GOW3_ACTOR_HOOK_LENGTH;
+    memcpy(out + n, tlg_actor_original, TLG_ACTOR_HOOK_LENGTH);
+    n += TLG_ACTOR_HOOK_LENGTH;
     memcpy(out + n, jump, sizeof(jump));
     n += sizeof(jump);
     memcpy(out + n, &resume, 8);

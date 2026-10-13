@@ -1,7 +1,7 @@
 /* Narrow, explicit PS4 libc contracts. No automatic success stubs. */
 #define _CRT_RAND_S
 #include "runtime.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/tlggpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -252,7 +252,7 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (file) return file;
     uintptr_t tlg = runtime_tlg_resolve(name);
     if (tlg) return tlg;
-    return gow3gpu_resolve(name);
+    return tlggpu_resolve(name);
 }
 static const struct { const char *nid, *symbol; } import_names[]={
 #include "import_names.inc"

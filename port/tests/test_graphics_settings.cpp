@@ -1,14 +1,14 @@
-// gow3.ini graphics keys (gow3_settings.cpp, gow3_graphics.h).
+// tlg.ini graphics keys (tlg_settings.cpp, tlg_graphics.h).
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "gow3_graphics.h"
-#include "gow3_settings.h"
+#include "tlg_graphics.h"
+#include "tlg_settings.h"
 
-namespace G = Gow3Graphics;
+namespace G = TlgGraphics;
 
 static std::string Read(const char* path) {
     std::ifstream in(path);
@@ -40,26 +40,26 @@ int main() {
                "render_resolution=1440p\nengine_fps=240\ndeferred_readback=0\nstale_readback=1\n"
                "fsr1=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n";
     }
-    _putenv_s("GOW3_CONFIG", path);
-    _putenv_s("GOW3_ASYNC_SHADERS", "");
-    auto& v = Gow3Settings::Get();
-    Gow3Settings::Load();
+    _putenv_s("TLG_CONFIG", path);
+    _putenv_s("TLG_ASYNC_SHADERS", "");
+    auto& v = TlgSettings::Get();
+    TlgSettings::Load();
     assert(v.display_mode == G::Borderless && !v.vsync && v.fps_limit == 240 && !v.async_shaders);
     assert(v.render_resolution == 3 && v.engine_fps == 240 && !v.deferred_readback && v.stale_readback);
     assert(v.fsr1 && !v.rcas && v.rcas_strength == 40 && v.frames_queued == 2);
-    assert(!Gow3Settings::GraphicsNeedRestart());
-    assert(v.applied_engine_fps == 240);  // no GOW3_ENGINE_FPS: the configured rate
-    _putenv_s("GOW3_ENGINE_FPS", "60");    // run.py: the frame rate patch did not apply
-    Gow3Settings::Load();
-    assert(v.engine_fps == 240 && v.applied_engine_fps == 60 && !Gow3Settings::GraphicsNeedRestart());
-    _putenv_s("GOW3_ENGINE_FPS", "");
+    assert(!TlgSettings::GraphicsNeedRestart());
+    assert(v.applied_engine_fps == 240);  // no TLG_ENGINE_FPS: the configured rate
+    _putenv_s("TLG_ENGINE_FPS", "60");    // run.py: the frame rate patch did not apply
+    TlgSettings::Load();
+    assert(v.engine_fps == 240 && v.applied_engine_fps == 60 && !TlgSettings::GraphicsNeedRestart());
+    _putenv_s("TLG_ENGINE_FPS", "");
     v.engine_fps = 120;
-    assert(Gow3Settings::GraphicsNeedRestart());
+    assert(TlgSettings::GraphicsNeedRestart());
     v.fps_limit = 60;  // live: no restart because of it
     v.engine_fps = 240;
-    assert(!Gow3Settings::GraphicsNeedRestart());
+    assert(!TlgSettings::GraphicsNeedRestart());
 
-    Gow3Settings::Save();
+    TlgSettings::Save();
     const std::string saved = Read(path);
     for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "fps_limit=60\n", "async_shaders=0\n",
                              "render_resolution=1440p\n", "engine_fps=240\n", "deferred_readback=0\n",
@@ -73,9 +73,9 @@ int main() {
         out << "display_mode=huge\nfps_limit=7\nrender_resolution=8K\nengine_fps=1\n"
                "rcas_strength=250\nframes_queued=9\n";
     }
-    _putenv_s("GOW3_ASYNC_SHADERS", "1");  // the environment still wins at start
+    _putenv_s("TLG_ASYNC_SHADERS", "1");  // the environment still wins at start
     v.async_shaders = false;
-    Gow3Settings::Load();
+    TlgSettings::Load();
     assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0 && v.engine_fps == 120);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);
@@ -83,8 +83,8 @@ int main() {
         std::ofstream out(path);
         out << "cheat_double_jumps=1\ncheat_very_hard=1\n";
     }
-    Gow3Settings::Load();
-    Gow3Settings::Save();
+    TlgSettings::Load();
+    TlgSettings::Save();
     const std::string cheats = Read(path);
     assert(cheats.find("cheat_double_jumps=1\n") != std::string::npos);
     assert(cheats.find("cheat_very_hard=1\n") != std::string::npos);

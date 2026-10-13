@@ -252,7 +252,7 @@ def prepare(game, out):
     (out / 'entry.bin').write_bytes(image[:1024])
     resources = collections.Counter()
     total_bytes = 0
-    # GoW3 ships loose files in dvdroot_ps4/; TLG ships *.psarc archives at the root.
+    # TLG ships loose files in dvdroot_ps4/; TLG ships *.psarc archives at the root.
     for path in [*(game / 'dvdroot_ps4').rglob('*'), *game.glob('*.psarc')]:
         if path.is_file():
             key = path.suffix if path.suffix == '.psarc' else path.relative_to(game / 'dvdroot_ps4').parts[0]

@@ -20,7 +20,7 @@
 #include "common/scope_exit.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "common/thread.h"
-#include "gow3_overlay.h"
+#include "tlg_overlay.h"
 #include "core/emulator_settings.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
@@ -32,9 +32,9 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 7u; // gow3: interpolated integer fix (Pascal)
-static constexpr u32 ShaderMetaVersion = 7u; // gow3: ImageResource::needs_native
-static constexpr u32 PipelineKeyVersion = 5u; // gow3: Info layout (ImageResource::needs_native)
+static constexpr u32 ShaderBinaryVersion = 7u; // tlg: interpolated integer fix (Pascal)
+static constexpr u32 ShaderMetaVersion = 7u; // tlg: ImageResource::needs_native
+static constexpr u32 PipelineKeyVersion = 5u; // tlg: Info layout (ImageResource::needs_native)
 } // namespace Serialization
 
 namespace Vulkan {
@@ -264,8 +264,8 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
         const auto ns = u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now() - started)
                                 .count());
-        extern std::atomic<u64> g_gow3_pipeline_driver_ns;
-        g_gow3_pipeline_driver_ns += ns;
+        extern std::atomic<u64> g_tlg_pipeline_driver_ns;
+        g_tlg_pipeline_driver_ns += ns;
         if (enabled) {
             (restored ? binary_restore_ns : binary_compile_ns) += ns;
             ++(restored ? binary_restore_calls : binary_compile_calls);
@@ -445,7 +445,7 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
     return result;
 }
 
-// gow3: GOW3_PARALLEL_WARMUP=1. The cache store is still read and the shader modules created in
+// tlg: TLG_PARALLEL_WARMUP=1. The cache store is still read and the shader modules created in
 // order on the calling thread (program_cache and its permutation checks are not thread-safe);
 // only the pipeline objects, the slow part, are built here. The runtime compiler builds
 // pipelines on worker threads the same way (vk_pipeline_cache.cpp).
@@ -454,7 +454,7 @@ struct PipelineCache::WarmupPool {
         for (u32 i = 0; i < count; ++i) {
             threads.emplace_back([this, low_priority] {
                 if (low_priority) {
-                    Common::SetCurrentThreadName("GoW3:ShaderWarmup");
+                    Common::SetCurrentThreadName("TLG:ShaderWarmup");
                     Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
                 }
                 Run();
@@ -500,7 +500,7 @@ struct PipelineCache::WarmupPool {
         return jobs.empty() && !running;
     }
     static u32 Threads() {
-        const char* env = std::getenv("GOW3_PARALLEL_WARMUP");
+        const char* env = std::getenv("TLG_PARALLEL_WARMUP");
         if (!env || !*env || *env == '0') {
             return 0;
         }
@@ -527,9 +527,9 @@ private:
             try {
                 ok = job();
             } catch (const std::exception& e) {
-                LOG_ERROR(Render_Vulkan, "gow3: warm-up pipeline failed: {}", e.what());
+                LOG_ERROR(Render_Vulkan, "tlg: warm-up pipeline failed: {}", e.what());
             } catch (...) {
-                LOG_ERROR(Render_Vulkan, "gow3: warm-up pipeline failed");
+                LOG_ERROR(Render_Vulkan, "tlg: warm-up pipeline failed");
             }
             (ok ? built : failed).fetch_add(1, std::memory_order_relaxed);
             lock.lock();
@@ -888,7 +888,7 @@ bool PipelineCache::CheckCacheProfile() {
         std::memcpy(&cached_profile, profile_data.data(), sizeof(cached_profile));
     }
     if (profile_data.size() != sizeof(Shader::Profile) || cached_profile != profile) {
-        // gow3: upstream closed the cache for the session here, so it was never rewritten
+        // tlg: upstream closed the cache for the session here, so it was never rewritten
         // and every later session compiled every shader again (stutters on each new area).
         // Start a fresh cache for this build and GPU instead.
         LOG_WARNING(Render, "Pipeline cache isn't compatible with current system: rebuilding it");
@@ -997,7 +997,7 @@ void PipelineCache::StartOnDemand() {
     std::printf("Pipeline startup: on demand, no bulk warm-up\n");
 }
 
-// gow3: one cached shader stage read by the background warm-up, shared by every cached
+// tlg: one cached shader stage read by the background warm-up, shared by every cached
 // pipeline that uses it. A pool thread fills it; the GPU thread merges it into program_cache
 // once (MergeWarmStage).
 struct PipelineCache::WarmStage {
@@ -1020,7 +1020,7 @@ struct PipelineCache::WarmStage {
     }
 };
 
-// gow3: StartBackgroundWarmUp. The pool reads the store and builds the pipelines at low
+// tlg: StartBackgroundWarmUp. The pool reads the store and builds the pipelines at low
 // priority; the GPU thread merges the stages and publishes the pipelines a few at a time.
 struct PipelineCache::BackgroundWarmup {
     struct Entry {
@@ -1232,7 +1232,7 @@ void PipelineCache::PumpWarmUp() {
     warm.last_batch = now;
     ++warm.batches;
     const u32 done = warm.done + warm.pool->failed;
-    Gow3Overlay::SetBackgroundLoading(done, std::max(warm.total.load(), done));
+    TlgOverlay::SetBackgroundLoading(done, std::max(warm.total.load(), done));
 
     static const std::array<Shader::RuntimeInfo, MaxShaderStages> no_runtime_infos{};
     for (auto& entry : warm.read.Take(32)) {
@@ -1322,17 +1322,17 @@ void PipelineCache::PumpWarmUp() {
                 binary_key_ns.load() / 1e9, binary_load_ns.load() / 1e9,
                 binary_handles_ns.load() / 1e9, binary_restore_ns.load() / 1e9,
                 binary_compile_ns.load() / 1e9);
-    extern std::atomic<u64> g_gow3_pipeline_total_ns, g_gow3_pipeline_driver_ns;
-    extern std::atomic<u32> g_gow3_pipelines_built;
-    const u32 built = std::max(1u, g_gow3_pipelines_built.load());
+    extern std::atomic<u64> g_tlg_pipeline_total_ns, g_tlg_pipeline_driver_ns;
+    extern std::atomic<u32> g_tlg_pipelines_built;
+    const u32 built = std::max(1u, g_tlg_pipelines_built.load());
     std::printf("Pipeline build time: %u graphics pipelines, %.1f ms each (driver %.1f ms, the rest "
                 "%.1f ms), %.1f s in all\n",
-                built, g_gow3_pipeline_total_ns / 1e6 / built, g_gow3_pipeline_driver_ns / 1e6 / built,
-                (g_gow3_pipeline_total_ns - g_gow3_pipeline_driver_ns) / 1e6 / built,
-                g_gow3_pipeline_total_ns / 1e9);
+                built, g_tlg_pipeline_total_ns / 1e6 / built, g_tlg_pipeline_driver_ns / 1e6 / built,
+                (g_tlg_pipeline_total_ns - g_tlg_pipeline_driver_ns) / 1e6 / built,
+                g_tlg_pipeline_total_ns / 1e9);
     // The idle threads stay parked (StopWarmUp).
     warm.finished = true;
-    Gow3Overlay::SetBackgroundLoading(0, 0);
+    TlgOverlay::SetBackgroundLoading(0, 0);
     Storage::DataBase::Instance().FinishPreload();
 }
 
@@ -1346,7 +1346,7 @@ void PipelineCache::StopWarmUp() {
     // while the game ran crashed in ntdll (RtlWakeAllConditionVariable). Join them once the
     // cause is known.
     background = nullptr;
-    Gow3Overlay::SetBackgroundLoading(0, 0);
+    TlgOverlay::SetBackgroundLoading(0, 0);
 }
 
 void PipelineCache::Sync() {

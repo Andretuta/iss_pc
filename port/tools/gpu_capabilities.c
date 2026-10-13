@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     const int live_mode = argc > 1 && !strcmp(argv[1], "--live-resolution");
     const VkApplicationInfo app = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "gow3 scene scaling probe",
+        .pApplicationName = "tlg scene scaling probe",
         .apiVersion = VK_API_VERSION_1_3,
     };
     const VkInstanceCreateInfo create = {
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (argc > 1 && !strcmp(argv[1], "--list")) {
-        /* The launcher's GPU choice: index (as GOW3_GPU_ID), name, type. */
+        /* The launcher's GPU choice: index (as TLG_GPU_ID), name, type. */
         for (uint32_t i = 0; i < count; ++i) {
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(devices[i], &props);
@@ -107,12 +107,12 @@ int main(int argc, char **argv) {
         vkDestroyInstance(instance, NULL);
         return 0;
     }
-    /* Match vk_instance.cpp: its default ranking, or the GOW3_GPU_ID index while it exists. */
+    /* Match vk_instance.cpp: its default ranking, or the TLG_GPU_ID index while it exists. */
     VkPhysicalDevice selected = devices[0];
-    const char *gpu_id = getenv("GOW3_GPU_ID");
+    const char *gpu_id = getenv("TLG_GPU_ID");
     const unsigned long index = gpu_id && atoi(gpu_id) >= 0 ? strtoul(gpu_id, NULL, 10) : count;
     if (gpu_id && atoi(gpu_id) >= 0 && index >= count)
-        fputs("GPU: GOW3_GPU_ID is outside the device list; choosing automatically\n", stderr);
+        fputs("GPU: TLG_GPU_ID is outside the device list; choosing automatically\n", stderr);
     if (index < count) {
         selected = devices[index];
     } else {

@@ -113,13 +113,13 @@ Instance::Instance(const Frontend::WindowSystemInfo& window_info, s32 physical_d
     const std::size_t num_physical_devices = static_cast<u16>(physical_devices.size());
     ASSERT_MSG(num_physical_devices > 0, "No physical devices found");
     LOG_INFO(Render_Vulkan, "Found {} physical devices", num_physical_devices);
-    // gow3: the device list in the game log tells a missing driver apart from a wrong choice.
+    // tlg: the device list in the game log tells a missing driver apart from a wrong choice.
     for (std::size_t i = 0; i < num_physical_devices; ++i) {
         const auto props = physical_devices[i].getProperties();
         std::printf("GPU %zu: %s (%s)\n", i, props.deviceName.data(),
                     vk::to_string(props.deviceType).c_str());
     }
-    // gow3: a saved choice can outlive its GPU (removed card, new driver order).
+    // tlg: a saved choice can outlive its GPU (removed card, new driver order).
     if (physical_device_index >= static_cast<s32>(num_physical_devices)) {
         std::printf("GPU: selected GPU %d is not in the device list; choosing automatically\n",
                     physical_device_index);
@@ -221,7 +221,7 @@ std::string Instance::GetDriverVersionName() {
 
 namespace {
 bool PipelineBinaryCacheRequested() {
-    const char* setting = std::getenv("GOW3_PIPELINE_BINARIES");
+    const char* setting = std::getenv("TLG_PIPELINE_BINARIES");
     return !setting || *setting != '0';
 }
 }
@@ -409,9 +409,9 @@ bool Instance::CreateDevice() {
     }
     image_view_min_lod = add_extension(VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME);
     supports_memory_budget = add_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
-    // gow3: FSR 4 v07 INT8 (vk_temporal_upscaler): quad derivatives in compute shaders.
+    // tlg: FSR 4 v07 INT8 (vk_temporal_upscaler): quad derivatives in compute shaders.
     compute_shader_derivatives = add_extension(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
-    // gow3: FSR 4.1.1 passes (dot2 of halves accumulated in float, as vkd3d-proton translates them).
+    // tlg: FSR 4.1.1 passes (dot2 of halves accumulated in float, as vkd3d-proton translates them).
     mixed_float_dot_product =
         feature_chain.get<vk::PhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE>()
             .shaderMixedFloatDotProductFloat16AccFloat32 &&
@@ -459,7 +459,7 @@ bool Instance::CreateDevice() {
     const auto vk11_features = feature_chain.get<vk::PhysicalDeviceVulkan11Features>();
     vk12_features = feature_chain.get<vk::PhysicalDeviceVulkan12Features>();
     vk13_features = feature_chain.get<vk::PhysicalDeviceVulkan13Features>();
-    // gow3: DLSS (optional bridge DLL) needs its own device extensions on NVIDIA GPUs.
+    // tlg: DLSS (optional bridge DLL) needs its own device extensions on NVIDIA GPUs.
     std::vector<const char*> dlss_extensions;
     if (Dlss* dlss = Dlss::Get()) {
         dlss->AppendDeviceExtensions(*instance, physical_device, dlss_extensions);
@@ -501,7 +501,7 @@ bool Instance::CreateDevice() {
                 .shaderImageGatherExtended = features.shaderImageGatherExtended,
                 .shaderStorageImageExtendedFormats = features.shaderStorageImageExtendedFormats,
                 .shaderStorageImageMultisample = features.shaderStorageImageMultisample,
-                // gow3: required by the FSR 3 accumulate shaders (vk_temporal_upscaler).
+                // tlg: required by the FSR 3 accumulate shaders (vk_temporal_upscaler).
                 .shaderStorageImageWriteWithoutFormat =
                     features.shaderStorageImageWriteWithoutFormat,
                 .shaderClipDistance = features.shaderClipDistance,

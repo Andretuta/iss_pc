@@ -6,7 +6,7 @@ STALL=${STALL:-20}; SUMMARY=${SUMMARY:-120}
 logs=$HOME/decomp/port/out/logs
 pid=""; log=""; dumped=0; last_sum=$(date +%s)
 while true; do
-  p=$(pgrep -f "out/gow3-probe .*boot-linked.bin" | head -1)
+  p=$(pgrep -f "out/tlg-probe .*boot-linked.bin" | head -1)
   if [[ -n $p && $p != "$pid" ]]; then
     pid=$p; dumped=0; sleep 2; log=$(ls -1t "$logs"/run-*.log | head -1)
     echo "Sessão iniciada (pid $pid, log $(basename "$log"))"

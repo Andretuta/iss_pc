@@ -27,7 +27,7 @@ with FSR 1.
 **Tested and playable from start to finish** at native 1080p with the 240 FPS engine frame
 rate. At other render resolutions some textures look broken; a fix is in progress.
 
-Progress is tracked (in Portuguese) in [docs/gow3/ROADMAP.md](docs/gow3/ROADMAP.md).
+Progress is tracked (in Portuguese) in [docs/tlg/ROADMAP.md](docs/tlg/ROADMAP.md).
 
 ## What works
 
@@ -68,9 +68,9 @@ Progress is tracked (in Portuguese) in [docs/gow3/ROADMAP.md](docs/gow3/ROADMAP.
   download.
 
 **Steps**
-1. Download `gow3-windows.zip` from the
+1. Download `tlg-windows.zip` from the
    [Releases page](https://github.com/FelipePrado0/gow3_pc/releases/latest).
-2. Extract it to a folder of your choice, for example `C:\Games\gow3-windows`. Do not run it from
+2. Extract it to a folder of your choice, for example `C:\Games\tlg-windows`. Do not run it from
    inside the zip.
 3. Open **`God of War III.exe`**. If Windows shows "Windows protected your PC", click
    **More info**, then **Run anyway**: the program is not digitally signed.
@@ -118,7 +118,7 @@ Patches and fixes are included and applied automatically: texture fix, skip vide
 
 ## Building from source
 
-Development happens on the `gow3` branch; `main` receives tested merges.
+Development happens on the `tlg` branch; `main` receives tested merges.
 
 1. Install MSYS2 (`winget install MSYS2.MSYS2`) and, in the **MSYS2 CLANG64** shell, the
    packages listed in [packaging/windows/README.md](packaging/windows/README.md).
@@ -127,14 +127,14 @@ Development happens on the `gow3` branch; `main` receives tested merges.
    ```bash
    git clone --recursive https://github.com/FelipePrado0/gow3_pc
    cd gow3_pc
-   git checkout gow3   # the newest work; skip it to build main
+   git checkout tlg   # the newest work; skip it to build main
    bash build.sh
    ```
 
 3. Start the launcher (in PowerShell, in the project folder):
 
    ```powershell
-   python launcher/gow3_launcher_win.py
+   python launcher/tlg_launcher_win.py
    ```
 
 4. On **Game**, choose the game folder. Adjust **Display**, **Performance** and **Patches** if
@@ -143,25 +143,25 @@ Development happens on the `gow3` branch; `main` receives tested merges.
 To play with the saved settings without opening the launcher's window (for a shortcut or Steam):
 
 ```powershell
-python launcher/gow3_launcher_win.py --play
+python launcher/tlg_launcher_win.py --play
 ```
 
 Or without the launcher at all:
 
 ```powershell
-$env:GOW3_GAME_DIR = 'D:\path\CUSA01623'
+$env:TLG_GAME_DIR = 'D:\path\CUSA01623'
 python run.py
 ```
 
-Settings are kept in `gow3.ini` (the game and the in-game menu) and in
-`%APPDATA%\gow3-launcher\settings.json` (the launcher). Saves, the shader cache and
+Settings are kept in `tlg.ini` (the game and the in-game menu) and in
+`%APPDATA%\tlg-launcher\settings.json` (the launcher). Saves, the shader cache and
 `last_run.log` go to the project's `user` folder.
 
 On **Performance → GPU data → Stream buffer memory**, choose **System RAM (cached, default)**,
 **System RAM (uncached)** or **GPU memory (previous behavior)**. System RAM can improve frame
 rates on NVIDIA laptops. The choice is saved and applies on the next game launch, including
 when using `Play God of War III.exe` or `--play`. Choose GPU memory to restore the previous
-allocation behavior. For direct launches without the launcher, `GOW3_STREAM_MEMORY` accepts
+allocation behavior. For direct launches without the launcher, `TLG_STREAM_MEMORY` accepts
 `cached`, `host` or `device`; the launcher's saved choice takes precedence when using it.
 
 ### Keyboard controls
@@ -210,7 +210,7 @@ game's code take the prepared executable (`out/eboot.elf`) as their argument.
 To check that every system function the game uses is implemented, without starting the game:
 
 ```bash
-out/gow3-probe.exe out/boot-linked.bin --app0 <game folder> --check-imports
+out/tlg-probe.exe out/boot-linked.bin --app0 <game folder> --check-imports
 ```
 
 ## How it works
@@ -221,12 +221,12 @@ out/gow3-probe.exe out/boot-linked.bin --app0 <game folder> --check-imports
 | Loader | `src/probe.c` | Loads the image, installs the validated hooks (cheats, multipliers, health bar) and starts the game's original code |
 | Runtime | `src/runtime_*.c` | Reimplements the PS4 system functions: memory, threads, files, audio, video, controller, saves and services |
 | GPU | `gpu/shadps4/` | The shadPS4 video core, translating the PS4 GPU commands and shaders to Vulkan, with cuesta4's God of War III fixes (`eltutz` branch) and this port's speed work (background shader cache, deferred readbacks) |
-| In-game menu | `gpu/shim/gow3_overlay.cpp` | The Dear ImGui menu and performance overlay; settings in `gpu/shim/gow3_settings.cpp` |
+| In-game menu | `gpu/shim/tlg_overlay.cpp` | The Dear ImGui menu and performance overlay; settings in `gpu/shim/tlg_settings.cpp` |
 | Patches | `patches/God_of_War_III_Remastered.xml`, `scripts/patches.py` | Applied in memory at start, without changing the game files |
-| Launcher | `launcher/gow3_launcher_win.py` | Settings, patches, mods, controls and the play button |
+| Launcher | `launcher/tlg_launcher_win.py` | Settings, patches, mods, controls and the play button |
 
 More documentation: [mods](docs/MODS.md), [frame map and upscaler](docs/upscaler.md),
-[parallel GPU work](docs/parallel_gpu.md) and the [roadmap](docs/gow3/ROADMAP.md).
+[parallel GPU work](docs/parallel_gpu.md) and the [roadmap](docs/tlg/ROADMAP.md).
 
 ## Credits
 
