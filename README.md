@@ -46,10 +46,10 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | Dump dos psarc do jogo base | ⚠️ `trico_001/002/003` truncados pelo FTP. Novo dump via USB (Itemzflow) em andamento |
 | Análise Ghidra (GhidraOrbis + REA) do eboot 1.03 | ✅ auto-análise em ~9 min (heap de 16 GB) |
 | Mapeamento: loop principal e threads | ✅ [`analysis/01_main_loop_threads.md`](analysis/01_main_loop_threads.md) |
-| Mapeamento: renderização / GNM | 🔄 em andamento → `analysis/02_rendering_gnm.md` |
+| Mapeamento: renderização / GNM | ✅ [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md) |
 | Mapeamento: áudio | ✅ [`analysis/03_audio.md`](analysis/03_audio.md) |
 | Mapeamento: I/O, psarc, controle, saves, sistema | ✅ [`analysis/04_io_input_saves_system.md`](analysis/04_io_input_saves_system.md) |
-| Loader + runtime | ⏳ não iniciado |
+| Loader + runtime | ⏳ próximo passo |
 
 ---
 
@@ -139,16 +139,44 @@ No Ghidra, a base da imagem é `0x1000000`. Detalhes em [`analysis/01_main_loop_
 - No shutdown, o jogo **relança a si mesmo** com `sceSystemServiceLoadExec("-reboot")`.
 
 ### 3. Renderização
-_Em andamento: o relatório vai em `analysis/02_rendering_gnm.md`._
+Detalhes em [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md).
 
-O engine **"anzu"** (genDESIGN/SIE Japan) tem um backend PS4 em forma de **D3D11**:
-`render/ps4/Js{Device, DeviceContext, SwapChain, Buffer, Texture1D/2D/3D, *View, *State, InputLayout,
-Vertex/PixelShader, ComputeContext/Queue}.cpp`.
-Os passes, em `render/dev`, são SSAO, SMAA, Bloom, PostProcess, TileCull, LightBuffer, AmbientLighting,
-LightProbes, Skinning e instancing por compute.
-Os shaders PSSL vêm pré-compilados (`.sb`) no psarc (`data_trico/ps4_shader_cache/…`), e há ~51 blobs `OrbShdr`
-embutidos no eboot.
-Há modos checkerboard 4K para PS4 Pro (`sceKernelIsNeoMode`), desativáveis com `-force2k`.
+- **Arquitetura:** o renderer do engine **"anzu"** (`render/dev`) foi escrito contra **D3D11**: formatos DXGI,
+  perfis `vs_5_0`/`ps_5_0`/`cs_5_0` e a mensagem "DirectX call failed". A camada `render/ps4/Js*` é um
+  **shim D3D11 → Gnmx** (estático, headers do SDK 4.000) → `libSceGnmDriver`.
+  Os setters (`JsDeviceContextInline.h`) estão inlinados no código chamador.
+- **Funções-chave:**
+  - **Setup:** `CreateDevice`/SwapChain em `0x1c4f9f0`, que também cria as threads `ps4render` e `ps4render_submitDone`.
+  - **Recursos:** `CreateBuffer` `0x246ddd0`, `CreateTexture2D` `0x2477370`, `CreateRTV` `0x2491370`, `CreateSRV` `0x2493620`.
+  - **Shaders:** `CreateVS/PS/CS` em `0x249b400`/`0x2490440`/`0x2473890`.
+  - **Preparação:** `PrepareDraw` `0x2488580`, `PrepareDispatch` `0x2479b70`.
+  - **Draws:** `Draw` `0x2488220`, `DrawIndexed` `0x248e080`, `DrawIndexedInstanced` `0x248e1d0`,
+    `DrawIndexedInstancedIndirect` `0x248e340`.
+  - **Frame:** `Render` `0x1c55690`, `BeginFrame` `0x2495480`, **`Present` `0x1c4dfa0`**.
+- **Submissão:**
+  - Há um único `sceGnmSubmitAndFlipCommandBuffers` por frame (VSYNC), com 3 contextos em voo.
+  - Compute: `ComputeQueue::submit` (`0x249f320`) → `sceGnmDingDong`.
+  - O PM4 sai dos builders do Gnm ou é escrito inline.
+- **Shaders:**
+  - `CreateBlob` (`0x1c53e20`) lê o `.sb` do psarc.
+  - O bind passa pelo CUE `setVs/Ps/CsShader` (`0x24a0c30`/`0x24a0fd0`/`0x24a1370`) → `sceGnmSet*Shader`.
+  - Há 49 blobs `OrbShdr` embutidos (1 VS, 1 PS, 47 CS), provavelmente clear/copy internos do shim.
+- **Resolução:**
+  - **1080p** no PS4 base, com alternativas 1760x990 e 1600x900.
+  - Na **TV 4K do Pro**: checkerboard de 1680x1890 → 3360x1890.
+  - O `-force2k` força 1080p.
+  - O **HDR** (BT.2020 PQ) depende da capacidade do display.
+  - **30 Hz fixo** (`SetFlipRate(h,1)`), com 3 display buffers.
+- **Async compute:** 1 contexto do device, mais 3 por frame, mais 1 fila de dispatch-draw. Skinning, instancing,
+  raycast, AABB e tracking rodam em compute, e **os resultados voltam para a CPU** (gameplay/IA). O port precisa
+  de sincronização GPU→CPU correta.
+- **Para o port:**
+  - **(a) shadPS4**, o mesmo caminho do gow3/bloodborne. Precisa de HLE de ~33 imports Gnm + 10 VideoOut,
+    parser PM4, GCN→SPIR-V, detiling e filas ACB. Ajustes: flip rate liberado, 1080p (equivalente ao `-force2k`),
+    HDR desligado. **Recomendado para começar.**
+  - **(b) Reimplementar o Js\* sobre D3D11/12/Vulkan.** Exige hooks em `Create*`/`PrepareDraw`/`Draw*`/`Present`
+    e o layout de `JsDeviceContext` (0x130f0 bytes). Os shaders só existem como GCN, então ainda precisariam de
+    tradução. O resultado é mais nativo, mas o trabalho é muito maior, ficando como evolução futura.
 
 ### 4. Áudio
 Detalhes em [`analysis/03_audio.md`](analysis/03_audio.md).
@@ -224,18 +252,29 @@ implementação. Isso não garante que cada função esteja completa.
 
 ---
 
-## Estimativa preliminar (em construção)
+## Estimativa (1 dev experiente, em tempo integral, partindo do gow3_pc/bloodborne_pc)
 
-| Área | Esforço | Fonte |
-|---|---|---|
-| Loader/linker e runtime base | adaptar o gow3_pc/bloodborne_pc | a definir |
-| Áudio: AudioOut, stubs e ATRAC9 | 1–2 dias | 03_audio |
-| Áudio: NGS2 em software, mínimo (sem efeitos) | 2–3 semanas | 03_audio |
-| Áudio: NGS2 com efeitos (reverb/EQ/comp/upmix/chorus/delay) | +3–5 semanas | 03_audio |
-| _Alternativa ao NGS2 em software_ | 1–4 semanas | carregar o `libSceNgs2.sprx` do firmware do próprio console (não verificado) |
-| Threads, timing e 30 fps → FPS livre | a definir | 01 |
-| Vídeo (shadPS4 + fixes do engine anzu) | a definir | 02 |
-| I/O, controle, saves e serviços (PlayGo, troféus, LoadExec, rede como stub) | ~4–7 dias | 04 |
+São ordens de grandeza, não compromissos. Os riscos estão listados abaixo da tabela.
+
+| # | Área | O que fazer | Esforço |
+|---|---|---|---|
+| 1 | Loader/linker | Adaptar `prepare.py`/`link_modules.py`/`probe.c` para o eboot 1.03 + libc/Fios2 do TLG | 1–2 semanas |
+| 2 | Runtime: kernel/sistema | 16 funções do libkernel (event flags etc.), SaveDataMemory2, PlayGo "tudo instalado", stubs (rede, troféus, PlayGoDialog, Audio3d), LoadExec → reexecutar | ~1 semana |
+| 3 | Controle | Reaproveitar `runtime_pad.c` (SDL3) e mapear teclado/mouse | 2–3 dias |
+| 4 | Threads e timing | Mapear afinidades (7 cores fixos) e prioridades, emular o spin-sleep por equeue, evitar busy-waits no core 0 | 1–2 semanas |
+| 5 | **Vídeo até a 1ª imagem** | Ligar o núcleo do shadPS4, HLE Gnm/VideoOut e forçar 1080p | 2–4 semanas |
+| 6 | **Vídeo até ficar jogável** | Bugs específicos do anzu (async compute + readback para CPU, checkerboard desligado, formatos GNF), NVIDIA/6 GB de VRAM | 1–3 meses |
+| 7 | **Áudio** | AudioOut (1–2 dias) + **NGS2 em software** (mín. 2–3 semanas; +3–5 com efeitos) — _ou_ carregar o `libSceNgs2.sprx` do firmware do próprio console (1–4 semanas, não verificado) | 3–8 semanas |
+| 8 | 60 FPS / extras (opcional) | Patch do flip rate + dt fixo em 1/30 + clamp de 0,05 s. Verificar física (Havok), animação e Lua; resolução/ultrawide | 2–6 semanas |
+
+**Total até "jogável do início ao fim a 30 fps": ~4–7 meses de 1 pessoa.** Muito do trabalho em paralelo
+(áudio × vídeo) e os fixes que já existem nos ports irmãos podem encurtar isso.
+
+**Maiores riscos:**
+1. Bugs gráficos do engine anzu no tradutor do shadPS4, sobretudo o async compute com readback.
+2. O NGS2, que ninguém implementou ainda.
+3. A NVIDIA, que é pouco testada nesses ports.
+4. 60 fps, porque a física e as animações do Trico podem estar presas a 30 Hz.
 
 ---
 
