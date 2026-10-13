@@ -66,7 +66,21 @@ static size_t reads;
 static uint8_t connected_count;
 
 static uint64_t now_us(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000u+(uint64_t)t.tv_nsec/1000u; }
-static uint8_t axis(int16_t v) { int x=(v+32768)>>8; return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x); }
+/* TLG_STICK_DEADZONE (0..0.5, default 0.10): stick values inside it read as centered, the rest
+ * is rescaled, so worn sticks (drift) don't move the character or camera. */
+static float stick_deadzone(void) {
+    static float zone=-1;
+    if (zone<0) { const char *e=getenv("TLG_STICK_DEADZONE"); zone=e && *e ? (float)atof(e) : 0.10f; if (zone<0) zone=0; if (zone>0.5f) zone=0.5f; }
+    return zone;
+}
+static uint8_t axis(int16_t v) {
+    float f=(float)v/32767.f, zone=stick_deadzone();
+    if (f>1) f=1;
+    if (f<-1) f=-1;
+    f=fabsf(f)<=zone ? 0.f : (f>0 ? f-zone : f+zone)/(1.f-zone);
+    int x=(int)lroundf(f*127.5f+127.5f);
+    return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x);
+}
 static uint8_t trigger(int16_t v) { int x=v>>7; return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x); }
 static uint16_t touch_axis(float v, int max) {
     return (uint16_t)(v<=0.0f ? 0 : v>=1.0f ? max : (int)(v*max+0.5f));
@@ -105,19 +119,47 @@ static void play_click(PadData *d) {
 }
 
 /* Opens the first gamepad SDL knows about; called under lock. */
+/* Every connected controller is open; the game reads the one used last (a press or a stick
+ * past half way), so a second controller lying on the desk never takes over. */
+#define MAX_GAMEPADS 8
+static SDL_Gamepad *gamepads[MAX_GAMEPADS];
+static int gamepad_active(SDL_Gamepad *g) {
+    for (int b=0;b<SDL_GAMEPAD_BUTTON_COUNT;++b) if (SDL_GetGamepadButton(g,(SDL_GamepadButton)b)) return 1;
+    for (int a=0;a<SDL_GAMEPAD_AXIS_COUNT;++a) if (abs(SDL_GetGamepadAxis(g,(SDL_GamepadAxis)a))>16000) return 1;
+    return 0;
+}
 static SDL_Gamepad *current_gamepad(void) {
+    static uint64_t last_scan;
     if (!sdl_ready) sdl_ready = SDL_WasInit(SDL_INIT_GAMEPAD) ? 1 : SDL_InitSubSystem(SDL_INIT_GAMEPAD) ? 1 : -1;
     if (sdl_ready<0) return NULL;
-    if (gamepad && !SDL_GamepadConnected(gamepad)) { SDL_CloseGamepad(gamepad); gamepad=NULL; }
-    if (!gamepad) {
+    for (int i=0;i<MAX_GAMEPADS;++i)
+        if (gamepads[i] && !SDL_GamepadConnected(gamepads[i])) {
+            if (gamepads[i]==gamepad) gamepad=NULL;
+            SDL_CloseGamepad(gamepads[i]); gamepads[i]=NULL;
+        }
+    const uint64_t now=now_us();
+    if (now-last_scan>1000000 || !gamepad) {
+        last_scan=now;
         int count=0;
         SDL_JoystickID *ids=SDL_GetGamepads(&count);
-        if (ids && count>0) {
-            gamepad=SDL_OpenGamepad(ids[0]);
-            if (gamepad) { ++connected_count; printf("Runtime: gamepad connected: %s\n",SDL_GetGamepadName(gamepad)); }
+        for (int c=0;ids && c<count;++c) {
+            int open=0, slot=-1;
+            for (int i=0;i<MAX_GAMEPADS;++i) {
+                if (gamepads[i] && SDL_GetGamepadID(gamepads[i])==ids[c]) open=1;
+                if (!gamepads[i] && slot<0) slot=i;
+            }
+            if (open || slot<0) continue;
+            gamepads[slot]=SDL_OpenGamepad(ids[c]);
+            if (gamepads[slot]) { ++connected_count; printf("Runtime: gamepad connected: %s\n",SDL_GetGamepadName(gamepads[slot])); }
         }
         SDL_free(ids);
     }
+    for (int i=0;i<MAX_GAMEPADS;++i)
+        if (gamepads[i] && gamepads[i]!=gamepad && (!gamepad || gamepad_active(gamepads[i]))) {
+            if (gamepad) printf("Runtime: gamepad in use: %s\n",SDL_GetGamepadName(gamepads[i]));
+            gamepad=gamepads[i];
+            break;
+        }
     return gamepad;
 }
 /* Button sources: a host button or key and the PS4 button it presses. The defaults below can be
