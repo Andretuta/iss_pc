@@ -17,6 +17,10 @@ mkdir -p "$port/user"
 export GOW3_PIPELINE_BINARIES=${GOW3_PIPELINE_BINARIES:-0}
 # O TLG lê na CPU resultados de compute da GPU (JsComputeContext::AsyncMap): readbacks precisos.
 export GOW3_READBACKS=${GOW3_READBACKS:-2}
+# Orçamento do cache de texturas: o cálculo padrão pressiona a partir de ~2 GB de uso total, e o TLG
+# usa ~3,5 GB (texturas descartadas e recarregadas = engasgos e glitches). 5200 MB serve para 6 GB de
+# VRAM; ajuste para outras placas (ex.: 7000 em 8 GB).
+export GOW3_GC_BUDGET_MB=${GOW3_GC_BUDGET_MB:-5200}
 export GOW3_RESTART_COMMAND=${GOW3_RESTART_COMMAND:-"$0"}
 log=$out/last_run.log
 echo "Rodando (log: $log)"
