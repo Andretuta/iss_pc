@@ -6,7 +6,7 @@ usando a cópia do próprio usuário.
 > **Nenhum arquivo do jogo é versionado aqui.** Isso inclui eboot, prx, psarc e saída bruta de descompilação.
 > Para rodar, cada pessoa precisa do próprio dump. Veja `.gitignore`.
 
-_Última atualização: 2026-10-12_
+_Última atualização: 2026-10-12 (primeiro boot)_
 
 ---
 
@@ -49,7 +49,9 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | Mapeamento: renderização / GNM | ✅ [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md) |
 | Mapeamento: áudio | ✅ [`analysis/03_audio.md`](analysis/03_audio.md) |
 | Mapeamento: I/O, psarc, controle, saves, sistema | ✅ [`analysis/04_io_input_saves_system.md`](analysis/04_io_input_saves_system.md) |
-| Loader + runtime | ⏳ próximo passo |
+| Loader + runtime (base gow3_pc em `port/`) | ✅ compila no Nobara; 391/391 imports resolvidas (`Imports: 0 missing`) |
+| **Primeiro boot no PC** | ✅ `trico main() start...` → boot em 0,41 s → engine rodando a ~28,7 fps (trava de 30), 1148 frames em 40 s sem falhas (NGS2 mudo) |
+| Imagem na tela / jogabilidade | 🔄 a verificar visualmente; psarc 001/002/003 completos chegando via USB |
 
 ---
 
@@ -281,6 +283,8 @@ São ordens de grandeza, não compromissos. Os riscos estão listados abaixo da 
 ## Estrutura do repositório
 
 ```
+run_tlg.sh           prepara, linka e roda o jogo (./run_tlg.sh [segundos])
+port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)
 README.md            este documento (status + achados)
 analysis/            relatórios de engenharia reversa (.md) e listas de imports (.json)
 scripts/             utilitários (imports SCE, leitor de TOC PSARC, mirror/verify FTP, progresso do dump USB)
