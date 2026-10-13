@@ -9,7 +9,11 @@ root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 port=$root/port
 seconds=${1:-120}; shots=${2:-}; script=${3:-}
 dump=$root/dump
-while pgrep -x tlg-probe >/dev/null; do echo "waiting for another game instance..."; sleep 10; done
+# One game instance at a time on this machine (shared lock with the other agents' runs).
+lock=${GAME_LOCK:-/tmp/claude-1000/-home-hayatog-decomp/79f27d1d-d3f5-4a2e-a5f3-511e01385ae2/scratchpad/game.lock}
+if [[ -z ${GR2_RUN_LOCKED:-} ]]; then
+    touch "$lock"; exec env GR2_RUN_LOCKED=1 flock "$lock" "$0" "$@"
+fi
 (cd "$port/scripts" &&
  python3 prepare.py "$dump" --out ../out >/dev/null &&
  python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx libSceJobManager.prx \
