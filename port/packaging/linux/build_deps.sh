@@ -19,7 +19,10 @@ cmake -S sdl -B sdl/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PR
     -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
 ninja -C sdl/build install
 
-git clone -q --depth 1 --branch v5.0.0 --recursive https://github.com/zyantific/zydis.git zydis
+# Zydis 5 has no release tag yet: the snapshot Fedora 44 packages (zydis-5.0.0 git 5091440).
+git clone -q https://github.com/zyantific/zydis.git zydis
+git -C zydis checkout -q 5091440
+git -C zydis submodule update -q --init --recursive
 cmake -S zydis -B zydis/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DZYDIS_BUILD_SHARED_LIB=ON -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF -DZYDIS_BUILD_TESTS=OFF \
     -DZYDIS_BUILD_DOXYGEN=OFF
