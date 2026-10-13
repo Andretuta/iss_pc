@@ -15,6 +15,8 @@ python3 "$port/scripts/content_profile.py" "$game" --out "$out" >/dev/null
 mkdir -p "$port/user"
 # O cache de pipeline binário (VK_KHR_pipeline_binary) trava no driver NVIDIA 595: desligado.
 export GOW3_PIPELINE_BINARIES=${GOW3_PIPELINE_BINARIES:-0}
+# O TLG lê na CPU resultados de compute da GPU (JsComputeContext::AsyncMap): readbacks precisos.
+export GOW3_READBACKS=${GOW3_READBACKS:-2}
 export GOW3_RESTART_COMMAND=${GOW3_RESTART_COMMAND:-"$0"}
 log=$out/last_run.log
 echo "Rodando (log: $log)"
