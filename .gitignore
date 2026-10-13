@@ -1,0 +1,23 @@
+# Arquivos do jogo (copyright da Sony/genDESIGN): NUNCA versionar
+dump/
+*.psarc
+*.bin
+*.prx
+*.sprx
+*.sfo
+*.plt
+
+# Ferramentas de terceiros (Ghidra, JDK, GhidraOrbis): instaladas localmente
+tools/
+
+# Saída bruta de descompilação (código derivado do jogo) e caches do REA/Ghidra
+analysis/raw/
+analysis/*.c
+*.rea-snapshot
+*.gpr
+*.rep/
+
+# Outros
+__pycache__/
+*.pyc
+.DS_Store
