@@ -252,6 +252,14 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (file) return file;
     uintptr_t tlg = runtime_tlg_resolve(name);
     if (tlg) return tlg;
+    uintptr_t gr2 = runtime_gr2_resolve(name);
+    if (gr2) return gr2;
+    uintptr_t gr2_np = runtime_gr2_np_resolve(name);
+    if (gr2_np) return gr2_np;
+    uintptr_t gr2_font = runtime_gr2_font_resolve(name);
+    if (gr2_font) return gr2_font;
+    uintptr_t gr2_json = runtime_gr2_json_resolve(name);
+    if (gr2_json) return gr2_json;
     return tlggpu_resolve(name);
 }
 static const struct { const char *nid, *symbol; } import_names[]={
