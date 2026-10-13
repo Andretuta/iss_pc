@@ -197,9 +197,10 @@ static uint64_t patch_tcb_loads(const Segment *segments, uint64_t count) {
 #endif
 #ifndef _WIN32
 static void fault(int sig, siginfo_t *info, void *context) {
-    /* GPU page tracking (write-protected guest pages) is resolved first. */
-    if (gpu_enabled && sig == SIGSEGV && gow3gpu_handle_fault(context, info->si_addr)) return;
-    /* A speculative guest memory read (runtime_memory.c) failed: resume its recovery point. */
+    /* A speculative guest memory read (GPU draw-preparation workers) failed: resume its recovery
+     * point before any readback. With precise readbacks the page may be read-protected because
+     * the GPU wrote it; flushing it from a GPU worker waits on that worker's own pipeline
+     * (deadlock), while giving up leaves the draw to the GPU thread, which reads it safely. */
     if ((sig == SIGSEGV || sig == SIGBUS) && runtime_fault_recover) {
         sigjmp_buf *recover = runtime_fault_recover;
         runtime_fault_recover = NULL;
@@ -209,6 +210,8 @@ static void fault(int sig, siginfo_t *info, void *context) {
         pthread_sigmask(SIG_UNBLOCK, &unblock, NULL);
         siglongjmp(*recover, 1);
     }
+    /* GPU page tracking (write-protected guest pages) is resolved next. */
+    if (gpu_enabled && sig == SIGSEGV && gow3gpu_handle_fault(context, info->si_addr)) return;
     /* The process is terminating: dladdr/snprintf are acceptable here. */
     ucontext_t *uc = context;
     uintptr_t rip = (uintptr_t)uc->uc_mcontext.gregs[REG_RIP];
