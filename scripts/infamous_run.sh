@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # inFAMOUS Second Son: prepares the image, runs the game for N seconds and, optionally, presses buttons
-# from a script and saves screenshots (raw RGBA display dumps converted to PNG).
+# from a script and saves screenshots (raw BGRA display dumps converted to PNG).
 # Usage: scripts/infamous_run.sh [seconds=120] [shots_dir] [press_script]
 #   press_script: lines "<second> <buttons...>" (e.g. "40 cross", "60 options"); each press lasts 0.3 s.
 # Only one game instance may run at a time on this machine: the script waits for any other.
@@ -21,7 +21,7 @@ fi
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
-export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=2 TLG_GC_BUDGET_MB=5600 TLG_UPSCALER=off TLG_JITTER=0 \
+export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=2 TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-3500} TLG_UPSCALER=off TLG_JITTER=0 \
        TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_LANGUAGE=${TLG_LANGUAGE:-1}
 pad=$port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
 if [[ -n $shots ]]; then
@@ -52,7 +52,8 @@ for raw in Path(sys.argv[1]).glob('display_*.raw'):
     m = re.search(r'_(\d+)x(\d+)\.raw$', raw.name); w, h = int(m[1]), int(m[2])
     d = raw.read_bytes()
     if len(d) >= w * h * 4:
-        Image.frombytes('RGBA', (w, h), d[:w*h*4]).convert('RGB').save(raw.with_suffix('.png'))
+        r, g, b, _ = Image.frombytes('RGBA', (w, h), d[:w*h*4]).split()  # the display buffer is BGRA
+        Image.merge('RGB', (b, g, r)).save(raw.with_suffix('.png'))
 EOF
 fi
 echo "exit $code; log: $log"

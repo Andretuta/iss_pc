@@ -11,6 +11,7 @@
 #include "gpu/tlggpu.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
@@ -205,6 +206,103 @@ static void load_button_maps(void) {
     if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
 }
 
+/* Motion (orientation quaternion, acceleration in g, angular velocity in rad/s; axes as SDL's:
+ * x right, y up, z toward the player). A controller with sensors (DualShock 4, DualSense, Switch
+ * Pro...) reports its gyro/accelerometer through SDL; the orientation integrates the gyro and
+ * leans on gravity. Without sensors the tilt is simulated, so motion prompts can be passed with
+ * any controller or the keyboard:
+ *   keyboard: T / G hold the controller turned sideways (to one side / the other), Y shakes it;
+ *   gamepad: hold TLG_MOTION_BUTTON (default "misc1": Share/Capture; any SDL button name) and the
+ *   right stick tilts it (hidden from the game meanwhile); that button + south (A/cross) shakes.
+ * TLG_MOTION=off disables real sensors (simulation still works). */
+static int injected_motion; /* TLG_PAD_FILE tokens: 1 tilt_right (T), 2 tilt_left (G), 4 shake (Y) */
+typedef struct { float w, x, y, z; } Quat;
+static struct { Quat q; float roll, pitch; uint64_t last_us; int sensors, warned; } motion={{1,0,0,0},0,0,0,-1,0};
+static Quat quat_mul(Quat a, Quat b) {
+    return (Quat){a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z, a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+                  a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x, a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w};
+}
+static Quat quat_norm(Quat q) {
+    float n=sqrtf(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z);
+    return n>0 ? (Quat){q.w/n,q.x/n,q.y/n,q.z/n} : (Quat){1,0,0,0};
+}
+/* Gravity as seen by the controller for orientation q: rotate world up (0,1,0) by q^-1. */
+static void gravity_of(Quat q, float out[3]) {
+    Quat c={q.w,-q.x,-q.y,-q.z}, v={0,0,1,0};
+    Quat r=quat_mul(quat_mul(c,v),q);
+    out[0]=r.x; out[1]=r.y; out[2]=r.z;
+}
+static int motion_button(void) {
+    static int button=-2;
+    if (button==-2) {
+        const char *name=getenv("TLG_MOTION_BUTTON");
+        button=(int)SDL_GetGamepadButtonFromString(name && *name ? name : "misc1");
+    }
+    return button;
+}
+static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
+    const uint64_t now=now_us();
+    float dt=motion.last_us ? (float)(now-motion.last_us)*1e-6f : 0.f;
+    if (dt>0.1f) dt=0.1f;
+    motion.last_us=now;
+    if (motion.sensors<0) { const char *e=getenv("TLG_MOTION"); motion.sensors=!(e && !strcmp(e,"off")); }
+    /* Real sensors. */
+    float gyro[3]={0,0,0}, accel[3]={0,0,0};
+    int real=0;
+    if (g && motion.sensors && SDL_GamepadHasSensor(g,SDL_SENSOR_GYRO) && SDL_GamepadHasSensor(g,SDL_SENSOR_ACCEL)) {
+        if (!SDL_GamepadSensorEnabled(g,SDL_SENSOR_GYRO)) {
+            SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_GYRO,true);
+            SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_ACCEL,true);
+            printf("Runtime: motion sensors enabled on %s\n",SDL_GetGamepadName(g));
+        }
+        real=SDL_GetGamepadSensorData(g,SDL_SENSOR_GYRO,gyro,3) && SDL_GetGamepadSensorData(g,SDL_SENSOR_ACCEL,accel,3);
+    }
+    /* Simulated tilt: target roll/pitch from keys or the modifier + right stick. */
+    float roll=0, pitch=0;
+    int shake=0, simulated=0;
+    if ((k && k[SDL_SCANCODE_T]) || (injected_motion & 1)) { roll=1.5708f; simulated=1; }
+    if ((k && k[SDL_SCANCODE_G]) || (injected_motion & 2)) { roll=-1.5708f; simulated=1; }
+    if ((k && k[SDL_SCANCODE_Y]) || (injected_motion & 4)) { shake=1; simulated=1; }
+    if (g && motion_button()>=0 && SDL_GetGamepadButton(g,(SDL_GamepadButton)motion_button())) {
+        roll=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)/32767.f*1.5708f;
+        pitch=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f*1.5708f;
+        if (SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_SOUTH)) { shake=1; d->buttons&=~(uint32_t)BTN_CROSS; }
+        d->right_x=d->right_y=128;
+        simulated=1;
+    }
+    if (real && !simulated) {
+        /* Integrate the gyro, then pull slowly toward the measured gravity (complementary filter). */
+        Quat w={0,gyro[0]*dt*0.5f,gyro[1]*dt*0.5f,gyro[2]*dt*0.5f};
+        const Quat dq=quat_mul(motion.q,w);
+        motion.q=quat_norm((Quat){motion.q.w+dq.w,motion.q.x+dq.x,motion.q.y+dq.y,motion.q.z+dq.z});
+        float a[3]={accel[0]/9.80665f,accel[1]/9.80665f,accel[2]/9.80665f}, e[3];
+        gravity_of(motion.q,e);
+        float n=sqrtf(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);
+        if (n>0.5f && n<1.5f) { /* error axis = measured x estimated, applied as a small rotation */
+            float c[3]={a[1]*e[2]-a[2]*e[1],a[2]*e[0]-a[0]*e[2],a[0]*e[1]-a[1]*e[0]}, gain=0.02f;
+            Quat fix={1,c[0]*gain/n,c[1]*gain/n,c[2]*gain/n};
+            motion.q=quat_norm(quat_mul(motion.q,fix));
+        }
+        for (int i=0;i<3;++i) { d->acceleration[i]=a[i]; d->angular_velocity[i]=gyro[i]; }
+    } else {
+        /* Ease toward the target so the game sees a turning motion, not a jump. */
+        const float rate=dt>0 ? 1.f-expf(-dt*12.f) : 1.f;
+        float old_roll=motion.roll, old_pitch=motion.pitch;
+        motion.roll+=(roll-motion.roll)*rate; motion.pitch+=(pitch-motion.pitch)*rate;
+        Quat qr={cosf(motion.roll*0.5f),0,0,sinf(-motion.roll*0.5f)};  /* roll about z (toward player) */
+        Quat qp={cosf(motion.pitch*0.5f),sinf(motion.pitch*0.5f),0,0}; /* pitch about x */
+        motion.q=quat_norm(quat_mul(qp,qr));
+        float gv[3]; gravity_of(motion.q,gv);
+        for (int i=0;i<3;++i) d->acceleration[i]=gv[i];
+        if (dt>0) { d->angular_velocity[0]=(motion.pitch-old_pitch)/dt; d->angular_velocity[2]=-(motion.roll-old_roll)/dt; }
+        if (shake) { /* ~7 Hz up/down shake of +-2.5 g */
+            const float t=(float)(now%1000000u)*1e-6f, s=sinf(t*6.2831853f*7.f);
+            d->acceleration[1]+=2.5f*s; d->angular_velocity[0]+=6.f*cosf(t*6.2831853f*7.f);
+        }
+        if (simulated && !motion.warned) { motion.warned=1; puts("Runtime: simulated controller tilt/shake in use"); }
+    }
+    d->orientation[0]=motion.q.x; d->orientation[1]=motion.q.y; d->orientation[2]=motion.q.z; d->orientation[3]=motion.q.w;
+}
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
@@ -241,6 +339,7 @@ static void sample_host(PadData *d) {
             }
         }
     }
+    sample_motion(d,g,k);
     /* The keyboard works with or without a gamepad: its buttons add to the pad's, and a stick
      * follows the keys only while one of them is held. */
     if (!k) return;
@@ -256,7 +355,8 @@ static void sample_host(PadData *d) {
 /* TLG_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated
  * tokens, re-read when it changes: button names (cross circle square triangle l1 r1 l2 r2 l3 r3
  * options touchpad touchpad_left touchpad_right up down left right) are held while listed;
- * touchpad is the left side; lx= ly= rx= ry= (0..255) override the sticks. An empty file
+ * touchpad is the left side; lx= ly= rx= ry= (0..255) override the sticks; tilt_right, tilt_left
+ * and shake drive the simulated motion sensor (see sample_motion). An empty file
  * releases everything. */
 static struct { uint32_t buttons; int stick[4]; } injected={0,{-1,-1,-1,-1}};
 static int replay_armed;      /* 1 while a TLG_PAD_REPLAY recording plays, 2 once it ended */
@@ -282,11 +382,15 @@ static void read_inject(void) {
     if (!f) return;
     static const char *sticks[]={"lx=","ly=","rx=","ry="};
     injected.buttons=0;
+    injected_motion=0;
     for (int i=0;i<4;++i) injected.stick[i]=-1;
     char token[64];
     while (fscanf(f,"%63s",token)==1) {
         if (!strcmp(token,"replay") && replay_armed!=1) { replay_armed=1; replay_start=0; } /* TLG_PAD_REPLAY */
         for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!strcmp(token,ps_names[i].name)) injected.buttons|=ps_names[i].ps;
+        if (!strcmp(token,"tilt_right")) injected_motion|=1;
+        if (!strcmp(token,"tilt_left")) injected_motion|=2;
+        if (!strcmp(token,"shake")) injected_motion|=4;
         for (int i=0;i<4;++i) if (!strncmp(token,sticks[i],3)) { int v=atoi(token+3); injected.stick[i]=v<0 ? 0 : v>255 ? 255 : v; }
     }
     fclose(f);

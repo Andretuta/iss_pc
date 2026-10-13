@@ -34,7 +34,7 @@ GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
 DEFAULT_ENV = {
     'TLG_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
     'TLG_READBACKS': '2',          # the game reads GPU compute results on the CPU (AsyncMap)
-    'TLG_GC_BUDGET_MB': '5600',    # texture cache budget for 6 GB of VRAM
+    'TLG_GC_BUDGET_MB': '3500',    # texture cache budget; 5600 exhausts 6 GB of VRAM in inFAMOUS
     'TLG_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
     'TLG_JITTER': '0',
     'TLG_OBJECT_MOTION': '0',
@@ -52,7 +52,7 @@ DEFAULT_SETTINGS = {
     'show_fps': False,
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
     'vsync': True,
-    'vram_budget_mb': 5600,
+    'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
 }
 
 
