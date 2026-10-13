@@ -347,7 +347,18 @@ static int overlaps(uintptr_t start, uintptr_t end, int ignore_reserved) {
     return 0;
 }
 /* First-fit search in the PS4 user range, starting from the hint. */
+/* System-reserved window (shim AddressSpace::SystemReservedVirtualBase/Size). Gnm places fixed
+ * objects there, e.g. the tessellation factor ring at 0x7f0000000 that The Last Guardian maps by
+ * hint and then verifies; an exact free hint in this window is honoured. */
+#define SYSTEM_RESERVED_MIN UINT64_C(0x700000000)
+#define SYSTEM_RESERVED_MAX UINT64_C(0x800000000)
+static int range_free(uintptr_t start, uint64_t size) {
+    size_t i=vma_index(start);
+    return i==vma_count || vmas[i].start>=start+size;
+}
 static uintptr_t find_free(uintptr_t hint, uint64_t size, uint64_t alignment) {
+    if (hint>=SYSTEM_RESERVED_MIN && hint+size<=SYSTEM_RESERVED_MAX && !(hint%alignment) && range_free(hint,size))
+        return hint;
     uintptr_t at=align_up(hint<USER_MIN ? USER_MIN : hint, alignment);
     for (size_t i=vma_index(at); at+size<=USER_MAX; ++i) {
         if (i==vma_count || vmas[i].start>=at+size) return at;

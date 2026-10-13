@@ -41,10 +41,18 @@ elseif (GOW3_PGO STREQUAL "use")
 endif()
 
 find_package(Vulkan REQUIRED)
+# Pinned Vulkan-Headers (submodule) ahead of the system ones: distro headers can lag behind the
+# extensions the shadPS4 video core uses (e.g. Fedora 44 ships 1.4.341, VALVE mixed float dot is newer).
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/vulkan-headers/include/vulkan/vulkan.hpp)
+    include_directories(BEFORE SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/third_party/vulkan-headers/include)
+endif()
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
 # gow3 (Windows): MSYS2 has no magic_enum/miniz packages; the submodules are used instead.
-find_package(magic_enum QUIET)
+# The pinned submodule is preferred: Fedora's magic_enum installs flat headers (no magic_enum/ dir).
+if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/magic_enum/include/magic_enum/magic_enum.hpp)
+    find_package(magic_enum QUIET)
+endif()
 if (NOT magic_enum_FOUND)
     add_library(magic_enum INTERFACE)
     add_library(magic_enum::magic_enum ALIAS magic_enum)
@@ -77,7 +85,12 @@ if (NOT miniz_FOUND)
     unset(CMAKE_POLICY_VERSION_MINIMUM)
     add_library(miniz::miniz ALIAS miniz)
 endif()
-find_package(Zydis REQUIRED)
+find_package(Zydis QUIET)
+if (NOT Zydis_FOUND)
+    # Fedora/Nobara ship zydis-devel with a pkg-config file only.
+    pkg_check_modules(ZYDIS REQUIRED IMPORTED_TARGET zydis)
+    add_library(Zydis::Zydis ALIAS PkgConfig::ZYDIS)
+endif()
 find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
 
 set(SIRIT_USE_SYSTEM_SPIRV_HEADERS OFF CACHE BOOL "" FORCE)

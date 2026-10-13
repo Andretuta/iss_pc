@@ -16,3 +16,6 @@
 [submodule "port/third_party/LibAtrac9"]
 	path = port/third_party/LibAtrac9
 	url = https://github.com/Thealexbarney/LibAtrac9.git
+[submodule "port/gpu/third_party/vulkan-headers"]
+	path = port/gpu/third_party/vulkan-headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git
