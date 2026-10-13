@@ -53,7 +53,7 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
     'stick_deadzone': 10,    # percent; runtime_pad.c TLG_STICK_DEADZONE
-    'gpu_readbacks': '0',    # 0 fast (35 FPS), 1 relaxed, 2 precise (21 FPS: the game waits for GPU results)
+    'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 
 
