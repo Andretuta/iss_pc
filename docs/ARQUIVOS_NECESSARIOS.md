@@ -4,42 +4,40 @@
 
 ## Arquivos do jogo necessários
 
-Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use **Gravity Rush 2 CUSA03694 (EUA) com o update 01.11**, montado numa pasta só, com o jogo base e o update por cima. São ~28 GB.
+Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use **inFAMOUS Second Son CUSA00223 (EUA), jogo base 1.00 com o update 1.07**, montado numa pasta só, com o jogo base e o update por cima. São ~33 GB (27 GB do jogo base + 6,4 GB do update).
 
-| Arquivo | Vem de | Tamanho | Para quê |
-|---|---|---|---|
-| `eboot.bin` | update 01.11 | 28 MB | o código do jogo (tem que ser o do 1.11) |
-| `sce_module/libc.prx`, `libSceFios2.prx`, `libSceJobManager.prx` | jogo base | 1,7 MB | bibliotecas do próprio jogo |
-| `sysdata/libSceSecure.prx` | jogo base | pequeno | criptografia do próprio jogo |
-| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic1.png`) | base + update | ~5 MB | metadados, instalação e a arte do launcher |
-| `Gravite2_Chunk0.psarc`, `Gravite2_Chunk1.psarc` | jogo base | 10 + 15,8 GB | conteúdo principal |
-| `Gravite2_Patch_Chunk0.psarc`, `Gravite2_Patch_Chunk1.psarc` | update 01.11 | 0,5 + 1,6 GB | correções do update |
-| `sce_discmap.plt`, `sce_discmap_patch.plt` | update 01.11 | pequenos | mapa de arquivos |
+| Arquivo | Vem de | Para quê |
+|---|---|---|
+| `eboot.bin` | update 1.07 | o código do jogo (tem que ser o do 1.07) |
+| `sce_module/libc.prx`, `sce_module/libSceFios2.prx` | update 1.07 | bibliotecas do próprio jogo (a `libc.prx` do 1.00 não serve) |
+| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic1.png`) | jogo base (+ `param.sfo` do update) | metadados, instalação e a arte do launcher |
+| `art/` (`cache/`, `movies/`, `ui/`) | base + update | conteúdo do jogo (o update substitui parte de `art/cache` e `art/movies`) |
+| `playgo.pgm`, `sce_discmap.plt`, `sce_discmap_patch.plt` | base + update | mapa de arquivos e instalação |
 
-**Do firmware do console (opcional, para ter som):** `libSceNgs2.sprx`, de `/system/common/lib/` do seu PS4. Ele vai na pasta `system_lib/` ao lado do executável.
+**Do firmware do console:** nada. Este jogo não usa nenhum módulo do sistema do PS4 (`libSceNgs2`, `libSceSecure` e `libSceJobManager` não são importados). A pasta `system_lib/` do pacote fica vazia.
 
 **Como montar a pasta:**
-1. No Itemzflow, faça o dump do jogo (`CUSA03694`) e do update (`CUSA03694-patch`) para um pendrive exFAT.
+1. No Itemzflow, faça o dump do jogo (`CUSA00223`) para um pendrive exFAT. Para o update (`CUSA00223-patch`), dá para usar o dump do Itemzflow ou o FTP do GoldHEN com o jogo aberto (`/mnt/sandbox/pfsmnt/CUSA00223-patch0`).
 2. No PC, copie a pasta do jogo base e depois copie o conteúdo do update **por cima**, substituindo os arquivos. Também dá para usar `scripts/make_game_view.py <base> <update> <saída>`, que monta a pasta com links, sem ocupar espaço.
-3. Confira os tamanhos. Arquivos acima de 4 GB vindos pelo FTP do GoldHEN 2.2 chegam cortados, então use o pendrive.
+3. O `sce_sys` do update não traz o `param.sfo` da versão 1.07. No PS4 ele fica em `/system_data/priv/appmeta/CUSA00223/param.sfo` (pegue pelo FTP do GoldHEN e copie para o `sce_sys/` da pasta montada).
+4. Confira os tamanhos. Nenhum arquivo deste jogo passa de 4 GB, então o FTP do GoldHEN também serve.
 
 ## Required game files
 
-Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in the download. Use **Gravity Rush 2 CUSA03694 (US) with update 01.11**, merged into one folder, with the base game and the update on top. About 28 GB.
+Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in the download. Use **inFAMOUS Second Son CUSA00223 (US), base game 1.00 with update 1.07**, merged into one folder, with the base game and the update on top. About 33 GB (27 GB base game + 6.4 GB update).
 
-| File | From | Size | Purpose |
-|---|---|---|---|
-| `eboot.bin` | update 01.11 | 28 MB | the game code (must be the 1.11 one) |
-| `sce_module/libc.prx`, `libSceFios2.prx`, `libSceJobManager.prx` | base game | 1.7 MB | the game's own libraries |
-| `sysdata/libSceSecure.prx` | base game | small | the game's own cryptography |
-| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic1.png`) | base + update | ~5 MB | metadata, install info and the launcher art |
-| `Gravite2_Chunk0.psarc`, `Gravite2_Chunk1.psarc` | base game | 10 + 15.8 GB | main content |
-| `Gravite2_Patch_Chunk0.psarc`, `Gravite2_Patch_Chunk1.psarc` | update 01.11 | 0.5 + 1.6 GB | update fixes |
-| `sce_discmap.plt`, `sce_discmap_patch.plt` | update 01.11 | small | file map |
+| File | From | Purpose |
+|---|---|---|
+| `eboot.bin` | update 1.07 | the game code (must be the 1.07 one) |
+| `sce_module/libc.prx`, `sce_module/libSceFios2.prx` | update 1.07 | the game's own libraries (the 1.00 `libc.prx` does not work) |
+| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic1.png`) | base game (+ the update's `param.sfo`) | metadata, install info and the launcher art |
+| `art/` (`cache/`, `movies/`, `ui/`) | base + update | game content (the update replaces part of `art/cache` and `art/movies`) |
+| `playgo.pgm`, `sce_discmap.plt`, `sce_discmap_patch.plt` | base + update | file map and install info |
 
-**From the console firmware (optional, for audio):** `libSceNgs2.sprx`, from `/system/common/lib/` on your PS4. It goes in the `system_lib/` folder next to the executable.
+**From the console firmware:** nothing. This game uses no PS4 system module (`libSceNgs2`, `libSceSecure` and `libSceJobManager` are not imported). The package's `system_lib/` folder stays empty.
 
 **How to build the folder:**
-1. In Itemzflow, dump the game (`CUSA03694`) and the update (`CUSA03694-patch`) to an exFAT USB drive.
+1. In Itemzflow, dump the game (`CUSA00223`) to an exFAT USB drive. For the update (`CUSA00223-patch`), use either an Itemzflow dump or GoldHEN's FTP with the game running (`/mnt/sandbox/pfsmnt/CUSA00223-patch0`).
 2. On the PC, copy the base game folder, then copy the update's contents **over it**, replacing files. Or use `scripts/make_game_view.py <base> <update> <out>`, which builds the folder with links and uses no extra space.
-3. Check the sizes. Files over 4 GB sent through GoldHEN 2.2's FTP arrive truncated, so use the USB drive.
+3. The update's `sce_sys` does not carry the 1.07 `param.sfo`. On the PS4 it is at `/system_data/priv/appmeta/CUSA00223/param.sfo` (get it through GoldHEN's FTP and copy it into the merged folder's `sce_sys/`).
+4. Check the sizes. No file of this game is over 4 GB, so GoldHEN's FTP works too.
