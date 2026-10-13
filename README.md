@@ -54,6 +54,9 @@ Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido tes
 | **Imagem na tela** | ✅ logo da Japan Studio, loading e **menu inicial** renderizados corretamente na RTX 2060 (fundo 3D da caverna, DOF, texto) |
 | **New Game → intro** | ✅ a cutscene de abertura roda; ~3 min sem falhas (DualSense via SDL3; som ainda mudo) |
 | **Intro → gameplay** | ✅ resolvido com readbacks precisos (ver "Readback GPU→CPU"); ~2 min de teste sem falhas após pular a intro |
+| **Qualidade de imagem** | ✅ imagem nativa: o tremor e as piscadas sumiram ao desligar o FSR3, o jitter e os motion vectors do port de GoW3, e ao subir o orçamento de VRAM (`run_tlg.sh`) |
+| **Lança do Trico → cutscene** | 🔄 corrigida a leitura curta de textura (assert `JsTex.cpp:459`); aguardando novo teste |
+| Desempenho | 30 FPS estáveis; engasgos pontuais (20–70 ms) por falhas de leitura do modo Precise → otimizar com readback direcionado (`AsyncMap`) |
 
 ---
 
