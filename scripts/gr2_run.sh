@@ -8,7 +8,7 @@ set -uo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 port=$root/port
 seconds=${1:-120}; shots=${2:-}; script=${3:-}
-dump=$root/dump
+dump=$root/game/CUSA03694
 # One game instance at a time on this machine (shared lock with the other agents' runs).
 lock=${GAME_LOCK:-/tmp/claude-1000/-home-hayatog-decomp/79f27d1d-d3f5-4a2e-a5f3-511e01385ae2/scratchpad/game.lock}
 if [[ -z ${GR2_RUN_LOCKED:-} ]]; then
@@ -17,7 +17,7 @@ fi
 (cd "$port/scripts" &&
  python3 prepare.py "$dump" --out ../out >/dev/null &&
  python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx libSceJobManager.prx \
-     "$dump/sysdata/libSceSecure.prx" "$dump/system_lib/libSceNgs2.sprx" >/dev/null &&
+     "$dump/sysdata/libSceSecure.prx" "$root/dump/system_lib/libSceNgs2.sprx" >/dev/null &&
  python3 content_profile.py "$dump" --out ../out >/dev/null) || { echo "prepare failed" >&2; exit 1; }
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/gr2-$(date +%Y%m%d-%H%M%S).log

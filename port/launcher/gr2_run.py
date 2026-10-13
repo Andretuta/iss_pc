@@ -46,7 +46,7 @@ DEFAULT_ENV = {
 DEFAULT_SETTINGS = {
     # Source tree: the merged game view and the console modules of ~/decomp. Package: the player
     # picks the game folder; libSceNgs2.sprx goes in system_lib/ next to the executable.
-    'game_dir': '' if FROZEN else str(REPO_DIR / 'dump'),
+    'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA03694'),
     'system_lib_dir': str(PORT_DIR / 'system_lib') if FROZEN else str(REPO_DIR / 'dump' / 'system_lib'),
     'gs_outline_off': True,        # TLG_SKIP_ADJACENCY: no black streaks (outline pass)
     'game_language': 'pt_BR',
