@@ -1190,3 +1190,13 @@
 {"cBGTk8S92XM#libkernel","sceKernelDeleteWriteEvent"},
 {"g0VTBxfJyu0#libkernel","sceKernelGetCurrentCpu"},
 {"PZku4ZrXJqg#libkernel","sceKernelCancelEventFlag"},
+/* GR2: libScePosix imports resolve under their libkernel name (canonical_name). */
+{"T8fER+tIGgk#libkernel","select"},
+{"fZOeZIOEmLw#libkernel","send"},
+{"pxnCmagrtao#libkernel","listen"},
+{"Ez8xjo9UF4E#libkernel","recv"},
+{"TUuiYS2kE8s#libkernel","shutdown"},
+{"KuOmgKoqCdY#libkernel","bind"},
+{"TU-d9PfIHPM#libkernel","socket"},
+{"3e+4Iv7IJ8U#libkernel","accept"},
+{"bY-PO6JhzhQ#libkernel","close"},
