@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include "common/logging/classes.h"
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/ir/basic_block.h"
@@ -35,8 +36,29 @@ static bool IsDivergentCondition(const IR::U1& condition) {
         .value_or(false);
 }
 
+// tlg: loops whose exit depends on the lane are divergent; the others run the same iterations
+// in every lane (e.g. over a light list), so ballots inside can be lowered with barriers, the
+// same reasoning SharedMemoryBarrierPass applies. Before, every ballot inside any loop stayed a
+// 32-lane ballot on 32-wide hardware: half the wave64 lanes were lost (inFAMOUS particle and
+// light passes, seen as flickering smoke and fire).
+static std::vector<const IR::Block*> FindDivergentLoops(const IR::Program& program) {
+    std::vector<const IR::Block*> divergent;
+    for (const IR::AbstractSyntaxNode& node : program.syntax_list) {
+        if (node.type == IR::AbstractSyntaxNode::Type::Break &&
+            IsDivergentCondition(node.data.break_node.cond)) {
+            divergent.push_back(node.data.break_node.merge);
+        }
+        if (node.type == IR::AbstractSyntaxNode::Type::Repeat &&
+            IsDivergentCondition(node.data.repeat.cond)) {
+            divergent.push_back(node.data.repeat.merge);
+        }
+    }
+    return divergent;
+}
+
 static std::vector<IR::Block*> FindUniformBlocks(const IR::Program& program) {
     using Type = IR::AbstractSyntaxNode::Type;
+    const auto divergent_loops = FindDivergentLoops(program);
 
     struct ConditionalScope {
         const IR::Block* merge;
@@ -62,15 +84,17 @@ static std::vector<IR::Block*> FindUniformBlocks(const IR::Program& program) {
             break;
         case Type::Loop:
             loops.push_back(node.data.loop.merge);
+            divergence_depth += static_cast<u32>(std::ranges::contains(divergent_loops, node.data.loop.merge));
             break;
         case Type::Repeat:
             if (loops.empty() || loops.back() != node.data.repeat.merge) {
                 return {};
             }
+            divergence_depth -= static_cast<u32>(std::ranges::contains(divergent_loops, loops.back()));
             loops.pop_back();
             break;
         case Type::Block:
-            if (divergence_depth == 0 && loops.empty()) {
+            if (divergence_depth == 0) {
                 blocks.push_back(node.data.block);
             }
             break;
@@ -97,6 +121,7 @@ void LowerWave64BallotPass(IR::Program& program, const RuntimeInfo& runtime_info
     }
 
     std::vector<IR::Inst*> worklist;
+    std::vector<IR::Inst*> divergent_ballots;
     const auto uniform_blocks = FindUniformBlocks(program);
     for (IR::Block* block : program.blocks) {
         const bool is_uniform = std::ranges::contains(uniform_blocks, block);
@@ -104,8 +129,13 @@ void LowerWave64BallotPass(IR::Program& program, const RuntimeInfo& runtime_info
             if (is_uniform) {
                 worklist.push_back(&inst);
             } else {
-                LOG_WARNING(Render_Recompiler, "{} instruction in non uniform control flow",
-                            inst.GetOpcode());
+                if (inst.GetOpcode() == IR::Opcode::Ballot) {
+                    divergent_ballots.push_back(&inst);
+                } else {
+                    LOG_WARNING(Render_Recompiler,
+                                "{} instruction in non uniform control flow (shader {:#x})",
+                                inst.GetOpcode(), program.info.pgm_hash);
+                }
             }
         };
         for (IR::Inst& inst : block->Instructions()) {
@@ -123,6 +153,28 @@ void LowerWave64BallotPass(IR::Program& program, const RuntimeInfo& runtime_info
                 worklist.push_back(&inst);
             }
         }
+    }
+    // tlg: a ballot in divergent flow (waterfall loops) cannot gather the other 32-lane half,
+    // but SubgroupLtMask below is always in wave64 numbering. Put the 32-lane ballot in its
+    // own half of the 64-bit mask so both agree: a lane's prefix count (mbcnt) and the
+    // half's popcount then index the same slots. Left in bits 0..31, lanes 32..63 computed
+    // their slots against the wrong bits (lost and duplicated entries: inFAMOUS particle and
+    // light lists flickered).
+    for (IR::Inst* inst : divergent_ballots) {
+        IR::IREmitter ir{*inst->GetParent(), IR::Block::InstructionList::s_iterator_to(*inst)};
+        const IR::U32 invocation_index = ir.GetAttributeU32(IR::Attribute::LocalInvocationIndex);
+        const IR::U1 upper_half =
+            ir.INotEqual(ir.BitwiseAnd(ir.ShiftRightLogical(invocation_index, ir.Imm32(5)), ir.Imm32(1)),
+                         ir.Imm32(0));
+        const IR::U32 bits =
+            IR::U32{ir.CompositeExtract(ir.UnpackUint2x32(ir.Ballot(IR::U1{inst->Arg(0)})), 0)};
+        const IR::U32 low = IR::U32{ir.Select(upper_half, ir.Imm32(0u), bits)};
+        const IR::U32 high = IR::U32{ir.Select(upper_half, bits, ir.Imm32(0u))};
+        inst->ReplaceUsesWithAndRemove(ir.PackUint2x32(ir.CompositeConstruct(low, high)));
+    }
+    if (!divergent_ballots.empty()) {
+        LOG_INFO(Render_Recompiler, "shader {:#x}: {} divergent ballots kept per 32-lane half",
+                 program.info.pgm_hash, divergent_ballots.size());
     }
     if (worklist.empty()) {
         return;

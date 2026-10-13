@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include "common/alignment.h"
 #include "common/assert.h"
 #include "common/bit_field.h"
@@ -311,8 +312,12 @@ struct Image {
     /// tlg: Vulkan has no block-compressed 1D images (inFAMOUS binds BC1/BC4/BC5 1D textures),
     /// so these are 2D images of height 1 on the host, sampled at the middle row.
     bool IsBlock1D() const noexcept {
+        static const bool enabled = [] {
+            const char* e = std::getenv("TLG_BLOCK1D");
+            return !(e && *e == '0');
+        }();
         const auto type = GetType();
-        return (type == ImageType::Color1D || type == ImageType::Color1DArray) &&
+        return enabled && (type == ImageType::Color1D || type == ImageType::Color1DArray) &&
                IsBlockCoded(GetDataFmt());
     }
 
