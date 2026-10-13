@@ -1,371 +1,177 @@
-# The Last Guardian — port nativo para PC (pesquisa)
+<p align="center"><img src="port/packaging/icon/tlg-icon-1024.png" width="128" alt=""></p>
 
-Projeto de pesquisa para rodar **The Last Guardian** (PS4, **CUSA03627**, update **01.03**) no PC,
-usando a cópia do próprio usuário.
+<h1 align="center">The Last Guardian — port nativo para PC</h1>
 
-> **Nenhum arquivo do jogo é versionado aqui.** Isso inclui eboot, prx, psarc e saída bruta de descompilação.
-> Para rodar, cada pessoa precisa do próprio dump. Veja `.gitignore`.
+<p align="center">
+  <a href="#english"><b>English below</b></a> ·
+  <a href="https://github.com/HayatoG/tlg_pc/releases/tag/nightly">Download</a> ·
+  <a href="https://www.youtube.com/@hayatog-dev">YouTube</a> ·
+  <a href="https://discord.gg/UMkdMYZh9g">Discord</a>
+</p>
 
-Por HayatoG — canal no YouTube: [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord: [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g).
+<p align="center"><a href="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
 
-_Última atualização: 2026-10-13._ Resumo do que foi feito e do que falta: [docs/PROGRESSO.md](docs/PROGRESSO.md).
+**The Last Guardian** (PS4, CUSA03627, update 01.03) rodando no PC com imagem, som, controle e saves, a 30 FPS estáveis e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
 
----
+> **Nenhum arquivo do jogo vem com este projeto.** Para jogar, você precisa da sua própria cópia, tirada do seu PS4.
 
-## Estratégia
+Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g)
 
-**Runtime nativo, sem decompilação completa.** O PS4 usa CPU x86-64, então o `eboot.bin` original
-roda direto no processador do PC. O projeto escreve só o que fica em volta dele:
+| | |
+|---|---|
+| ![Menu inicial](docs/screenshots/01-menu.jpg) | ![O menino desperta na caverna](docs/screenshots/02-despertar.jpg) |
+| ![O menino e o Trico](docs/screenshots/03-trico.jpg) | ![Ruínas](docs/screenshots/04-ruinas.jpg) |
 
-| Peça | Função | Base de reaproveitamento |
-|---|---|---|
-| Loader / linker | Carrega o eboot 1.03, liga `libc.prx` e `libSceFios2.prx` do jogo e resolve as imports por NID | bloodborne_pc, gow3_pc (`prepare.py`, `link_modules.py`, `probe.c`) |
-| Runtime (HLE) | Reimplementa as libs do sistema PS4 (kernel, pthread, pad, savedata, áudio…) | gow3_pc `src/runtime_*.c`, shadPS4 |
-| Vídeo | Traduz Gnm/PM4 e shaders GCN para **Vulkan** | núcleo de vídeo do shadPS4 (+ forks com fixes) |
-| Patches | Correções em memória (FPS, resolução), validadas por sha256 do eboot | modelo do gow3_pc |
-
-O Ghidra/REA serve para **investigação pontual** (bugs, patches, contratos de API), e não para
-reescrever o jogo.
-
-Projetos de referência:
-- [deadinside28/bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), que deu origem à família, nativo no Linux
-- [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc)
-- [shadPS4](https://github.com/shadps4-emu/shadPS4)
-
-Todos são GPL-2.0.
-
-**Hardware-alvo de teste:** Ryzen 7 5700X3D, 32 GB de RAM, RTX 2060 6 GB (Vulkan 1.3), Nobara Linux.
-Pontos de atenção: os 6 GB de VRAM, e o fato de os ports atuais terem sido testados principalmente em AMD.
-
----
+<sub>Capturas na resolução nativa (1920×1080), direto da GPU, no Linux com uma RTX 2060.</sub>
 
 ## Status
 
-| Etapa | Estado |
+| Área | Estado |
 |---|---|
-| Dump do eboot/prx (base 1.00 e update 1.03), decriptografados | ✅ ELF verificados |
-| Dump dos psarc do update 1.03 | ✅ completos |
-| Dump dos psarc do jogo base | ✅ completos: `trico_001/002/003` vieram do dump USB (Itemzflow), verificados contra o FTP |
-| Análise Ghidra (GhidraOrbis + REA) do eboot 1.03 | ✅ auto-análise em ~9 min (heap de 16 GB) |
-| Mapeamento: loop principal e threads | ✅ [`analysis/01_main_loop_threads.md`](analysis/01_main_loop_threads.md) |
-| Mapeamento: renderização / GNM | ✅ [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md) |
-| Mapeamento: áudio | ✅ [`analysis/03_audio.md`](analysis/03_audio.md) |
-| Mapeamento: I/O, psarc, controle, saves, sistema | ✅ [`analysis/04_io_input_saves_system.md`](analysis/04_io_input_saves_system.md) |
-| Loader + runtime (base gow3_pc em `port/`) | ✅ compila no Nobara; 391/391 imports resolvidas (`Imports: 0 missing`) |
-| **Primeiro boot no PC** | ✅ `trico main() start...` → boot em 0,41 s → engine rodando a ~28,7 fps (trava de 30), 1148 frames em 40 s sem falhas (NGS2 mudo) |
-| **Imagem na tela** | ✅ logo da Japan Studio, loading e **menu inicial** renderizados corretamente na RTX 2060 (fundo 3D da caverna, DOF, texto) |
-| **New Game → intro** | ✅ a cutscene de abertura roda; ~3 min sem falhas (DualSense via SDL3; som ainda mudo) |
-| **Intro → gameplay** | ✅ resolvido com readbacks precisos (ver "Readback GPU→CPU"); ~2 min de teste sem falhas após pular a intro |
-| **Qualidade de imagem** | ✅ imagem nativa: o tremor e as piscadas sumiram ao desligar o FSR3, o jitter e os motion vectors do port de GoW3, e ao subir o orçamento de VRAM (`run_tlg.sh`) |
-| **Lança do Trico → cutscene** | ✅ corrigida a leitura curta de textura (assert `JsTex.cpp:459`), confirmado jogando |
-| **Saves** | ✅ autosave + `Continue` volta ao ponto certo (SaveDataMemory2) |
-| **Áudio** | ✅ funcionando na intro e no gameplay: `libSceNgs2.sprx` do firmware do próprio console linkado como módulo nativo (mixer, efeitos e VAG originais) + AJM do runtime (ATRAC9 via LibAtrac9) |
-| Desempenho | 30 FPS estáveis; engasgos pontuais (20–70 ms) por falhas de leitura do modo Precise → otimizar com readback direcionado (`AsyncMap`) |
+| Boot, menu, intro e gameplay | ✅ Funciona; sessões de 10+ minutos sem falhas |
+| Imagem | ✅ Nativa, 1080p, sem tremores |
+| Áudio | ✅ Com o `libSceNgs2.sprx` do firmware do seu console |
+| Controle | ✅ DualSense, DualShock 4, Xbox e 8BitDo via SDL3, com hot-plug |
+| Saves | ✅ Autosave e Continuar |
+| Desempenho | ✅ 30 FPS travados, como no PS4 ([60 FPS: #5](https://github.com/HayatoG/tlg_pc/issues/5)) |
+| Linux | ✅ Testado (Nobara/Fedora 44) |
+| Windows | 🧪 Build automático, ainda sem teste em jogo |
+| macOS (Apple Silicon) | 📋 Planejado ([#1](https://github.com/HayatoG/tlg_pc/issues/1)) |
 
----
+![Desempenho de uma sessão de 10 minutos](docs/screenshots/desempenho.png)
 
-## Readback GPU→CPU (resolvido)
+<sub>FPS, pior quadro e draws por quadro a cada 5 s, tirados do log do port (`TLG_FRAME_STATS=1`). Gerado por `scripts/session_chart.py`.</sub>
 
-O crash acontece no fim da intro, ou ao pulá-la. Dados coletados:
+## Download
 
-- **Onde:** `0x12719aa` (spinlock), com ponteiro nulo + 0x10, chamado de `0x1c4cdd1` em `FUN_01c4c570` (renderer).
-- **O que o código faz:** lê um contador e uma lista de itens via `JsComputeContext::AsyncMap` (`0x2473600`). Os dois
-  buffers são **escritos pela GPU** (compute assíncrono) e lidos pela CPU sem espera. Cada item traz um índice
-  (`>>16`) para a tabela de objetos em `param_2+0x31e60`.
-- **Por que quebra:** no modo `GOW3_READBACKS=1` (Relaxed, o padrão do gow3_pc), páginas escritas pela GPU não ficam
-  protegidas. A CPU lê dados velhos, e o índice aponta para uma entrada nula.
-- **`GOW3_READBACKS=2` (Precise):** sincroniza na leitura, mas trava no frame 2 (deadlock no tradutor).
-- **Correção (padrão no `run_tlg.sh`: `GOW3_READBACKS=2`):** o modo Precise travava em dois deadlocks, porque threads
-  internas da GPU disparavam o readback que elas mesmas precisavam executar:
-  1. `VkRecorder` em `CopySparseMemory`: agora lê pela visão sem proteção do memfd (`runtime_memory_read_backing`);
-  2. workers `DrawPrep` em `StageSpecialization`: o handler de falhas testa `runtime_fault_recover` antes do readback,
-     e o draw fica com o thread da GPU.
+O [**build nightly**](https://github.com/HayatoG/tlg_pc/releases/tag/nightly) é gerado pelo GitHub Actions a cada mudança e substitui o anterior:
 
-Também foram corrigidos no caminho: o formato de dados reservado (`data_fmt 15`) e o estouro do RecordChunk.
+- **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 ou mais novos): `tlg-linux-x86_64.tar.gz`
+- **Windows 10/11 64 bits**: `tlg-windows-x86_64.zip`
 
----
+## O que você precisa
 
-## Inventário do dump (local, fora do git)
-
-O dump foi feito do console do usuário via GoldHEN FTP, de `/mnt/sandbox/pfsmnt/CUSA03627-app0` e
-`-patch0`, com o jogo em execução. O GoldHEN decriptografa os executáveis na transferência.
-
-| Arquivo | Versão | Tipo | sha256 |
-|---|---|---|---|
-| `dump/eboot.bin` | 1.00 | ELF ET_SCE_EXEC (0xFE10) | `f457d7b0fe0c99d2391cac5d63d030b50bd4d4feab9659ece9f11f5604c5d89f` |
-| `dump/sce_module/libc.prx` | 1.00 | ELF | `d88f1cc336985bf02fa128e8f7bbfbc21ac6c7fa1a151ba0c40b300750f2b2dd` |
-| `dump/sce_module/libSceFios2.prx` | 1.00 | ELF | `ff8c06b194e593f727a1315417a2bd174111d1e2f9961636101c438dc6dfb6c3` |
-| **`dump/patch0/eboot.bin`** | **1.03** | ELF ET_SCE_EXEC (0xFE10) | `91dce685be81f8f6bc88097d4fc7a62e97ca08d109621c57fe9371ae125feb3c` |
-| `dump/patch0/sce_module/libc.prx` | 1.03 | ELF ET_SCE_DYNAMIC (0xFE18) | `8369c7468717567a072704be2857f5f7fb6f5e819992413b40cda3488bbb64db` |
-| `dump/patch0/sce_module/libSceFios2.prx` | 1.03 | ELF ET_SCE_DYNAMIC (0xFE18) | `b8b2d2f71efbab5334e49125a1889e9383ef476757d830eee9715aec4088e20c` |
-
-Conteúdo (psarc, compressão zlib):
-
-- **Base:** `trico_001` 6,2 GB, `trico_002` 5,7 GB, `trico_003` 7,2 GB, `trico_boot` 2,9 GB, e os
-  idiomas `enu/esl/frc/ptb` com ~0,29 GB cada.
-- **Update 1.03:** `trico_*p.psarc`, 1,7 GB no total. Eles se sobrepõem aos do jogo base por overlay do Fios2.
-
-Os números do eboot 1.03 são 92,9 MB no total. Desses, ~23,7 MB são código e rodata. O segmento de
-dados tem ~68 MB, mas é quase todo zeros (buffers estáticos).
-
-### Problema conhecido: FTP do GoldHEN v2.2 e arquivos > 4 GiB
-O servidor calcula `SIZE`/`RETR` em 32 bits e entrega apenas `tamanho mod 2^32` bytes, com sucesso
-aparente. O `REST` além desse ponto volta ao byte 0. Só o `LIST` mostra o tamanho real.
-**Sempre compare o tamanho local com o `LIST`.** Para arquivos acima de 4 GiB, faça o dump via USB em
-exFAT (Itemzflow).
-
----
-
-## Achados principais
-
-### 1. Bibliotecas do sistema importadas (eboot 1.03)
-São 23 módulos e 508 funções, todas com NID resolvido.
-Listas completas em `analysis/eboot_imports_1.03.json`.
-
-| Biblioteca | Funções | Uso |
-|---|---|---|
-| libc (prx do próprio jogo) | 144 | C runtime |
-| **libSceGnmDriver** | 110 | GPU: submits, flip, shaders, draw/dispatch, compute queues, Razor/validação |
-| libkernel | 88 | memória direct/flexible, pthreads, sema/eventflag, equeue, arquivos, TSC |
-| libSceFios2 (prx do próprio jogo) | 44 | sistema de arquivos e montagem dos psarc |
-| libSceNet | 23 | sockets e epoll |
-| libScePosix | 22 | pthread/stat POSIX |
-| libSceAudio3d | 12 | importado, mas **não usado** (ver áudio) |
-| libScePad | 11 | controle, light bar, vibração, sensores de movimento |
-| libSceNgs2 | 10 | mixer/vozes de áudio |
-| libSceVideoOut | 10 | saída de vídeo e modo de saída (o 1.03 adicionou `ConfigureOutputMode_` e `ModeSetAny_`) |
-| libSceAudioOut | 7 | saída de som |
-| SaveData (6), NpTrophy (5), PlayGo (5), PlayGoDialog (5), SystemService (4), AppContent, NetCtl, Sysmodule, UserService (2 cada), CommonDialog, NpManager (1 cada) | | serviços |
-
-O Gnm/Gnmx (SDK 3.50) vêm **linkados estaticamente** dentro do eboot. Só o driver é importado.
-
-### 2. Ponto de entrada e loop principal
-No Ghidra, a base da imagem é `0x1000000`. Detalhes em [`analysis/01_main_loop_threads.md`](analysis/01_main_loop_threads.md).
-
-- `_start` em `0x10000a0` → `main` em `0x1207bb0`, que imprime `"trico main() start..."` e cria o objeto `App`
-  (vtable `0x26ebbe0`, singleton `0x69a1b40`).
-- `App::Run` em `0x1d169b0`:
-  - **init:** heaps System/Object/Permanent/Assets/Temporary/Overflow, `memory.cfg`, args `-copy`/`-reboot`/`-force2k`;
-  - **loop:** `while (!quit)`:
-    1. GC diferido (`0x1cd5a40`, orçamento de 2 ms);
-    2. callbacks;
-    3. `UpdateTime` (`0x1dd45c0`);
-    4. `UpdateInput` (`0x1d16380`);
-    5. troca do frame context;
-    6. `Frame` (`0x1dd37e0`), que chama `PS4TaskManager::RunFrame` (`0x1e4a040`).
-- **Sem slot de render ou present na App.** O frame vai por mailbox para a thread `ps4render` (`0x1c53fe0`), e o
-  Present (`0x1c4dfa0`) chama `sceGnmSubmitAndFlipCommandBuffers` com vsync.
-- **Travado em 30 fps:**
-  - `sceVideoOutSetFlipRate(h,1)` em `0x1c4f9f0`, com triple buffer;
-  - o dt entre 31,7 e 35 ms é ajustado para exatamente 1/30 s, com dt máximo de 0,05 s (`0x1d16480`).
-- **Threads:**
-  - main;
-  - `workerThread0..6` (7 fixos);
-  - `ps4render` (core 0);
-  - `ps4render_submitDone`;
-  - `HavokWorkerThread` ×4;
-  - Trophy, PlayGo;
-  - ~7 threads de áudio sndx.
-
-  As afinidades são fixas para os 7 cores do PS4.
-- No shutdown, o jogo **relança a si mesmo** com `sceSystemServiceLoadExec("-reboot")`.
-
-### 3. Renderização
-Detalhes em [`analysis/02_rendering_gnm.md`](analysis/02_rendering_gnm.md).
-
-- **Arquitetura:** o renderer do engine **"anzu"** (`render/dev`) foi escrito contra **D3D11**: formatos DXGI,
-  perfis `vs_5_0`/`ps_5_0`/`cs_5_0` e a mensagem "DirectX call failed". A camada `render/ps4/Js*` é um
-  **shim D3D11 → Gnmx** (estático, headers do SDK 4.000) → `libSceGnmDriver`.
-  Os setters (`JsDeviceContextInline.h`) estão inlinados no código chamador.
-- **Funções-chave:**
-  - **Setup:** `CreateDevice`/SwapChain em `0x1c4f9f0`, que também cria as threads `ps4render` e `ps4render_submitDone`.
-  - **Recursos:** `CreateBuffer` `0x246ddd0`, `CreateTexture2D` `0x2477370`, `CreateRTV` `0x2491370`, `CreateSRV` `0x2493620`.
-  - **Shaders:** `CreateVS/PS/CS` em `0x249b400`/`0x2490440`/`0x2473890`.
-  - **Preparação:** `PrepareDraw` `0x2488580`, `PrepareDispatch` `0x2479b70`.
-  - **Draws:** `Draw` `0x2488220`, `DrawIndexed` `0x248e080`, `DrawIndexedInstanced` `0x248e1d0`,
-    `DrawIndexedInstancedIndirect` `0x248e340`.
-  - **Frame:** `Render` `0x1c55690`, `BeginFrame` `0x2495480`, **`Present` `0x1c4dfa0`**.
-- **Submissão:**
-  - Há um único `sceGnmSubmitAndFlipCommandBuffers` por frame (VSYNC), com 3 contextos em voo.
-  - Compute: `ComputeQueue::submit` (`0x249f320`) → `sceGnmDingDong`.
-  - O PM4 sai dos builders do Gnm ou é escrito inline.
-- **Shaders:**
-  - `CreateBlob` (`0x1c53e20`) lê o `.sb` do psarc.
-  - O bind passa pelo CUE `setVs/Ps/CsShader` (`0x24a0c30`/`0x24a0fd0`/`0x24a1370`) → `sceGnmSet*Shader`.
-  - Há 49 blobs `OrbShdr` embutidos (1 VS, 1 PS, 47 CS), provavelmente clear/copy internos do shim.
-- **Resolução:**
-  - **1080p** no PS4 base, com alternativas 1760x990 e 1600x900.
-  - Na **TV 4K do Pro**: checkerboard de 1680x1890 → 3360x1890.
-  - O `-force2k` força 1080p.
-  - O **HDR** (BT.2020 PQ) depende da capacidade do display.
-  - **30 Hz fixo** (`SetFlipRate(h,1)`), com 3 display buffers.
-- **Async compute:** 1 contexto do device, mais 3 por frame, mais 1 fila de dispatch-draw. Skinning, instancing,
-  raycast, AABB e tracking rodam em compute, e **os resultados voltam para a CPU** (gameplay/IA). O port precisa
-  de sincronização GPU→CPU correta.
-- **Para o port:**
-  - **(a) shadPS4**, o mesmo caminho do gow3/bloodborne. Precisa de HLE de ~33 imports Gnm + 10 VideoOut,
-    parser PM4, GCN→SPIR-V, detiling e filas ACB. Ajustes: flip rate liberado, 1080p (equivalente ao `-force2k`),
-    HDR desligado. **Recomendado para começar.**
-  - **(b) Reimplementar o Js\* sobre D3D11/12/Vulkan.** Exige hooks em `Create*`/`PrepareDraw`/`Draw*`/`Present`
-    e o layout de `JsDeviceContext` (0x130f0 bytes). Os shaders só existem como GCN, então ainda precisariam de
-    tradução. O resultado é mais nativo, mas o trabalho é muito maior, ficando como evolução futura.
-
-### 4. Áudio
-Detalhes em [`analysis/03_audio.md`](analysis/03_audio.md).
-
-- **Cadeia:** sndx (SCE) → **NGS2** → **AudioOut**, em 8 canais float32 a 48 kHz.
-  A thread `sndx_out_thread` (`0x11f28a0`) faz o render (`0x11b04f0`) e chama `sceAudioOutOutputs`, que é o clock do áudio.
-- **Racks NGS2:** mastering, submixer e sampler (256 vozes), mais racks de efeito: reverb, EQ, compressor, upmix,
-  delay e chorus.
-- **Audio3d e alto-falante do controle não são usados.** O sndx é inicializado sem eles, então basta um stub.
-- **Dados:** `game/sounds/**` no `trico_boot.psarc`, com descritores `.bod`, bancos `*_sbuf.data` (SXDF) e
-  streams `.scs` (SXDS).
-- **Codecs:** VAG/HEVAG ADPCM na maioria dos efeitos; **ATRAC9** em BGM, diálogo e ambiência.
-
-### 5. I/O, psarc, controle, saves, sistema
-Detalhes em [`analysis/04_io_input_saves_system.md`](analysis/04_io_input_saves_system.md).
-Esta área **não é gargalo**: partindo do runtime do gow3_pc, a estimativa é de ~4–7 dias-pessoa.
-
-- **Fios2:**
-  - `0x1f47900` inicializa o Fios2 com os filtros Cache e PsarcDearchiver.
-  - A tabela de archives fica em `0x67d6440` (12 entradas, cada uma ligada a um chunk PlayGo).
-  - `0x1f47740` monta **todos** os psarc em `/app0/data_trico`, na ordem base → patch `p`.
-  - O overlay de idioma (`0x1f47350`) mapeia `game_<lang>` sobre `game`.
-  - **Fallback:** sem `trico_boot.psarc`, o jogo lê de um diretório solto (`/app0/data_trico`).
-    Dá para extrair os psarc e dispensar o formato.
-- **PSARC:**
-  - Versão 1.4, só zlib, blocos de 64 KiB.
-  - Nos patches `p`, a TOC é ordenada por MD5 do path em maiúsculas.
-  - O `trico_boot` tem 32.567 arquivos. Os maiores grupos:
-    - 24.517 shaders `.sb` (111 MB);
-    - 1.431 texturas `.gnf` (1,37 GB);
-    - 2.246 `.data` (948 MB);
-    - 293 streams de áudio `.scs` (535 MB);
-    - 620 `.lua`.
-  - O `bootp` (1.03) reescreve quase todo o shader cache.
-  - Não há arquivos de vídeo; as cutscenes são em tempo real.
-- **Lua:** a VM é HavokScript 2013.3.0, com compilador embutido. Os ~790 `.lua` são **texto-fonte**, não
-  bytecode, e o ponto de entrada é `system/scripts/startup.lua`. Isso torna a lógica de jogo legível e
-  modificável.
-- **Controle:**
-  - Há um único `scePadReadState`, em `0x1d2e239`.
-  - Usa sticks, gatilhos, botões, gyro/acelerômetro, até 2 toques no touchpad, vibração com os dois motores
-    separados e light bar.
-  - O `runtime_pad.c` do gow3_pc cobre tudo isso.
-- **Saves:**
-  - API `SaveDataMemory2`, com 1 MiB + ícone. O blob é `[u32 0xffff8][u32 0][payload]`, com magic `0xd0000009`.
-  - O gow3_pc só tem a v1, então é trabalho novo (~0,5–1 dia).
-- **Serviços:**
-  - Troféus: stub.
-  - **PlayGo** deve dizer que os 27 chunks estão disponíveis; um chunk com locus 0 faz o archive não ser montado.
-  - PlayGoDialog: stub.
-  - `LoadExec` (o reboot) vira reexecutar o processo.
-- **Rede:** são 23 imports `sceNet*` **sem call sites**, de um servidor de debug/editor da engine
-  (`netmsg.lua`), e não telemetria. Basta stub.
-- **`sceKernelIsNeoMode`:** escolhe o layout de memória da GPU (Pro: 0xd0000000; base: 0xb0000000). A decisão
-  depende do renderer.
-- **Idiomas aceitos:** enu, ptb, esl, frc.
-
----
-
-## Cobertura pelo runtime existente (gow3_pc + shadPS4)
-
-O cruzamento estático é por NIDs presentes no código-fonte e mostra **~400 de 508 imports (79%)** com
-implementação. Isso não garante que cada função esteja completa.
-
-| Lacuna | Funções | Observação |
-|---|---|---|
-| libSceNgs2 | 10 | **Maior buraco**: ninguém implementou ainda |
-| libSceAudio3d | 12 | stub (não é usado) |
-| libkernel | 16 | event flags, `IsNeoMode`, `Getdents`, alguns `scePthread*` (triviais) |
-| libSceSaveData | 5 | variante `SaveDataMemory2` |
-| PlayGoDialog, `LoadExec`, `PadSetMotionSensorState`, `AudioOutSetMixLevelPadSpk` | 8 | stubs ou simples |
-| Fios2 (26) e libc (31) | — | não são lacuna: resolvem para os prx do próprio jogo |
-
----
-
-## Estimativa (1 dev experiente, em tempo integral, partindo do gow3_pc/bloodborne_pc)
-
-São ordens de grandeza, não compromissos. Os riscos estão listados abaixo da tabela.
-
-| # | Área | O que fazer | Esforço |
-|---|---|---|---|
-| 1 | Loader/linker | Adaptar `prepare.py`/`link_modules.py`/`probe.c` para o eboot 1.03 + libc/Fios2 do TLG | 1–2 semanas |
-| 2 | Runtime: kernel/sistema | 16 funções do libkernel (event flags etc.), SaveDataMemory2, PlayGo "tudo instalado", stubs (rede, troféus, PlayGoDialog, Audio3d), LoadExec → reexecutar | ~1 semana |
-| 3 | Controle | Reaproveitar `runtime_pad.c` (SDL3) e mapear teclado/mouse | 2–3 dias |
-| 4 | Threads e timing | Mapear afinidades (7 cores fixos) e prioridades, emular o spin-sleep por equeue, evitar busy-waits no core 0 | 1–2 semanas |
-| 5 | **Vídeo até a 1ª imagem** | Ligar o núcleo do shadPS4, HLE Gnm/VideoOut e forçar 1080p | 2–4 semanas |
-| 6 | **Vídeo até ficar jogável** | Bugs específicos do anzu (async compute + readback para CPU, checkerboard desligado, formatos GNF), NVIDIA/6 GB de VRAM | 1–3 meses |
-| 7 | **Áudio** | AudioOut (1–2 dias) + **NGS2 em software** (mín. 2–3 semanas; +3–5 com efeitos) — _ou_ carregar o `libSceNgs2.sprx` do firmware do próprio console (1–4 semanas, não verificado) | 3–8 semanas |
-| 8 | 60 FPS / extras (opcional) | Patch do flip rate + dt fixo em 1/30 + clamp de 0,05 s. Verificar física (Havok), animação e Lua; resolução/ultrawide | 2–6 semanas |
-
-**Total até "jogável do início ao fim a 30 fps": ~4–7 meses de 1 pessoa.** Muito do trabalho em paralelo
-(áudio × vídeo) e os fixes que já existem nos ports irmãos podem encurtar isso.
-
-**Maiores riscos:**
-1. Bugs gráficos do engine anzu no tradutor do shadPS4, sobretudo o async compute com readback.
-2. O NGS2, que ninguém implementou ainda.
-3. A NVIDIA, que é pouco testada nesses ports.
-4. 60 fps, porque a física e as animações do Trico podem estar presas a 30 Hz.
-
----
-
-## Opções (variáveis `TLG_*`)
-
-Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão no `run_tlg.sh` e foram validados jogando.
-
-| Opção | Padrão TLG | O que faz |
-|---|---|---|
-| `TLG_READBACKS` | `2` (Precise) | sincronização GPU→CPU; o TLG precisa do 2 (`AsyncMap`); `1` = Relaxed (crash na entrada do gameplay) |
-| `TLG_GC_BUDGET_MB` | `5600` | orçamento do cache de texturas em MB (6 GB de VRAM); ex.: `7000` para 8 GB |
-| `TLG_UPSCALER` | `off` | `off`, `fsr3`, `taa`… (os upscalers do port de GoW3 causam tremor no TLG) |
-| `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
-| `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
-| `TLG_FRAME_STATS` | `1` | FPS e diagnóstico de engasgos no log a cada 5 s |
-| `TLG_SHOW_FPS` | `0` | overlay de FPS ligado desde o início (F10 alterna em jogo) |
-| `TLG_UI_LANG` | idioma do sistema | idioma do menu do overlay: `pt_BR` ou `en_US` |
-| `TLG_PAD_FILE` | — | entrada roteirizada do controle (testes automáticos) |
-| `TLG_TOGGLE_FILE` | — | máscara de otimizações desligadas, lida em tempo real |
-| `TLG_GAME_DIR` | `game/CUSA03627` | pasta do jogo (visão unificada base + 1.03) |
-
-Todas as opções do código usam o prefixo `TLG_` (o código herdado do gow3_pc foi renomeado).
-
-Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as threads no log, e
-`scripts/watch_session.sh` faz isso sozinho quando o jogo fica 20 s sem frames.
-
----
-
-## Planos futuros
-
-| Plano | Detalhes |
+| Item | Onde conseguir |
 |---|---|
-| **60 FPS / FPS livre** | comparar o eboot 1.00 (sem trava de 30) com o 1.03 e desfazer a trava |
-| **Readback direcionado** | aplicar o modo Precise só nos buffers do `AsyncMap`, para reduzir engasgos de 20–70 ms |
-| **Windows** | build e empacotamento (o código herdado já suporta MSYS2/clang64) |
-| **macOS Apple Silicon (ARM)** | via Rosetta 2 + MoltenVK; [issue #1](https://github.com/HayatoG/tlg_pc/issues/1) |
-| **Limpeza do código GoW3** | remover os hooks de cheats/orbs/vida do God of War III que ainda estão no runtime |
-| **Empacotamento Linux** | AppImage/Flatpak com o launcher e atalho no menu de aplicativos |
+| Pasta do jogo **CUSA03627 + update 01.03**: `eboot.bin` (do 1.03), `sce_module/`, `sce_sys/` e os quatro `trico_*.psarc` | Dump do seu PS4 desbloqueado (GoldHEN). Arquivos acima de 4 GiB precisam vir por USB (Itemzflow), porque o FTP do GoldHEN 2.2 os trunca |
+| `libSceNgs2.sprx` (opcional, para ter som) | Firmware do seu PS4, em `/system/common/lib/` |
+| PC | Placa de vídeo com Vulkan 1.3 (6 GB de VRAM recomendados) e ~25 GB livres |
 
----
+## Como jogar
 
-## Estrutura do repositório
+1. Extraia o pacote e coloque o `libSceNgs2.sprx` na pasta `system_lib/`.
+2. Abra o **The Last Guardian**, escolha a pasta do jogo e o idioma (inglês, português, espanhol ou francês) e clique em **Jogar**.
+3. No jogo, **F10** liga o contador de FPS, e **Insert** (ou R3 + L2 no controle) abre o menu do port.
 
-```
-tlg_launcher.sh      launcher gráfico (pt_BR/en_US): pasta do jogo, idiomas, vídeo, áudio, Jogar
-scripts/install_desktop.sh  atalho no menu de aplicativos, com o ícone oficial lido do seu dump
-run_tlg.sh           roda direto pelo terminal (./run_tlg.sh [segundos]), com as mesmas configurações
-port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)
-README.md            este documento (status + achados)
-docs/PROGRESSO.md    o que foi feito, problemas e correções, o que falta
-analysis/            relatórios de engenharia reversa (.md) e listas de imports (.json)
-scripts/             utilitários (imports SCE, leitor de TOC PSARC, mirror/verify FTP, progresso do dump USB)
-analysis/raw/ (ignorado)  pseudocódigo bruto, manifests dos psarc e snapshot do REA
-dump/   (ignorado)   arquivos do jogo, apenas locais
-tools/  (ignorado)   Ghidra 12.1.4, JDK 21, GhidraOrbis
+O passo a passo completo, com os problemas mais comuns, está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
+
+## Compilar do código-fonte
+
+```bash
+git clone --recursive https://github.com/HayatoG/tlg_pc.git && cd tlg_pc
+cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, Boost, fmt, Zydis, glslang
+cd .. && ./tlg_launcher.sh             # ou ./run_tlg.sh pelo terminal
 ```
 
-### Ferramentas
-- Ghidra 12.1.4 + GhidraOrbis, compilado do fonte com 2 patches de API para o 12.1.x
-- [REA](https://github.com/morluto/rea) `rea-agents@6.4.0` como servidor MCP. Para um eboot desse tamanho,
-  ajuste `REA_GHIDRA_STARTUP_TIMEOUT_MS=14400000` e `GHIDRA_HEADLESS_MAXMEM=16G`.
-- `scripts/sce_imports.py <eboot> <nid_db.xml> <saida.json>` lista as imports por biblioteca, com NIDs resolvidos.
+No Windows, o build roda no MSYS2 CLANG64 ([`port/packaging/windows/README.md`](port/packaging/windows/README.md)). O workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) mostra o processo completo nas duas plataformas.
+
+## Como funciona
+
+| Camada | O que faz | Base |
+|---|---|---|
+| Loader | Carrega o `eboot.bin` 1.03 e liga os módulos do jogo (`libc.prx`, `libSceFios2.prx`) e o `libSceNgs2.sprx` do console | [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc) |
+| Runtime | Reimplementa as bibliotecas do PS4: kernel, threads, arquivos, controle, áudio, saves | gow3_pc + 54 funções novas para o TLG |
+| Vídeo | Traduz os comandos Gnm e os shaders GCN para Vulkan/SPIR-V | núcleo de vídeo do [shadPS4](https://github.com/shadps4-emu/shadPS4) |
+
+Os detalhes técnicos (achados no Ghidra, bugs resolvidos, opções `TLG_*`) estão em [`docs/TECNICO.md`](docs/TECNICO.md). O histórico do que foi feito e do que falta está em [`docs/PROGRESSO.md`](docs/PROGRESSO.md).
+
+## Próximos passos
+
+[Roadmap gráfico (#7)](https://github.com/HayatoG/tlg_pc/issues/7): pós-processamento (#2), 60 FPS (#5), efeitos do jogo (#3), resolução interna (#4) e FSR/DLSS (#6). Também estão nas issues o macOS (#1) e as correções que forem aparecendo.
+
+## Créditos e aviso legal
+
+Base de código: [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (FelipePrado0), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) e [shadPS4](https://github.com/shadps4-emu/shadPS4), todos GPL-2.0, assim como este projeto ([LICENSE](port/LICENSE)). Áudio ATRAC9 via [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9).
+
+Este projeto não tem vínculo com a Sony Interactive Entertainment, a SIE Japan Studio ou a genDESIGN. The Last Guardian é marca da Sony Interactive Entertainment. Nenhum código, arquivo ou arte do jogo é distribuído aqui. O ícone é uma arte original do projeto.
+
+---
+
+<a id="english"></a>
+
+# The Last Guardian — native PC port
+
+**The Last Guardian** (PS4, CUSA03627, update 01.03) running on PC with graphics, audio, controller and saves, at a steady 30 FPS and without a CPU emulator. The game's original code runs natively on the processor. The PS4 system is reimplemented, and the GPU is translated to Vulkan.
+
+> **No game files come with this project.** To play, you need your own copy, dumped from your own PS4.
+
+By **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) · Discord [discord.gg/UMkdMYZh9g](https://discord.gg/UMkdMYZh9g)
+
+The screenshots and the performance chart are at the top of this page.
+
+## Status
+
+| Area | State |
+|---|---|
+| Boot, menu, intro and gameplay | ✅ Works; 10+ minute sessions without failures |
+| Graphics | ✅ Native 1080p, no shimmering |
+| Audio | ✅ With `libSceNgs2.sprx` from your console's firmware |
+| Controller | ✅ DualSense, DualShock 4, Xbox and 8BitDo via SDL3, with hot-plug |
+| Saves | ✅ Autosave and Continue |
+| Performance | ✅ Locked 30 FPS, as on PS4 ([60 FPS: #5](https://github.com/HayatoG/tlg_pc/issues/5)) |
+| Linux | ✅ Tested (Nobara/Fedora 44) |
+| Windows | 🧪 Automatic build, not yet tested in game |
+| macOS (Apple Silicon) | 📋 Planned ([#1](https://github.com/HayatoG/tlg_pc/issues/1)) |
+
+## Download
+
+The [**nightly build**](https://github.com/HayatoG/tlg_pc/releases/tag/nightly) is produced by GitHub Actions on every change and replaces the previous one:
+
+- **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 or newer): `tlg-linux-x86_64.tar.gz`
+- **Windows 10/11 64-bit**: `tlg-windows-x86_64.zip`
+
+## What you need
+
+| Item | Where to get it |
+|---|---|
+| Game folder **CUSA03627 + update 01.03**: `eboot.bin` (from 1.03), `sce_module/`, `sce_sys/` and the four `trico_*.psarc` | A dump from your own jailbroken PS4 (GoldHEN). Files larger than 4 GiB must be copied over USB (Itemzflow), because GoldHEN 2.2's FTP truncates them |
+| `libSceNgs2.sprx` (optional, for audio) | Your PS4 firmware, in `/system/common/lib/` |
+| PC | A graphics card with Vulkan 1.3 (6 GB of VRAM recommended) and ~25 GB free |
+
+## How to play
+
+1. Extract the package and put `libSceNgs2.sprx` in the `system_lib/` folder.
+2. Open **The Last Guardian**, pick the game folder and the language (English, Portuguese, Spanish or French), and click **Play**.
+3. In game, **F10** toggles the FPS counter, and **Insert** (or R3 + L2 on a controller) opens the port's menu.
+
+The full guide, with common problems, is in [`README-player.md`](port/packaging/README-player.md), which also ships inside the package.
+
+## Building from source
+
+```bash
+git clone --recursive https://github.com/HayatoG/tlg_pc.git && cd tlg_pc
+cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, Boost, fmt, Zydis, glslang
+cd .. && ./tlg_launcher.sh             # or ./run_tlg.sh from a terminal
+```
+
+On Windows, the build runs in MSYS2 CLANG64 ([`port/packaging/windows/README.md`](port/packaging/windows/README.md)). The workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) shows the full process on both platforms.
+
+## How it works
+
+| Layer | What it does | Based on |
+|---|---|---|
+| Loader | Loads `eboot.bin` 1.03 and links the game's modules (`libc.prx`, `libSceFios2.prx`) and the console's `libSceNgs2.sprx` | [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), [gow3_pc](https://github.com/FelipePrado0/gow3_pc) |
+| Runtime | Reimplements the PS4 libraries: kernel, threads, files, controller, audio, saves | gow3_pc + 54 new functions for TLG |
+| Video | Translates Gnm commands and GCN shaders to Vulkan/SPIR-V | [shadPS4](https://github.com/shadps4-emu/shadPS4) video core |
+
+Technical notes (Ghidra findings, fixed bugs, `TLG_*` options) are in [`docs/TECNICO.md`](docs/TECNICO.md), in Portuguese. The history of what was done and what is left is in [`docs/PROGRESSO.md`](docs/PROGRESSO.md).
+
+## Next steps
+
+[Graphics roadmap (#7)](https://github.com/HayatoG/tlg_pc/issues/7): post-processing (#2), 60 FPS (#5), game effects (#3), internal resolution (#4) and FSR/DLSS (#6). macOS (#1) and new fixes are tracked in the issues as well.
+
+## Credits and legal notice
+
+Code base: [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (FelipePrado0), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) and [shadPS4](https://github.com/shadps4-emu/shadPS4), all GPL-2.0, as is this project ([LICENSE](port/LICENSE)). ATRAC9 audio via [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9).
+
+This project is not affiliated with Sony Interactive Entertainment, SIE Japan Studio or genDESIGN. The Last Guardian is a trademark of Sony Interactive Entertainment. No game code, files or art are distributed here. The icon is original artwork made for this project.

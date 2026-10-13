@@ -104,7 +104,7 @@ Tudo no repositório [HayatoG/tlg\_pc](https://github.com/HayatoG/tlg_pc), excet
 | Logs de cada sessão | `~/decomp/tlg_pc/port/out/logs/` (`last_run.log` = o último) |
 | Saves | `~/decomp/tlg_pc/port/user/savedata/` |
 | Vigia de sessão | `scripts/watch_session.sh` (dump automático se travar) |
-| Opções `TLG_*` | README, seção "Opções" |
+| Opções `TLG_*` | `docs/TECNICO.md`, seção "Opções" |
 | Relatórios de análise | `analysis/01_main_loop_threads.md`, `02_rendering_gnm.md`, `03_audio.md`, `04_io_input_saves_system.md` |
 | Origem do código | `port/UPSTREAM.md`: [gow3\_pc](https://github.com/FelipePrado0/gow3_pc), [bloodborne\_pc](https://github.com/deadinside28/bloodborne_pc), [shadPS4](https://github.com/shadps4-emu/shadPS4) (GPL-2.0) |
 | Port para Mac | [issue #1](https://github.com/HayatoG/tlg_pc/issues/1) |
