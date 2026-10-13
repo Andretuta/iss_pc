@@ -363,6 +363,36 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
     }
     d->orientation[0]=motion.q.x; d->orientation[1]=motion.q.y; d->orientation[2]=motion.q.z; d->orientation[3]=motion.q.w;
 }
+/* Touchpad swipes for controllers without a touchpad ("Open Door": swipe right): hold View/
+ * Select/- (gamepad) or Tab (keyboard) and push the right stick (arrow keys): a finger moves
+ * from the middle of the pad toward that side. A quick tap without moving still clicks. */
+static struct { int active; } swipe;
+static void apply_swipe(PadData *d, SDL_Gamepad *g, const bool *k) {
+    float x=0, y=0;
+    int held=0;
+    if (g && SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_BACK)) {
+        held=1;
+        x=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)/32767.f;
+        y=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f;
+    }
+    if (k && k[SDL_SCANCODE_TAB]) {
+        held=1;
+        if (k[SDL_SCANCODE_LEFT]) x=-1;
+        if (k[SDL_SCANCODE_RIGHT]) x=1;
+        if (k[SDL_SCANCODE_UP]) y=-1;
+        if (k[SDL_SCANCODE_DOWN]) y=1;
+    }
+    if (!held) { swipe.active=0; return; }
+    if (!swipe.active && x*x+y*y<0.09f) return; /* not moved yet: still a click */
+    if (!swipe.active) { swipe.active=1; click.side=-1; }
+    d->buttons&=~(uint32_t)(CLICK_LEFT|CLICK_RIGHT|BTN_TOUCHPAD);
+    d->right_x=d->right_y=128;
+    if (d->touch_count<2) {
+        d->touches[d->touch_count]=(PadTouch){.x=touch_axis(0.5f+x*0.47f,1919),.y=touch_axis(0.5f+y*0.47f,942),
+                                              .id=(uint8_t)(d->touch_count+8)};
+        ++d->touch_count;
+    }
+}
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
@@ -410,6 +440,7 @@ static void sample_host(PadData *d) {
     key_axis(&d->left_y,k[SDL_SCANCODE_W],k[SDL_SCANCODE_S]);
     key_axis(&d->right_x,k[SDL_SCANCODE_LEFT],k[SDL_SCANCODE_RIGHT]);
     key_axis(&d->right_y,k[SDL_SCANCODE_UP],k[SDL_SCANCODE_DOWN]);
+    apply_swipe(d,g,k);
 }
 
 /* TLG_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated

@@ -21,7 +21,7 @@ fi
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
-export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=${TLG_READBACKS:-2} TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-3500} TLG_UPSCALER=off TLG_JITTER=0 \
+export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=${TLG_READBACKS:-0} TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-3500} TLG_UPSCALER=off TLG_JITTER=0 \
        TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_LANGUAGE=${TLG_LANGUAGE:-1}
 pad=$port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
 if [[ -n $shots ]]; then
