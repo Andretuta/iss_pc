@@ -1,6 +1,6 @@
 # 02 - Rendering / GPU (Gnm, Gnmx, camada Js*) - The Last Guardian v1.03 (CUSA03627)
 
-Binario: `/home/hayatog/decomp/dump/patch0/eboot.bin` (v1.03). Todos os enderecos estao no espaco do Ghidra (base 0x1000000; vaddr do arquivo + 0x1000000).
+Binario: `dump/patch0/eboot.bin` (v1.03). Todos os enderecos estao no espaco do Ghidra (base 0x1000000; vaddr do arquivo + 0x1000000).
 
 Legenda de confianca:
 - **[C]** confirmado: string de assert com nome da funcao/arquivo, chamada direta a import, ou decompilacao inequivoca.

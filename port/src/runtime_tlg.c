@@ -172,19 +172,25 @@ static ABI int32_t module_segment_info(void *info) {
 }
 
 /* ---- Time zone ---- */
+/* Local time and its offset from UTC in seconds (Windows has no tm_gmtoff: the offset is the
+ * local broken-down time read back as UTC, minus the instant). */
+static int tlg_localtime(time_t t,struct tm *out,int64_t *offset) {
 #ifdef _WIN32
-/* MinGW has no localtime_r/tm_gmtoff: the Windows build reports UTC until it gets its own path. */
-static struct tm *localtime_r(const time_t *t,struct tm *out) { struct tm *g=gmtime(t); if (g) *out=*g; return g ? out : NULL; }
-#define TM_GMTOFF(tm) 0
+    if (localtime_s(out,&t)) return 0;
+    struct tm copy=*out;
+    *offset=(int64_t)_mkgmtime(&copy)-(int64_t)t;
 #else
-#define TM_GMTOFF(tm) ((tm).tm_gmtoff)
+    if (!localtime_r(&t,out)) return 0;
+    *offset=out->tm_gmtoff;
 #endif
+    return 1;
+}
 typedef struct { int64_t t; uint32_t west_sec, dst_sec; } Timesec;
 typedef struct { int32_t minutes_west, dst_time; } Timezone;
 static ABI int32_t utc_to_local(int64_t utc,int64_t *local,Timesec *ts,uint64_t *dst) {
-    time_t t=(time_t)utc; struct tm tm;
-    if (!localtime_r(&t,&tm)) return KERR_EINVAL;
-    int64_t offset=TM_GMTOFF(tm), dst_sec=tm.tm_isdst>0 ? 3600 : 0;
+    struct tm tm; int64_t offset;
+    if (!tlg_localtime((time_t)utc,&tm,&offset)) return KERR_EINVAL;
+    int64_t dst_sec=tm.tm_isdst>0 ? 3600 : 0;
     if (local) *local=utc+offset;
     if (ts) { ts->t=utc; ts->west_sec=(uint32_t)(offset-dst_sec); ts->dst_sec=(uint32_t)dst_sec; }
     if (dst) *dst=(uint64_t)dst_sec;
@@ -192,9 +198,8 @@ static ABI int32_t utc_to_local(int64_t utc,int64_t *local,Timesec *ts,uint64_t 
 }
 static ABI int32_t local_to_utc(int64_t local,int64_t unused,int64_t *utc,Timezone *tz,int32_t *dst) {
     (void)unused;
-    time_t now=(time_t)local; struct tm tm;
-    if (!localtime_r(&now,&tm)) return KERR_EINVAL;
-    int64_t offset=TM_GMTOFF(tm);
+    struct tm tm; int64_t offset;
+    if (!tlg_localtime((time_t)local,&tm,&offset)) return KERR_EINVAL;
     if (utc) *utc=local-offset;
     if (tz) { tz->minutes_west=(int32_t)(-offset/60); tz->dst_time=tm.tm_isdst>0; }
     if (dst) *dst=tm.tm_isdst>0 ? 3600 : 0;

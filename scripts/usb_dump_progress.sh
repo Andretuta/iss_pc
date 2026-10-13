@@ -1,7 +1,7 @@
 #!/bin/bash
 # Itemzflow USB dump progress, read via PS4 FTP LIST (64-bit sizes)
 H=ftp://192.168.1.10:2121/mnt/usb0/CUSA03627
-TOTAL=$(awk '{s+=$1} END{print s}' /home/hayatog/decomp/dump/.filelist)   # base game size from app0 listing
+TOTAL=$(awk '{s+=$1} END{print s}' "$(dirname -- "$0")/../dump/.filelist")   # base game size from app0 listing
 last=-1; prevb=-1; prevt=$(date +%s); stall=0
 while true; do
   B=$(curl -s --max-time 20 "$H/" | awk '$1 ~ /^-/ {s+=$5} END{print s+0}')

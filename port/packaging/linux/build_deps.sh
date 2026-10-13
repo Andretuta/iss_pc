@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the libraries Ubuntu 24.04 lacks or ships too old for the port, into $PREFIX
-# (default /opt/tlgdeps): SDL3, Zydis 5, fmt 11 and a minimal FFmpeg (only the H.264, MP3 and
+# (default /opt/tlgdeps): SDL3, Zydis 5, fmt 11, robin-map, VMA and a minimal FFmpeg (only the H.264, MP3 and
 # PNG decoders the runtime uses, instead of the distribution's ~250-library FFmpeg).
 # Used by the GitHub Actions Linux build; the resulting .so files ship in the package (out/lib).
 set -euo pipefail
@@ -29,6 +29,14 @@ fetch https://github.com/fmtlib/fmt/archive/refs/tags/11.2.0.tar.gz fmt
 cmake -S fmt -B fmt/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DBUILD_SHARED_LIBS=ON -DFMT_TEST=OFF -DFMT_DOC=OFF
 ninja -C fmt/build install
+
+fetch https://github.com/Tessil/robin-map/archive/refs/tags/v1.4.0.tar.gz robin-map
+cmake -S robin-map -B robin-map/build -G Ninja -DCMAKE_INSTALL_PREFIX="$PREFIX"
+ninja -C robin-map/build install
+
+fetch https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.3.0.tar.gz vma
+cmake -S vma -B vma/build -G Ninja -DCMAKE_INSTALL_PREFIX="$PREFIX"
+ninja -C vma/build install
 
 fetch https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.gz ffmpeg
 (cd ffmpeg && ./configure --prefix="$PREFIX" --enable-shared --disable-static --disable-programs \

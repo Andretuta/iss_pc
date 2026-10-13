@@ -1,6 +1,6 @@
 # 04 — File I/O, arquivos PSARC, input, saves e serviços de sistema
 
-Alvo: The Last Guardian (PS4, CUSA03627), `eboot.bin` v1.03 (`/home/hayatog/decomp/dump/patch0/eboot.bin`).
+Alvo: The Last Guardian (PS4, CUSA03627), `eboot.bin` v1.03 (`dump/patch0/eboot.bin`).
 Os endereços são do Ghidra (base 0x1000000). Offset no arquivo = endereço − 0x1000000 + 0x4000 (texto e dados têm o mesmo delta).
 Engine interna: **"anzu"** (path `D:\trico\engine\anzu\...`).
 

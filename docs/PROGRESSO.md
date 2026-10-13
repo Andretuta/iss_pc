@@ -94,15 +94,15 @@ O jogo já é jogável; o que falta é jogar adiante corrigindo o que aparecer, 
 
 ## Referências
 
-Tudo no repositório [HayatoG/tlg\_pc](https://github.com/HayatoG/tlg_pc), exceto os arquivos do jogo e do firmware, que ficam só em `~/decomp/dump`.
+Tudo no repositório [HayatoG/tlg\_pc](https://github.com/HayatoG/tlg_pc), exceto os arquivos do jogo e do firmware, que ficam só em `~/decomp/tlg_pc/dump`.
 
 | O quê | Onde |
 | --- | --- |
-| Abrir o launcher | menu de aplicativos ("The Last Guardian") ou `~/decomp/tlg_launcher.sh` |
-| Rodar pelo terminal | `~/decomp/run_tlg.sh [segundos]` |
-| Compilar | `cd ~/decomp/port && TLG_LTO=OFF bash build.sh` |
-| Logs de cada sessão | `~/decomp/port/out/logs/` (`last_run.log` = o último) |
-| Saves | `~/decomp/port/user/savedata/` |
+| Abrir o launcher | menu de aplicativos ("The Last Guardian") ou `~/decomp/tlg_pc/tlg_launcher.sh` |
+| Rodar pelo terminal | `~/decomp/tlg_pc/run_tlg.sh [segundos]` |
+| Compilar | `cd ~/decomp/tlg_pc/port && TLG_LTO=OFF bash build.sh` |
+| Logs de cada sessão | `~/decomp/tlg_pc/port/out/logs/` (`last_run.log` = o último) |
+| Saves | `~/decomp/tlg_pc/port/user/savedata/` |
 | Vigia de sessão | `scripts/watch_session.sh` (dump automático se travar) |
 | Opções `TLG_*` | README, seção "Opções" |
 | Relatórios de análise | `analysis/01_main_loop_threads.md`, `02_rendering_gnm.md`, `03_audio.md`, `04_io_input_saves_system.md` |

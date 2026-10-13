@@ -1,6 +1,6 @@
 # 01 — Main loop, frame pacing e threading (TLG PS4 v1.03, CUSA03627)
 
-Binário: `/home/hayatog/decomp/dump/patch0/eboot.bin` (Ghidra, image base 0x1000000). Endereços abaixo são endereços Ghidra.
+Binário: `dump/patch0/eboot.bin` (Ghidra, image base 0x1000000). Endereços abaixo são endereços Ghidra.
 Legenda: **[C]** = confirmado no código decompilado/bytes; **[G]** = inferência/palpite (marcado explicitamente).
 
 ---

@@ -1,6 +1,6 @@
 #!/bin/bash
 # wait for mirror.sh, then resume every non-SELF file until local size == remote size
-H=ftp://192.168.1.10:2121; D=/home/hayatog/decomp/dump
+H=ftp://192.168.1.10:2121; D=$(cd -- "$(dirname -- "$0")/../dump" && pwd)
 LOG=${LOG:-$HOME/decomp/dump/.mirror.log}
 while pgrep -f mirror.sh >/dev/null; do sleep 20; done
 for pass in $(seq 1 30); do

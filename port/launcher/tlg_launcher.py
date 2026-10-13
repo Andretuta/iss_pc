@@ -205,18 +205,15 @@ class Launcher:
         self.refresh_status()
 
     def load_art(self):
-        """Window icon (icon0.png) and a 480x135 banner (16:4.5 band of pic1.png), when the dump has them."""
+        """Window icon (the port's tlg.png) and a 480x135 banner (a band of pic1.png from the dump, when present)."""
         self.banner = getattr(self, 'banner', None)
         if getattr(self, 'art_loaded', False):
             return
         self.art_loaded = True
         try:
-            icon = art_path(self.settings, 'icon0.png')
-            if icon:
-                self.icon = tk.PhotoImage(file=str(icon)).subsample(4)  # 512 -> 128
-                self.root.iconphoto(True, self.icon)
-            elif (tlg_run.PORT_DIR / 'launcher' / 'tlg.png').is_file():  # the port's own icon
-                self.icon = tk.PhotoImage(file=str(tlg_run.PORT_DIR / 'launcher' / 'tlg.png'))
+            icon = tlg_run.PORT_DIR / 'launcher' / 'tlg.png'  # the port's own icon
+            if icon.is_file():
+                self.icon = tk.PhotoImage(file=str(icon))
                 self.root.iconphoto(True, self.icon)
             picture = art_path(self.settings, 'pic1.png') or art_path(self.settings, 'pic0.png')
             if picture:
