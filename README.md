@@ -6,7 +6,7 @@ usando a cópia do próprio usuário.
 > **Nenhum arquivo do jogo é versionado aqui.** Isso inclui eboot, prx, psarc e saída bruta de descompilação.
 > Para rodar, cada pessoa precisa do próprio dump. Veja `.gitignore`.
 
-_Última atualização: 2026-10-12 (primeiro boot)_
+_Última atualização: 2026-10-13._ Resumo do que foi feito e do que falta: [docs/PROGRESSO.md](docs/PROGRESSO.md).
 
 ---
 
@@ -354,6 +354,7 @@ scripts/install_desktop.sh  atalho no menu de aplicativos, com o ícone oficial 
 run_tlg.sh           roda direto pelo terminal (./run_tlg.sh [segundos]), com as mesmas configurações
 port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)
 README.md            este documento (status + achados)
+docs/PROGRESSO.md    o que foi feito, problemas e correções, o que falta
 analysis/            relatórios de engenharia reversa (.md) e listas de imports (.json)
 scripts/             utilitários (imports SCE, leitor de TOC PSARC, mirror/verify FTP, progresso do dump USB)
 analysis/raw/ (ignorado)  pseudocódigo bruto, manifests dos psarc e snapshot do REA
