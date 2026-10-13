@@ -982,6 +982,16 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
     if (!pipeline) {
         return;
     }
+    // tlg: TLG_SKIP_ADJACENCY=1 drops draws with adjacency topology (geometry-shader outlines),
+    // to tell whether a broken effect comes from them.
+    static const bool skip_adjacency = std::getenv("TLG_SKIP_ADJACENCY") != nullptr;
+    if (skip_adjacency) {
+        const auto prim = pipeline->GetGraphicsKey().prim_type;
+        if (prim == AmdGpu::PrimitiveType::AdjTriangleList ||
+            prim == AmdGpu::PrimitiveType::AdjTriangleStrip) {
+            return;
+        }
+    }
     if (pipelined && FilterDrawPasses()) {
         PostDraw(pipeline, used_prepared, is_indexed, index_offset);
         return;
