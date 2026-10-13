@@ -1,5 +1,5 @@
 # Arquivos do jogo (copyright da Sony/genDESIGN): NUNCA versionar
-dump/
+/dump/
 *.psarc
 *.bin
 *.prx
@@ -8,7 +8,7 @@ dump/
 *.plt
 
 # Ferramentas de terceiros (Ghidra, JDK, GhidraOrbis): instaladas localmente
-tools/
+/tools/
 
 # Saída bruta de descompilação (código derivado do jogo) e caches do REA/Ghidra
 analysis/raw/
@@ -21,3 +21,9 @@ analysis/*.c
 __pycache__/
 *.pyc
 .DS_Store
+
+# Saídas de build do port e dados locais do jogo preparados
+port/out/
+port/pgo/
+port/user/
+/game/
