@@ -71,6 +71,9 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
         TlgSettings::Get().display_mode = TlgGraphics::Borderless;
     }
     ApplyDisplayMode(TlgSettings::Get().display_mode);
+    // tlg: no system cursor over the game; the in-game menu draws its own (TlgOverlay::SetOpen).
+    // (ps4_core: UpdateMouseCapture shows it again while Esc keeps the game's mouse released.)
+    SDL_HideCursor();
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     width = w;
