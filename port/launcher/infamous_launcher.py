@@ -39,7 +39,8 @@ TEXT = {
     'eager_readback': ('Read GPU results ahead (faster)', 'Ler resultados da GPU antecipado (mais rápido)'),
     'write_merge': ('Write to GPU memory without waiting (faster)', 'Escrever na memória da GPU sem esperar (mais rápido)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
-    'vram_hint': ('3500 for 6 GB cards, 5000 for 8 GB', '3500 para placas de 6 GB, 5000 para 8 GB'),
+    'vram_hint': ('6 GB card: 3500 · 8 GB: 5000 · 12 GB: 8500 · 16 GB: 12000 · 24 GB: 19000. This is video card memory (VRAM), not RAM; never above your card\'s VRAM.',
+                  'Placa de 6 GB: 3500 · 8 GB: 5000 · 12 GB: 8500 · 16 GB: 12000 · 24 GB: 19000. É a memória da placa de vídeo (VRAM), não a RAM; nunca acima da VRAM da placa.'),
     'gpu_readbacks': ('GPU accuracy', 'Precisão da GPU'),
     'readbacks_0': ('Fast (no GPU particles)', 'Rápido (sem partículas da GPU)'),
     'readbacks_1': ('Relaxed', 'Intermediário'),
@@ -214,7 +215,7 @@ class Launcher:
                            command=self.changed)
         spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
         spin.bind('<FocusOut>', lambda _: self.changed())
-        ttk.Label(video, text=self.t('vram_hint'), foreground='#777').grid(row=4, column=0, columnspan=2, sticky='w')
+        ttk.Label(video, text=self.t('vram_hint'), foreground='#777', wraplength=360).grid(row=4, column=0, columnspan=2, sticky='w')
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
         log_frame.grid(row=2, column=2, sticky='nsew', **pad)
