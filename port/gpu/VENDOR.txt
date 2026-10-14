@@ -8,3 +8,10 @@ Backported from upstream after b4e7ae7 (2026-10-02), recompiler correctness fixe
   mode (#5126), e518a6515 S_SUBB_U32 SCC wrap (#5031), 282e5c792 S_ADDC_U32 SCC carry-out (#5030),
   fb6367d29 32-bit literals in the high dword of 64-bit floats (#5114), 94e217781 V_BFM_B32 (#5185),
   d1cb90dbb ADDC (#5200), dd43d1cac V_CVT_PK_U8_F32 (#5194), ef08b1e1f V_ALIGNBIT/ALIGNBYTE (#5186).
+Ported from the shadPS4-Infamous-FixBuild fork (https://github.com/rayhlancaner-png/shadPS4-Infamous-FixBuild,
+GPL-2.0-or-later; authors Eye Of The Ruins/rayhlancaner-png, TOXIC-KID, 0xDeftones), adapted to our tree:
+  32851afe float atomic min/max with one integer atomic, 03db8f14 stencil test/op values,
+  e656365e allocate past the memory budget, e35e04dc pageable device local memory,
+  4a206865 residency granules, 0c3fada0 residency OOM retry, a107bf06 uploads in parts,
+  89854b0b + bde510f8 compute pipelines off the GPU thread, 0dff21f1 pipeline creation retry,
+  7e1c7cab submit in pieces, ee423726 + 2d2511fe + 9a5224bf guest threads wait for their own readbacks.
