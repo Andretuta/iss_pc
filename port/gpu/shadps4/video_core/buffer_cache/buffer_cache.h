@@ -8,7 +8,10 @@
 #include <atomic>
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <tuple>
+#include <vector>
 #include <optional>
 #include <utility>
 #include <boost/container/small_vector.hpp>
@@ -19,6 +22,7 @@
 #include "video_core/buffer_cache/fault_manager.h"
 #include "video_core/buffer_cache/range_set.h"
 #include "video_core/renderer_vulkan/vk_semaphore.h"
+#include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
 
 namespace AmdGpu {
 struct Liverpool;
@@ -190,6 +194,10 @@ private:
         bool dirty;   ///< GPU wrote it since the last copy
         bool valid;   ///< the copy at `tick` is current
         u32 idle;     ///< fences since the guest last read it
+        /// Fences to skip before copying it again, after copies of it went stale unread
+        /// (backoff doubles each time, up to EagerMaxBackoff; a read resets it).
+        u8 backoff;
+        u8 skip;
     };
     static bool EagerEnabled();
     void NoteGpuWriteForEager(VAddr addr, u64 size); ///< GPU-side threads, before the write
@@ -202,6 +210,58 @@ private:
     std::atomic<u32> eager_count{0};
     std::vector<VAddr> eager_subtracts; ///< pages served on guest threads: leave gpu_modified_ranges
     std::unique_ptr<Buffer> eager_buffer;
+
+    /// tlg: TLG_DEFERRED_READBACK=1 (precise readbacks): the reads the eager copies don't cover.
+    /// The GPU command thread only records a copy of the GPU modified memory around the fault
+    /// and submits it; the guest thread that faulted waits for that copy (not for the whole GPU
+    /// to go idle) and writes it back and unmarks it itself. Guest threads touching the same
+    /// memory meanwhile wait for the same copy. A GPU write to the memory before the copy is
+    /// applied marks it stale (before the memory is marked GPU modified again, see
+    /// MemoryTracker::ApplyGpuCopyIf), and so does a CPU write without a fault (CpuWriteMerge):
+    /// then the guest falls back to the old download. From shadPS4-Infamous-FixBuild ee423726
+    /// and 2d2511fe.
+    struct DeferredReadback {
+        Vulkan::StagingBufferRef staging;
+        /// Source offsets into the arena, destination offsets into the staging buffer.
+        boost::container::small_vector<vk::BufferCopy, 8> copies;
+        VAddr arena_base{};
+        VAddr start{};
+        VAddr end{};
+        u64 tick{};
+        std::atomic<bool> stale{};
+        std::atomic<bool> applied{};
+        /// Won't be applied; its ranges are back in gpu_modified_ranges.
+        std::atomic<bool> recovered{};
+        std::mutex mutex;
+        bool Done() const noexcept {
+            return applied.load(std::memory_order_acquire) ||
+                   recovered.load(std::memory_order_acquire);
+        }
+    };
+    static bool DeferredReadbackEnabled();
+    /// The arena and the window around a range that is read back with it.
+    std::tuple<const Buffer*, VAddr, VAddr> GetReadbackWindow(VAddr device_addr, u64 size);
+    /// Takes the GPU modified ranges of a range out of gpu_modified_ranges, adding copies of
+    /// them (staging offsets from 0). GPU-side threads.
+    u64 CollectDownloads(const Buffer* arena, VAddr device_addr, u64 size,
+                         boost::container::small_vector<vk::BufferCopy, 8>& copies);
+    /// Records and submits a copy back, or joins one in flight covering it. GPU-side threads.
+    std::shared_ptr<DeferredReadback> StartDeferredReadback(VAddr device_addr, u64 size);
+    /// Waits for the copy (if `wait`) and applies it. False when it is stale. Any thread.
+    bool FinishDeferredReadback(DeferredReadback& readback, bool wait);
+    /// Puts the ranges of a copy that won't be applied back into gpu_modified_ranges.
+    /// GPU-side threads.
+    void RecoverDeferredReadback(DeferredReadback& readback);
+    /// Applies or recovers the copies in flight overlapping [start, end). GPU-side threads.
+    void SettleDeferredReadbacks(VAddr start, VAddr end);
+    /// Recovers stale copies and frees the staging memory of finished ones. GPU-side threads.
+    void PruneDeferredReadbacks();
+    /// Marks the copies in flight overlapping a range stale. `cpu`: a guest thread is about to
+    /// write the memory without a fault, so an apply in progress is waited for. Any thread.
+    void MarkDeferredStale(VAddr addr, u64 size, bool cpu);
+    std::mutex deferred_mutex; ///< guards the list (guest threads read it)
+    std::vector<std::shared_ptr<DeferredReadback>> deferred_readbacks;
+    std::atomic<u32> deferred_count{0};
 
     bool SynchronizeMemory(const Buffer* arena, VAddr device_addr, u32 size, bool is_written,
                            bool is_texel_buffer);
