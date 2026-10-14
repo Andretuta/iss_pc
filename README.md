@@ -115,6 +115,7 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 - **View/Select/Back** é o clique do touchpad (lado direito; com L1 segurado, o lado esquerdo). Segurar o botão é segurar o touchpad.
 - **Segure View/Select e mova o analógico direito** para deslizar o dedo a partir do meio do touchpad. Um toque rápido sem mover continua sendo clique.
 - **Teclado:** Tab (lado esquerdo) e Backspace (lado direito) clicam; **segure Tab e use as setas** para deslizar.
+- **Dois dedos nas duas pontas do touchpad** (levantar o carro de cima do Reggie): **segure View/Select + R1**; no teclado, **segure Tab + Backspace**.
 
 | Ação no jogo | DualShock 4 / DualSense | Xbox / outro controle | Teclado |
 |---|---|---|---|
@@ -123,6 +124,7 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 | Grafite: virar o controle de lado | virar o controle | L3+R3 (modo sensor): já fica de lado | segurar T ou G |
 | Grafite: sacudir a lata | sacudir o controle | X/A no modo sensor | Y |
 | Grafite: pintar | R2, mirando com o controle | R2, mirando com o analógico esquerdo no modo sensor | F (R2), mirando com as setas enquanto segura T ou G |
+| Apertar as duas pontas do touchpad (levantar o carro de cima do Reggie) | dois dedos, um em cada ponta | segurar View/Select + R1 | segurar Tab + Backspace |
 | Deslizar no touchpad (porta "Open Door", scanner de mão) | deslizar o dedo | segurar View/Select + analógico direito na direção pedida | segurar Tab + setas |
 | Voltar ao normal depois do grafite | — | L3+R3 de novo ("Modo sensor desligado") | — |
 
@@ -265,6 +267,7 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 - **View/Select/Back** is the touchpad click (right side; with L1 held, the left side). Holding the button holds the touchpad.
 - **Hold View/Select and move the right stick** to swipe a finger from the middle of the touchpad. A quick tap without moving still clicks.
 - **Keyboard:** Tab (left side) and Backspace (right side) click; **hold Tab and use the arrow keys** to swipe.
+- **Two fingers on both ends of the touchpad** (lifting the car off Reggie): **hold View/Select + R1**; on the keyboard, **hold Tab + Backspace**.
 
 | In-game action | DualShock 4 / DualSense | Xbox / other controller | Keyboard |
 |---|---|---|---|
@@ -273,6 +276,7 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 | Graffiti: turn the controller sideways | turn the controller | L3+R3 (sensor mode): it is on its side at once | hold T or G |
 | Graffiti: shake the can | shake the controller | cross/A in sensor mode | Y |
 | Graffiti: spray | R2, aiming with the controller | R2, aiming with the left stick in sensor mode | F (R2), aiming with the arrow keys while holding T or G |
+| Press both ends of the touchpad (lifting the car off Reggie) | two fingers, one on each end | hold View/Select + R1 | hold Tab + Backspace |
 | Touchpad swipe ("Open Door", hand scanner) | swipe a finger | hold View/Select + right stick in the asked direction | hold Tab + arrow keys |
 | Back to normal after the graffiti | — | L3+R3 again ("Sensor mode off") | — |
 

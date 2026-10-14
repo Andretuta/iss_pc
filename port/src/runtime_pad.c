@@ -118,6 +118,27 @@ static void play_click(PadData *d) {
     if (now>=down && now<up) d->buttons|=BTN_TOUCHPAD;
 }
 
+/* Two fingers pressing both ends of the touchpad (inFAMOUS: lifting the car off Reggie). Pads
+ * without a touchpad: View/Select + R1, or both click sources together (keyboard Tab + Backspace,
+ * scripted touchpad_left + touchpad_right). The fingers land CLICK_LEAD_US before the button and
+ * stay while held; R1 is hidden from the game meanwhile. Returns 1 while it owns the touchpad. */
+static struct { int active; uint64_t pressed, released; } two={0,0,0};
+static int play_two_finger(PadData *d) {
+    const uint64_t now=d->timestamp;
+    const uint32_t b=d->buttons;
+    const int held=((b & CLICK_LEFT) && (b & CLICK_RIGHT)) || ((b & CLICK_RIGHT) && (b & BTN_R1));
+    if (held && (!two.active || two.released)) { two.active=1; two.pressed=now; two.released=0; click.side=-1; }
+    else if (!held && two.active && !two.released) two.released=now;
+    if (!two.active) return 0;
+    if (two.released && now-two.released>=CLICK_TAIL_US) { two.active=0; return 0; }
+    d->buttons&=~(uint32_t)(CLICK_LEFT|CLICK_RIGHT|BTN_R1);
+    d->touch_count=0;
+    d->touches[d->touch_count]=(PadTouch){.x=120,.y=471,.id=20}; ++d->touch_count;
+    d->touches[d->touch_count]=(PadTouch){.x=1800,.y=471,.id=21}; ++d->touch_count;
+    if (!two.released && now>=two.pressed+CLICK_LEAD_US) d->buttons|=BTN_TOUCHPAD;
+    return 1;
+}
+
 /* Opens the first gamepad SDL knows about; called under lock. */
 /* Every connected controller is open; the game reads the one used last (a press or a stick
  * past half way), so a second controller lying on the desk never takes over. */
@@ -621,7 +642,7 @@ static void sample(PadData *d) {
     if (injected.buttons & BTN_R2) d->r2=255;
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
-    play_click(d);
+    if (!play_two_finger(d)) play_click(d);
     if (hold_after_capture) {
         if (d->buttons) d->buttons=0;
         else hold_after_capture=0;
