@@ -77,12 +77,16 @@ static RpLock lock=RP_LOCK_INITIALIZER;
 #define table_wrlock() rp_write_lock(&lock)
 #define table_rdunlock() rp_read_unlock(&lock)
 #define table_wrunlock() rp_write_unlock(&lock)
+#define table_tryrdlock() rp_try_read_lock(&lock)
+#define table_trywrlock() rp_try_write_lock(&lock)
 #else
 static pthread_rwlock_t lock=PTHREAD_RWLOCK_INITIALIZER;
 #define table_rdlock() pthread_rwlock_rdlock(&lock)
 #define table_wrlock() pthread_rwlock_wrlock(&lock)
 #define table_rdunlock() pthread_rwlock_unlock(&lock)
 #define table_wrunlock() pthread_rwlock_unlock(&lock)
+#define table_tryrdlock() pthread_rwlock_tryrdlock(&lock)
+#define table_trywrlock() pthread_rwlock_trywrlock(&lock)
 #endif
 static __thread unsigned exclusive_depth;
 /* Odd while a writer holds the lock; readers' region caches are valid for one even value. */
