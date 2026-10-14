@@ -193,14 +193,15 @@ def cpu_missing_sets():
 
 
 def isa_table(log=print):
-    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1 or LZCNT the
-    probe replaces those instructions in the image, from the table scripts/isa_rewrite.py writes
-    (iced-x86). ISS_ISA_REWRITE=1 builds it on any CPU (testing), =0 never. A failed table is
-    reported and the probe then explains what is missing."""
+    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1, LZCNT or SSE4A
+    (every Intel CPU) the probe replaces those instructions in the image, from the table
+    scripts/isa_rewrite.py writes (iced-x86). ISS_ISA_REWRITE=1 (every set) or a list such as
+    ISS_ISA_REWRITE=sse4a builds it on any CPU (testing), =0 never. A failed table is reported and
+    the probe then explains what is missing."""
     ISA_TABLE.unlink(missing_ok=True)  # always matches the boot-linked.bin just written
-    policy = os.environ.get('ISS_ISA_REWRITE')
+    policy = os.environ.get('ISS_ISA_REWRITE') or os.environ.get('TLG_ISA_REWRITE') or ''
     missing = cpu_missing_sets()
-    if not (policy == '1' or (policy != '0' and missing)):
+    if not ((policy and policy != '0') or (policy != '0' and missing)):
         return
     scripts = PORT_DIR / 'scripts'
     result = subprocess.run([*python_command(scripts / 'isa_rewrite.py'), str(OUT_DIR / 'boot-linked.bin'),
