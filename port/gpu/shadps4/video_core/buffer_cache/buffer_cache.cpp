@@ -1016,6 +1016,11 @@ const Buffer* BufferCache::UploadCopies(const Buffer* arena, std::span<vk::Buffe
         texture_cache.ResolveReadbacks(copy.dstOffset, copy.size, true, ReadbackSource::BufferUpload);
     }
     TlgStats::buffer_upload_bytes.fetch_add(total_size_bytes, std::memory_order_relaxed);
+    if (total_size_bytes > MAX_UPLOAD_PART_BYTES) {
+        // Recorded here, part by part: nothing left for the caller to copy.
+        UploadInParts(arena, copies);
+        return nullptr;
+    }
     const auto staging = staging_pool.Request(total_size_bytes, MemoryType::HostUncached);
     // tlg: the guest memory is copied into staging on the copy threads, started now in
     // groups of about 1 MiB; submission and guest-visible fences wait for them
@@ -1086,6 +1091,70 @@ const Buffer* BufferCache::UploadCopies(const Buffer* arena, std::span<vk::Buffe
     }
     staging.Flush();
     return staging.buffer;
+}
+
+void BufferCache::UploadInParts(const Buffer* arena, std::span<const vk::BufferCopy> ranges) {
+    u64 total_bytes = 0;
+    for (const auto& range : ranges) {
+        total_bytes += range.size;
+    }
+    LOG_WARNING(Render, "Uploading {} MB in parts of {} MB", total_bytes >> 20,
+                MAX_UPLOAD_PART_BYTES >> 20);
+    // Guest memory is copied on this thread (helped by the copy threads), not deferred: the
+    // staging memory is reused as soon as the GPU has copied the part.
+    struct HostCopy {
+        VAddr source;
+        u8* destination;
+        u64 size;
+    };
+    boost::container::small_vector<vk::BufferCopy, 8> copies;
+    std::vector<HostCopy> host_copies;
+    Vulkan::StagingBufferRef staging{};
+    u64 part_bytes = 0;
+    u32 parts = 0;
+    const auto upload_part = [&] {
+        TlgCopy::ParallelFor(host_copies.size(), [&](std::size_t i) {
+            memory->CopySparseMemory(host_copies[i].source, host_copies[i].destination,
+                                     host_copies[i].size);
+        });
+        staging.Flush();
+        runtime.CopyBuffer(staging.buffer, arena, copies);
+        copies.clear();
+        host_copies.clear();
+        part_bytes = 0;
+        ++parts;
+    };
+    // Pieces of a few MB spread a part over the copy threads.
+    constexpr u64 PieceBytes = 4_MB;
+    for (const auto& range : ranges) {
+        for (u64 done = 0; done < range.size;) {
+            if (part_bytes == 0) {
+                if (parts != 0) {
+                    // The staging memory is free again once the GPU has copied the last part.
+                    // This thread owns the caches, as for DownloadMemory's Finish.
+                    scheduler.Finish();
+                }
+                staging = staging_pool.Request(MAX_UPLOAD_PART_BYTES, MemoryType::HostUncached);
+            }
+            const u64 size = std::min(range.size - done, MAX_UPLOAD_PART_BYTES - part_bytes);
+            const VAddr addr = range.dstOffset + done;
+            copies.push_back(vk::BufferCopy{.srcOffset = staging.offset + part_bytes,
+                                            .dstOffset = addr - arena->cpu_addr,
+                                            .size = size});
+            for (u64 piece = 0; piece < size; piece += PieceBytes) {
+                host_copies.push_back({addr + piece, staging.mapped + part_bytes + piece,
+                                       std::min(PieceBytes, size - piece)});
+            }
+            part_bytes += size;
+            done += size;
+            if (part_bytes == MAX_UPLOAD_PART_BYTES) {
+                upload_part();
+            }
+        }
+    }
+    if (part_bytes != 0) {
+        upload_part();
+    }
 }
 
 bool BufferCache::SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_addr, u32 size) {

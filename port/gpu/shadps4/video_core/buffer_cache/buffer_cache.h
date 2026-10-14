@@ -54,6 +54,10 @@ public:
     /// Read-only bindings up to this size are copied into a stream buffer (tlg: public for
     /// the draw pipeline's constant ring).
     static constexpr u64 STREAM_THRESHOLD = 16_KB;
+    /// tlg (shadPS4-Infamous-FixBuild a107bf06): uploads larger than this go through staging
+    /// memory of this size, a part at a time. Loading a save in inFAMOUS Second Son one draw reads
+    /// 2.4 GB the game wrote at once, and staging memory that large could not be allocated.
+    static constexpr u64 MAX_UPLOAD_PART_BYTES = 256_MB;
 
     explicit BufferCache(const Vulkan::Instance& instance, Vulkan::Scheduler& scheduler,
                          Vulkan::Runtime& runtime, AmdGpu::Liverpool* liverpool,
@@ -208,6 +212,10 @@ private:
 
     const Buffer* UploadCopies(const Buffer* arena, std::span<vk::BufferCopy> copies,
                                size_t total_size_bytes);
+
+    /// tlg: uploads the ranges (guest addresses in dstOffset) MAX_UPLOAD_PART_BYTES at a time,
+    /// waiting for the GPU to copy each part before the staging memory takes the next.
+    void UploadInParts(const Buffer* arena, std::span<const vk::BufferCopy> ranges);
 
     bool SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_addr, u32 size);
 
