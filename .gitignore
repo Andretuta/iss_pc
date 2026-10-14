@@ -6,6 +6,8 @@
 *.sprx
 *.sfo
 *.plt
+# Exception: synthetic 448-byte x86 image for the ISA rewrite tests (upstream gow3_pc), no game code
+!port/tests/data/isa_fixture.bin
 
 # Ferramentas de terceiros (Ghidra, JDK, GhidraOrbis): instaladas localmente
 /tools/

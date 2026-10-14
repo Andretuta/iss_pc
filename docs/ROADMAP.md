@@ -18,7 +18,7 @@ com som próprio (AudioOut + Ajm, sem arquivo do firmware), saves, HUD correto, 
 |---|---|
 | Boot | `mov reg, fs:[0]` em qualquer registrador (TLS); os 15 imports só deste jogo (`runtime_infamous.c`) |
 | Sensor de movimento | giroscópio real pela SDL3 e "modo sensor" simulado (Share ou L3+R3; teclado T/G/Y) |
-| Analógicos | zona morta de 10% (`TLG_STICK_DEADZONE`, também no launcher) e o último controle usado |
+| Analógicos | zona morta de 10% (`ISS_STICK_DEADZONE`, também no launcher) e o último controle usado |
 | Touchpad sem touchpad | View/Select (ou Tab) + analógico direito desliza ("Open Door") |
 | VRAM | orçamento padrão de 3500 MB (falta de VRAM no carregamento) |
 | FPS caindo com o tempo | variantes de shader com a chave tirada antes da tradução: de 60→6 FPS para estável |
@@ -30,14 +30,14 @@ com som próprio (AudioOut + Ajm, sem arquivo do firmware), saves, HUD correto, 
 
 | # | Item | Detalhe |
 |---|---|---|
-| 1 | Desempenho | a thread do jogo espera leituras da GPU (escritas de `memcpy` em páginas modificadas pela GPU); correção: rastrear a memória em pedaços menores que a página (`TLG_WRITE_MERGE=1` é o primeiro passo, desligado por padrão) |
-| 2 | Engasgo de shader | 64–118 compilações por janela de 5 s em cenas novas; precisa do cache de pipelines em disco (`TLG_PIPELINE_BINARIES=1` ainda derruba o jogo) |
+| 1 | Desempenho | a thread do jogo espera leituras da GPU (escritas de `memcpy` em páginas modificadas pela GPU); correção: rastrear a memória em pedaços menores que a página (`ISS_WRITE_MERGE=1` é o primeiro passo, desligado por padrão) |
+| 2 | Engasgo de shader | 64–118 compilações por janela de 5 s em cenas novas; precisa do cache de pipelines em disco (`ISS_PIPELINE_BINARIES=1` ainda derruba o jogo) |
 | 3 | Névoa, água, fogo e luzes piscando; grade fina de linhas escuras | suspeitas: ballots wave64 em fluxo divergente, texturas BC 1D |
 | 4 | Brilho azul do dreno de drones | não aparece; ballot wave64, stencil ou readback |
-| 5 | Texturas BC 1D | promoção para 2D desligada por padrão (`TLG_BLOCK1D=1`), porque ligada estraga o HUD |
+| 5 | Texturas BC 1D | promoção para 2D desligada por padrão (`ISS_BLOCK1D=1`), porque ligada estraga o HUD |
 | 6 | Idiomas do jogo no launcher | a lista ainda é a do GR2; ler do `param.sfo`/dados |
 | 7 | `param.sfo` 1.07 na visão do jogo | a visão usa o 1.00 |
-| 8 | Prefixo `ISS_` nas variáveis | hoje `TLG_*`, herdado; aceitar os dois na transição |
+| 8 | Prefixo `ISS_` nas variáveis | ✅ feito: o jogador usa `ISS_*`; o núcleo ainda lê `TLG_*` por dentro (o `tlg-probe` traduz na partida). Quando todos os ports usarem o ps4_core, o prefixo comum vira `PSCORE_` |
 | 9 | Launcher novo (C++/SDL3/ImGui) | protótipo aqui, depois em todos os ports |
 
 ---
