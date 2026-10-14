@@ -21,13 +21,13 @@ fi
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
-export TLG_PIPELINE_BINARIES=0 TLG_READBACKS=${TLG_READBACKS:-2} TLG_EAGER_READBACK=${TLG_EAGER_READBACK:-1} TLG_WRITE_MERGE=${TLG_WRITE_MERGE:-1} TLG_GC_BUDGET_MB=${TLG_GC_BUDGET_MB:-3500} TLG_UPSCALER=off TLG_JITTER=0 \
-       TLG_OBJECT_MOTION=0 TLG_FRAME_STATS=1 TLG_LANGUAGE=${TLG_LANGUAGE:-1}
-pad=$port/out/pad_input.txt; : > "$pad"; export TLG_PAD_FILE=$pad
+export ISS_PIPELINE_BINARIES=0 ISS_READBACKS=${ISS_READBACKS:-2} ISS_EAGER_READBACK=${ISS_EAGER_READBACK:-1} ISS_WRITE_MERGE=${ISS_WRITE_MERGE:-1} ISS_GC_BUDGET_MB=${ISS_GC_BUDGET_MB:-3500} ISS_UPSCALER=off ISS_JITTER=0 \
+       ISS_OBJECT_MOTION=0 ISS_FRAME_STATS=1 ISS_LANGUAGE=${ISS_LANGUAGE:-1}
+pad=$port/out/pad_input.txt; : > "$pad"; export ISS_PAD_FILE=$pad
 if [[ -n $shots ]]; then
-    mkdir -p "$shots"; export TLG_FRAME_DUMP_TRIGGER=$shots/trigger TLG_DUMP_DIR=$shots
+    mkdir -p "$shots"; export ISS_FRAME_DUMP_TRIGGER=$shots/trigger ISS_DUMP_DIR=$shots
 fi
-export TLG_APP_NAME="inFAMOUS Second Son" TLG_APP_ID=infamous-pc
+export ISS_APP_NAME="inFAMOUS Second Son" ISS_APP_ID=infamous-pc
 (cd "$port/user" && exec "$port/out/tlg-probe" "$port/out/boot-linked.bin" --app0 "$dump" --user . \
     --content-profile "$port/out/content.bin" --timeout "$seconds") > "$log" 2>&1 &
 game=$!

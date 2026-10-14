@@ -6,7 +6,7 @@ Shared by the command line (run_infamous.sh -> `infamous_run.py [seconds]`) and 
 window (infamous_launcher.py), so both start the game the same way:
   1. prepare.py / link_modules.py / content_profile.py build out/boot-linked.bin from the game
      folder (eboot + the game's own libc and Fios2; no console firmware module is needed);
-  2. the TLG defaults below become TLG_* environment variables (each one validated in play);
+  2. the defaults below become ISS_* environment variables (each one validated in play);
   3. tlg-probe runs with its output in out/logs/run-<date>.log (last_run.log points to it).
 """
 import datetime
@@ -32,12 +32,12 @@ GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
 
 # TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
-    'TLG_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
-    'TLG_GC_BUDGET_MB': '3500',    # texture cache budget; 5600 exhausts 6 GB of VRAM in inFAMOUS
-    'TLG_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
-    'TLG_JITTER': '0',
-    'TLG_OBJECT_MOTION': '0',
-    'TLG_FRAME_STATS': '1',        # FPS in the log every 5 s (scripts/watch_session.sh heartbeat)
+    'ISS_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
+    'ISS_GC_BUDGET_MB': '3500',    # texture cache budget; 5600 exhausts 6 GB of VRAM in inFAMOUS
+    'ISS_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
+    'ISS_JITTER': '0',
+    'ISS_OBJECT_MOTION': '0',
+    'ISS_FRAME_STATS': '1',        # FPS in the log every 5 s (scripts/watch_session.sh heartbeat)
 }
 
 # The game's own modules from sce_module/, linked into the image.
@@ -52,9 +52,9 @@ DEFAULT_SETTINGS = {
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
     'vsync': True,
     'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
-    'stick_deadzone': 10,    # percent; runtime_pad.c TLG_STICK_DEADZONE
-    'eager_readback': True,  # TLG_EAGER_READBACK: copy GPU results the game reads back at each fence
-    'write_merge': True,     # TLG_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
+    'stick_deadzone': 10,    # percent; runtime_pad.c ISS_STICK_DEADZONE
+    'eager_readback': True,  # ISS_EAGER_READBACK: copy GPU results the game reads back at each fence
+    'write_merge': True,     # ISS_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 
@@ -194,10 +194,10 @@ def cpu_missing_sets():
 def isa_table(log=print):
     """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1 or LZCNT the
     probe replaces those instructions in the image, from the table scripts/isa_rewrite.py writes
-    (iced-x86). TLG_ISA_REWRITE=1 builds it on any CPU (testing), =0 never. A failed table is
+    (iced-x86). ISS_ISA_REWRITE=1 builds it on any CPU (testing), =0 never. A failed table is
     reported and the probe then explains what is missing."""
     ISA_TABLE.unlink(missing_ok=True)  # always matches the boot-linked.bin just written
-    policy = os.environ.get('TLG_ISA_REWRITE')
+    policy = os.environ.get('ISS_ISA_REWRITE')
     missing = cpu_missing_sets()
     if not (policy == '1' or (policy != '0' and missing)):
         return
@@ -226,10 +226,10 @@ def window_icon(settings):
 
 
 def pad_glyphs():
-    """TLG_GLYPHS for the in-game menu (xbox or nintendo button names) from the first controller
+    """ISS_GLYPHS for the in-game menu (xbox or nintendo button names) from the first controller
     `tlg-probe --gamepad` finds; None for PlayStation pads, none attached or when it fails.
-    TLG_GLYPHS in the environment (playstation, xbox, nintendo) skips the question."""
-    if os.environ.get('TLG_GLYPHS'):
+    ISS_GLYPHS in the environment (playstation, xbox, nintendo) skips the question."""
+    if os.environ.get('ISS_GLYPHS'):
         return None
     try:
         out = subprocess.run([str(PROBE), '--gamepad'], stdin=subprocess.DEVNULL, capture_output=True,
@@ -246,27 +246,27 @@ def pad_glyphs():
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
-        env.setdefault(key, value)  # explicit TLG_* in the environment always win
-    env['TLG_GC_BUDGET_MB'] = os.environ.get('TLG_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
-    env['TLG_READBACKS'] = os.environ.get('TLG_READBACKS', str(settings.get('gpu_readbacks', '2')))
-    env['TLG_EAGER_READBACK'] = os.environ.get('TLG_EAGER_READBACK', '1' if settings.get('eager_readback', True) else '0')
-    env['TLG_WRITE_MERGE'] = os.environ.get('TLG_WRITE_MERGE', '1' if settings.get('write_merge', True) else '0')
-    env['TLG_STICK_DEADZONE'] = os.environ.get('TLG_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
-    env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
+        env.setdefault(key, value)  # explicit ISS_* in the environment always win
+    env['ISS_GC_BUDGET_MB'] = os.environ.get('ISS_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
+    env['ISS_READBACKS'] = os.environ.get('ISS_READBACKS', str(settings.get('gpu_readbacks', '2')))
+    env['ISS_EAGER_READBACK'] = os.environ.get('ISS_EAGER_READBACK', '1' if settings.get('eager_readback', True) else '0')
+    env['ISS_WRITE_MERGE'] = os.environ.get('ISS_WRITE_MERGE', '1' if settings.get('write_merge', True) else '0')
+    env['ISS_STICK_DEADZONE'] = os.environ.get('ISS_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
+    env['ISS_LANGUAGE'] = os.environ.get('ISS_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
-        env['TLG_UI_LANG'] = settings['ui_language']
-    env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
+        env['ISS_UI_LANG'] = settings['ui_language']
+    env['ISS_CONFIG'] = str(USER_DIR / 'tlg.ini')
     # Window name, app id (matches infamous-pc.desktop for Alt+Tab and the dock) and icon.
-    env.setdefault('TLG_APP_NAME', 'inFAMOUS Second Son')
-    env.setdefault('TLG_APP_ID', 'infamous-pc')
+    env.setdefault('ISS_APP_NAME', 'inFAMOUS Second Son')
+    env.setdefault('ISS_APP_ID', 'infamous-pc')
     icon = window_icon(settings)
     if icon:
-        env.setdefault('TLG_WINDOW_ICON', str(icon))
+        env.setdefault('ISS_WINDOW_ICON', str(icon))
     glyphs = pad_glyphs()
     if glyphs:
-        env.setdefault('TLG_GLYPHS', glyphs)
+        env.setdefault('ISS_GLYPHS', glyphs)
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
-    env.setdefault('TLG_RESTART_COMMAND', restart)
+    env.setdefault('ISS_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
     bundled = OUT_DIR / 'lib'
     if os.name != 'nt' and bundled.is_dir():
@@ -317,8 +317,8 @@ def main(argv=None):
     attach_stdio()
     seconds = int(argv[0]) if argv and argv[0].isdigit() else 0
     settings = load_settings()
-    if os.environ.get('TLG_GAME_DIR'):
-        settings['game_dir'] = os.environ['TLG_GAME_DIR']
+    if os.environ.get('ISS_GAME_DIR'):
+        settings['game_dir'] = os.environ['ISS_GAME_DIR']
     problems = check_game(settings['game_dir'])
     if problems:
         for kind, detail in problems:
