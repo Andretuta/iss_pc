@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <span>
+#include <thread>
 
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
@@ -30,6 +31,25 @@ Pipeline::Pipeline(const Instance& instance_, Scheduler& scheduler_, DescriptorH
       is_compute{is_compute_} {}
 
 Pipeline::~Pipeline() = default;
+
+bool RetryPipelineCreation(vk::Result result, u32 attempt, std::string_view kind,
+                           std::string_view name) {
+    // With the driver's cache cold, as after a driver update, the compiler threads build hundreds
+    // of pipelines at once while the game loads, and the driver failed one of them now and then
+    // with an unknown error, which ended the game. Building it again a little later can succeed.
+    constexpr u32 MaxAttempts = 5;
+    const bool may_recover = result == vk::Result::eErrorUnknown ||
+                             result == vk::Result::eErrorOutOfHostMemory ||
+                             result == vk::Result::eErrorOutOfDeviceMemory ||
+                             result == vk::Result::eErrorInitializationFailed;
+    if (!may_recover || attempt >= MaxAttempts) {
+        return false;
+    }
+    LOG_WARNING(Render_Vulkan, "tlg: creating {} pipeline {} failed with {} (attempt {}), trying "
+                "again", kind, name, vk::to_string(result), attempt);
+    std::this_thread::sleep_for(std::chrono::milliseconds{100} * attempt);
+    return true;
+}
 
 vk::Pipeline Pipeline::BuiltHandle() const {
     if (const VkPipeline handle = build->handle.load(std::memory_order_acquire)) {

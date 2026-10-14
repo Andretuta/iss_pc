@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <string_view>
 
 #include <boost/container/small_vector.hpp>
 
@@ -29,6 +30,11 @@ static constexpr auto AllGraphicsStageBits =
 class Instance;
 class Scheduler;
 class DescriptorHeap;
+
+/// tlg: whether creating a pipeline that failed with `result` on `attempt` (from 1) is tried
+/// again, after waiting a little longer each time for the driver to recover.
+bool RetryPipelineCreation(vk::Result result, u32 attempt, std::string_view kind,
+                           std::string_view name);
 
 class Pipeline {
 public:

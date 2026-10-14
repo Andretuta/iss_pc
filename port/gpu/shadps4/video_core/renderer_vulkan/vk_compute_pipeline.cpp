@@ -117,16 +117,20 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
             },
             .layout = layout,
         };
-        auto [pipeline_result, pipe] =
-            instance.GetDevice().createComputePipelineUnique(cache, compute_pipeline_ci);
-        if (pipeline_result == vk::Result::ePipelineCompileRequired &&
+        const auto device = instance.GetDevice();
+        auto created = device.createComputePipelineUnique(cache, compute_pipeline_ci);
+        for (u32 attempt = 1;
+             RetryPipelineCreation(created.result, attempt, "compute", debug_str); ++attempt) {
+            created = device.createComputePipelineUnique(cache, compute_pipeline_ci);
+        }
+        if (created.result == vk::Result::ePipelineCompileRequired &&
             (flags & vk::PipelineCreateFlagBits::eFailOnPipelineCompileRequired)) {
             return {};
         }
-        ASSERT_MSG(pipeline_result == vk::Result::eSuccess, "Failed to create compute pipeline: {}",
-                   vk::to_string(pipeline_result));
-        SetObjectName(instance.GetDevice(), *pipe, "Compute Pipeline {}", debug_str);
-        return std::move(pipe);
+        ASSERT_MSG(created.result == vk::Result::eSuccess, "Failed to create compute pipeline: {}",
+                   vk::to_string(created.result));
+        SetObjectName(device, *created.value, "Compute Pipeline {}", debug_str);
+        return std::move(created.value);
     };
 
     // tlg: a dispatch is waiting for a pipeline met in game, and compute work cannot be skipped
