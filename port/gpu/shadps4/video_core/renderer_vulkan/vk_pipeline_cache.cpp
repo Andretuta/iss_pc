@@ -825,6 +825,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
 }
 
 const ComputePipeline* PipelineCache::GetComputePipeline() {
+    SeedWorkerCaches();
     PublishShaders();
     PublishGraphics();
     PumpWarmUp();
@@ -838,9 +839,15 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
         CompileTimer timer;
 
         ComputePipeline::SerializationSupport sdata{};
+        // tlg: built on the compiler threads when the driver hasn't cached it (the dispatch
+        // binds it once built, vk_compute_pipeline.cpp). Not while collecting shaders: their
+        // pipelines are erased on a reload, with a build perhaps still running.
+        const ComputeBuilder builder{compiler.get(), worker_pipeline_caches};
+        const bool async = compiler && !EmulatorSettings.IsShaderCollect();
         it.value() = std::make_unique<ComputePipeline>(instance, scheduler, desc_heap, profile,
                                                        *pipeline_cache, compute_key, *sel.infos[0],
-                                                       sel.modules[0], sdata, false);
+                                                       sel.modules[0], sdata, false,
+                                                       async ? &builder : nullptr);
         RegisterPipelineData(compute_key, sdata);
         ++num_new_pipelines;
 
@@ -848,6 +855,8 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
             auto& m = sel.modules[0];
             module_related_pipelines[m].emplace_back(compute_key);
         }
+    } else if (it->second) {
+        it.value()->SwapInOptimized();
     }
     return it->second.get();
 }

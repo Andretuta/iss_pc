@@ -239,6 +239,14 @@ private:
                   const IndirectDraw* indirect = nullptr);
     /// Everything of a direct dispatch after the pipeline selection (GPU thread or stage B).
     void DispatchRecord(const ComputePipeline* pipeline);
+    /// tlg: binds a compute pipeline in a recorded command: its handle, or, while a compiler
+    /// thread still builds it, the pipeline to wait for where the command is recorded.
+    struct ComputeBinder {
+        vk::Pipeline handle;
+        const ComputePipeline* pending;
+        void operator()(vk::CommandBuffer cmdbuf) const;
+    };
+    static ComputeBinder ComputeBind(const ComputePipeline* pipeline);
     /// tlg: TLG_FRAME_RECORD_TRIGGER: inputs of the draw or dispatch being recorded
     /// (vk_frame_record.h). `state`: the draw's render state, null for dispatches.
     void RecordFrameInputs(const Pipeline* pipeline, const PreparedDraw* prepared,

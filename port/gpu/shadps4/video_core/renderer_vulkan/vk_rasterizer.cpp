@@ -1397,6 +1397,25 @@ void Rasterizer::DispatchDirect() {
     DispatchRecord(pipeline);
 }
 
+Rasterizer::ComputeBinder Rasterizer::ComputeBind(const ComputePipeline* pipeline) {
+    if (pipeline->IsBuilt()) {
+        return {pipeline->Handle(), nullptr};
+    }
+    // tlg: still being built on a compiler thread (vk_compute_pipeline.cpp): the thread that
+    // records the command into Vulkan waits for it, the GPU thread goes on.
+    Pipeline::deferred_binds.fetch_add(1, std::memory_order_relaxed);
+    return {vk::Pipeline{}, pipeline};
+}
+
+void Rasterizer::ComputeBinder::operator()(vk::CommandBuffer cmdbuf) const {
+    if (pending) [[unlikely]] {
+        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, pending->Handle());
+        Pipeline::deferred_binds.fetch_sub(1, std::memory_order_relaxed);
+        return;
+    }
+    cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, handle);
+}
+
 void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     FrameCapture::Poll();
     gbuffer_draw = false;
@@ -1441,7 +1460,7 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     mark();
     pipeline->BindResources(set_writes, push_data);
 
-    const vk::Pipeline handle = pipeline->Handle();
+    const auto bind = ComputeBind(pipeline);
     const u32 dim_x = cs_program.dim_x, dim_y = cs_program.dim_y, dim_z = cs_program.dim_z;
     if (FrameCapture::Active()) {
         FrameCapture::Dispatch(cs.pgm_hash, dim_x, dim_y, dim_z);
@@ -1450,7 +1469,7 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         if (Scheduler::FullBarriers()) {
             Scheduler::RecordFullBarrier(cmdbuf);
         }
-        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, handle);
+        bind(cmdbuf);
         cmdbuf.dispatch(dim_x, dim_y, dim_z);
         if (Scheduler::FullBarriers()) {
             Scheduler::RecordFullBarrier(cmdbuf);
@@ -1519,14 +1538,14 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
     scheduler.EndRendering();
     pipeline->BindResources(set_writes, push_data);
 
-    const vk::Pipeline handle = pipeline->Handle();
+    const auto bind = ComputeBind(pipeline);
     const vk::Buffer args = buffer->Handle();
     const u64 args_offset = base;
     scheduler.Record([=](vk::CommandBuffer cmdbuf) {
         if (Scheduler::FullBarriers()) {
             Scheduler::RecordFullBarrier(cmdbuf);
         }
-        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, handle);
+        bind(cmdbuf);
         cmdbuf.dispatchIndirect(args, args_offset);
         if (Scheduler::FullBarriers()) {
             Scheduler::RecordFullBarrier(cmdbuf);

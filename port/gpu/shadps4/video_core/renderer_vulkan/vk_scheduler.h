@@ -772,6 +772,12 @@ public:
         }
     }
 
+    /// tlg: true when commands passed to Record() normally go to the Vulkan recording thread
+    /// (it may still record some directly, after a CommandBuffer() call).
+    [[nodiscard]] bool RecordsOnThread() const noexcept {
+        return recording_threaded && !TlgToggle::Disabled(TlgToggle::ThreadedRecording);
+    }
+
     /// True when Record() defers commands (and RecordData() copies into chunks).
     [[nodiscard]] bool IsRecordingDeferred() const noexcept {
         return recording_threaded && !direct_mode &&

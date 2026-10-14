@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <chrono>
 #include <span>
 
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
 
+#include "common/logging/log.h"
 #include "shader_recompiler/resource.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
@@ -28,6 +30,22 @@ Pipeline::Pipeline(const Instance& instance_, Scheduler& scheduler_, DescriptorH
       is_compute{is_compute_} {}
 
 Pipeline::~Pipeline() = default;
+
+vk::Pipeline Pipeline::BuiltHandle() const {
+    if (const VkPipeline handle = build->handle.load(std::memory_order_acquire)) {
+        return vk::Pipeline{handle};
+    }
+    const auto start = std::chrono::steady_clock::now();
+    std::unique_lock lock{build->mutex};
+    build->cv.wait(lock, [this] {
+        return build->handle.load(std::memory_order_acquire) != VK_NULL_HANDLE;
+    });
+    LOG_INFO(Render_Vulkan, "tlg: waited {:.1f} ms for compute pipeline {} being built",
+             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                 .count(),
+             GetDebugString());
+    return vk::Pipeline{build->handle.load(std::memory_order_acquire)};
+}
 
 
 void Pipeline::BindResources(DescriptorWrites& set_writes,

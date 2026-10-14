@@ -256,6 +256,12 @@ public:
         return vk13_features.subgroupSizeControl && vk13_props.maxSubgroupSize >= 64;
     }
 
+    /// tlg: true if creating a pipeline can be told to fail instead of compiling it
+    /// (VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT).
+    bool IsPipelineCreationCacheControlSupported() const {
+        return vk13_features.pipelineCreationCacheControl;
+    }
+
     /// tlg: VK_KHR_pipeline_executable_properties is on (TLG_WAVE_STATS=1, vk_wave_stats.h).
     bool IsPipelineExecutableInfoEnabled() const {
         return pipeline_executable_properties &&

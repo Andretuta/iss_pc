@@ -577,6 +577,8 @@ bool Instance::CreateDevice() {
         },
         vk::PhysicalDeviceVulkan13Features{
             .robustImageAccess = vk13_features.robustImageAccess,
+            // tlg: compute pipelines met in game ask the driver for a cached one first.
+            .pipelineCreationCacheControl = vk13_features.pipelineCreationCacheControl,
             .shaderDemoteToHelperInvocation = vk13_features.shaderDemoteToHelperInvocation,
             .subgroupSizeControl = vk13_features.subgroupSizeControl,
             .synchronization2 = vk13_features.synchronization2,
