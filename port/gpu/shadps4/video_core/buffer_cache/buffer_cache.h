@@ -9,6 +9,8 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <optional>
+#include <utility>
 #include <boost/container/small_vector.hpp>
 
 #include "common/interval_set.h"
@@ -136,8 +138,22 @@ private:
 
     void EnsureResident(const Buffer* arena, u64 first_block, u64 last_block);
 
-    /// Returns device memory and an offset into it (bytes) to back size bytes of arena blocks.
-    std::pair<vk::DeviceMemory, u64> AllocateResidency(u64 size);
+    /// tlg: residency state when EnsureResident started, and the driver allocations made since.
+    struct ResidencyAttempt {
+        vk::DeviceMemory chunk;
+        u64 chunk_used;
+        boost::container::small_vector<vk::DeviceMemory, 4> allocated{};
+    };
+
+    /// Returns device memory and an offset into it (bytes) to back size bytes of arena blocks,
+    /// or nothing when the device is out of memory (UndoResidency then frees the attempt's).
+    std::optional<std::pair<vk::DeviceMemory, u64>> AllocateResidency(u64 size,
+                                                                       ResidencyAttempt& attempt);
+    void UndoResidency(const ResidencyAttempt& attempt);
+
+    /// Frees old textures and waits for the GPU to release their memory, after an allocation
+    /// for residency failed for lack of device memory.
+    void ReleaseMemoryForResidency(u64 bytes);
 
     void DownloadMemory(const Buffer* arena, VAddr device_addr, u64 size);
 

@@ -931,6 +931,7 @@ private:
     std::queue<PendingOp> pending_ops;
     std::recursive_mutex pending_ops_mutex;
     u32 pending_polls = 0; // tlg
+    bool popping_pending_ops = false; ///< tlg: guarded by pending_ops_mutex (recursive)
     std::atomic<u32> num_pending_ops{0}; ///< tlg: pending_ops.size(), checked without the lock
     std::queue<PendingOp> priority_pending_ops;
     std::mutex priority_pending_ops_mutex;

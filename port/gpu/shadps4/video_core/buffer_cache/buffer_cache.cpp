@@ -427,7 +427,19 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
     return {arena, arena->Offset(device_addr)};
 }
 
+namespace {
+/// tlg: ObtainBufferForImage calls in progress on this thread. The texture cache calls it with
+/// its mutex held (UpdateImage, ExpandImage), so no texture can be freed from there.
+thread_local u32 image_refresh_depth = 0;
+} // namespace
+
 std::pair<const Buffer*, u64> BufferCache::ObtainBufferForImage(VAddr device_addr, u32 size) {
+    ++image_refresh_depth;
+    struct DepthGuard {
+        ~DepthGuard() {
+            --image_refresh_depth;
+        }
+    } depth_guard;
     texture_cache.ResolveReadbacks(device_addr, size, true, ReadbackSource::BufferForImage);
     if (IsRegionGpuModified(device_addr, size)) {
         return ObtainBuffer(device_addr, size, false);
@@ -535,8 +547,9 @@ const Buffer* BufferCache::GetArena(u64 first_block, u64 last_block) {
     return new_arena;
 }
 
-// tlg: from shadPS4-Infamous-FixBuild 4a206865. Memory used to become resident a block at a time,
-// each range its own driver allocation and sparse bind; granules and chunks make far fewer.
+// tlg: from shadPS4-Infamous-FixBuild 4a206865 and 0c3fada0. Memory used to become resident a
+// block at a time, each range its own driver allocation and sparse bind; granules and chunks
+// make far fewer. When device memory runs out, old textures are freed and it is tried once more.
 void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_block) {
     // Granules never cross an arena page (1 GiB or more), so the widened range stays within the
     // arena.
@@ -544,80 +557,165 @@ void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_
     const u64 bind_first = Common::AlignDown(first_block, granule_blocks);
     const u64 bind_end = Common::AlignUp(last_block + 1, granule_blocks);
 
-    u32 resident_blocks{};
-    IntervalList bind_ranges;
-    resident_ranges.ForEachGap(bind_first, bind_end, [&](u64 start, u64 end) {
-        resident_blocks += end - start;
-        bind_ranges.Add({start, end});
-    });
-
-    if (bind_ranges.Empty()) {
-        return;
-    }
-    TlgStats::Timer timer{TlgStats::t_resident};
-
-    boost::container::small_vector<vk::BufferCopy, 8> copies;
-    const auto staging =
-        staging_pool.Request(resident_blocks * sizeof(vk::DeviceAddress), MemoryType::HostUncached);
-
-    ArenaBinds* binds = BindsForArena(arena);
-    auto* bda_addrs = reinterpret_cast<vk::DeviceAddress*>(staging.mapped);
-    u64 offset = staging.offset;
-    for (const auto& range : bind_ranges) {
-        const u64 range_size = (range.end - range.start) << block_shift;
-        const auto [device_memory, memory_offset] = AllocateResidency(range_size);
-
-        Backing backing;
-        backing.start = range.start;
-        backing.end = range.end;
-        backing.memory = device_memory;
-        // In blocks, as Backing::CanMergeWith and SubRange count them.
-        backing.offset = memory_offset >> block_shift;
-        resident_ranges.Add(backing);
-
-        LOG_DEBUG(Render, "Making range start={}, end={} resident", backing.start, backing.end);
-
-        const auto& bind = binds->binds.emplace_back(vk::SparseMemoryBind{
-            .resourceOffset = (range.start << block_shift) - arena->cpu_addr,
-            .size = range_size,
-            .memory = device_memory,
-            .memoryOffset = memory_offset,
+    for (u32 attempt = 0;; ++attempt) {
+        u32 resident_blocks{};
+        IntervalList bind_ranges;
+        resident_ranges.ForEachGap(bind_first, bind_end, [&](u64 start, u64 end) {
+            resident_blocks += end - start;
+            bind_ranges.Add({start, end});
         });
 
-        for (u32 block = 0; block < bind.size; block += block_size) {
-            *(bda_addrs++) = arena->BufferDeviceAddress() + bind.resourceOffset + block;
+        if (bind_ranges.Empty()) {
+            return;
         }
-        const u64 copy_size = (backing.end - backing.start) * sizeof(vk::DeviceAddress);
-        copies.emplace_back(offset, backing.start * sizeof(vk::DeviceAddress), copy_size);
-        offset += copy_size;
-    }
+        TlgStats::Timer timer{TlgStats::t_resident};
 
-    staging.Flush();
-    runtime.CopyBuffer(staging.buffer, bda_pagetable_buffer.get(), copies);
+        // All memory is allocated before anything is recorded or bound: making room for it
+        // submits, which sends the pending binds and runs pending operations (and so can make
+        // some of these ranges resident: the gaps are looked up again after it).
+        ResidencyAttempt state{.chunk = residency_chunk, .chunk_used = residency_chunk_used};
+        boost::container::small_vector<std::pair<vk::DeviceMemory, u64>, 8> memories;
+        for (const auto& range : bind_ranges) {
+            const auto memory = AllocateResidency((range.end - range.start) << block_shift, state);
+            if (!memory) {
+                break;
+            }
+            memories.push_back(*memory);
+        }
+        if (memories.size() != bind_ranges.Size()) {
+            UndoResidency(state);
+            const u64 bytes = u64{resident_blocks} << block_shift;
+            ASSERT_MSG(attempt == 0,
+                       "Out of device memory making {} MB resident, after freeing textures",
+                       bytes >> 20);
+            ReleaseMemoryForResidency(bytes);
+            continue;
+        }
+
+        boost::container::small_vector<vk::BufferCopy, 8> copies;
+        const auto staging = staging_pool.Request(resident_blocks * sizeof(vk::DeviceAddress),
+                                                  MemoryType::HostUncached);
+
+        ArenaBinds* binds = BindsForArena(arena);
+        auto* bda_addrs = reinterpret_cast<vk::DeviceAddress*>(staging.mapped);
+        u64 offset = staging.offset;
+        size_t index = 0;
+        for (const auto& range : bind_ranges) {
+            const u64 range_size = (range.end - range.start) << block_shift;
+            const auto [device_memory, memory_offset] = memories[index++];
+
+            Backing backing;
+            backing.start = range.start;
+            backing.end = range.end;
+            backing.memory = device_memory;
+            // In blocks, as Backing::CanMergeWith and SubRange count them.
+            backing.offset = memory_offset >> block_shift;
+            resident_ranges.Add(backing);
+
+            LOG_DEBUG(Render, "Making range start={}, end={} resident", backing.start,
+                      backing.end);
+
+            const auto& bind = binds->binds.emplace_back(vk::SparseMemoryBind{
+                .resourceOffset = (range.start << block_shift) - arena->cpu_addr,
+                .size = range_size,
+                .memory = device_memory,
+                .memoryOffset = memory_offset,
+            });
+
+            for (u32 block = 0; block < bind.size; block += block_size) {
+                *(bda_addrs++) = arena->BufferDeviceAddress() + bind.resourceOffset + block;
+            }
+            const u64 copy_size = (backing.end - backing.start) * sizeof(vk::DeviceAddress);
+            copies.emplace_back(offset, backing.start * sizeof(vk::DeviceAddress), copy_size);
+            offset += copy_size;
+        }
+
+        staging.Flush();
+        runtime.CopyBuffer(staging.buffer, bda_pagetable_buffer.get(), copies);
+        return;
+    }
 }
 
-std::pair<vk::DeviceMemory, u64> BufferCache::AllocateResidency(u64 size) {
-    const auto allocate = [this](u64 allocation_size) {
+std::optional<std::pair<vk::DeviceMemory, u64>> BufferCache::AllocateResidency(
+    u64 size, ResidencyAttempt& attempt) {
+    // Null when the device is out of memory; any other failure ends the game as before.
+    const auto allocate = [&](u64 allocation_size) -> vk::DeviceMemory {
         const vk::MemoryAllocateInfo alloc_info = {
             .allocationSize = allocation_size,
             .memoryTypeIndex = arena_memory_type_index,
         };
+        auto result = instance.GetDevice().allocateMemory(alloc_info);
+        if (result.result == vk::Result::eErrorOutOfDeviceMemory) {
+            return {};
+        }
+        const auto memory = Vulkan::Check(std::move(result));
+        attempt.allocated.push_back(memory);
         ++residency_allocations;
-        return Vulkan::Check(instance.GetDevice().allocateMemory(alloc_info));
+        return memory;
     };
+    using Allocation = std::pair<vk::DeviceMemory, u64>;
     // Ranges keep coming as the game streams data in. Carving them out of large chunks keeps the
     // driver from allocating memory each time, which is slow and limited to a few thousand
     // allocations per process on Windows. Large ranges get their own.
     if (size > RESIDENCY_CHUNK_SIZE / 4) {
-        return {allocate(size), 0};
+        const auto memory = allocate(size);
+        return memory ? std::optional{Allocation{memory, 0}} : std::nullopt;
     }
     if (!residency_chunk || residency_chunk_used + size > RESIDENCY_CHUNK_SIZE) {
-        residency_chunk = allocate(RESIDENCY_CHUNK_SIZE);
+        const auto chunk = allocate(RESIDENCY_CHUNK_SIZE);
+        if (!chunk) {
+            // A whole chunk may not fit when memory is short, while the range itself still does.
+            static u32 warned = 0;
+            if (warned < 16 || warned % 64 == 0) {
+                LOG_WARNING(Render, "No room for a {} MB residency chunk, allocating {} MB instead",
+                            RESIDENCY_CHUNK_SIZE >> 20, size >> 20);
+            }
+            ++warned;
+            const auto memory = allocate(size);
+            return memory ? std::optional{Allocation{memory, 0}} : std::nullopt;
+        }
+        residency_chunk = chunk;
         residency_chunk_used = 0;
     }
     const u64 offset = residency_chunk_used;
     residency_chunk_used += size;
-    return {residency_chunk, offset};
+    return Allocation{residency_chunk, offset};
+}
+
+void BufferCache::UndoResidency(const ResidencyAttempt& attempt) {
+    // Nothing was bound to this memory yet: chunks taken since are freed with the rest.
+    for (const vk::DeviceMemory memory : attempt.allocated) {
+        instance.GetDevice().freeMemory(memory);
+    }
+    residency_allocations -= attempt.allocated.size();
+    residency_chunk = attempt.chunk;
+    residency_chunk_used = attempt.chunk_used;
+}
+
+void BufferCache::ReleaseMemoryForResidency(u64 bytes) {
+    // The device can run out of memory when the game makes gigabytes resident at once, which the
+    // texture collector, running once per submission, can't keep up with.
+    LOG_WARNING(Render, "Out of device memory making {} MB resident, freeing textures",
+                bytes >> 20);
+    // The texture binding helper may be looking images up for the draw being prepared on this
+    // thread: join it before images go (the same hook the buffer cache uses before it changes
+    // image state).
+    runtime.BeforeImageAccess();
+    if (image_refresh_depth == 0) {
+        texture_cache.ReleaseMemoryForAllocation();
+    } else {
+        // Refreshing an image, under the texture cache's lock: only the deletions already
+        // pending can help.
+        LOG_WARNING(Render, "Out of device memory while refreshing an image: only waiting for "
+                            "the GPU to release memory");
+    }
+    // The images' memory is freed by pending operations once the GPU is done with them. This
+    // thread owns the caches (stage B while draw packets are in flight, stage A otherwise:
+    // the scheduler's owner hook drains the draw pipe first), as for DownloadMemory's Finish.
+    // Inside a pending operation (the fault buffer's) the nested pop does nothing and the
+    // deletions run after it, so the second attempt may still fail there.
+    scheduler.Finish();
+    scheduler.PopPendingOperations();
 }
 
 namespace {
