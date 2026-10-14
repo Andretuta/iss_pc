@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef _WIN32
+#include <array>
+#include <atomic>
+#include <optional>
 #include <dlfcn.h>
 #endif
 #include <unordered_set>
@@ -3529,6 +3532,103 @@ vk::Pipeline Rasterizer::SquarePass(const GraphicsPipeline& pipeline) const {
     return square;
 }
 
+struct StencilFaceState {
+    vk::StencilOp fail_op;
+    vk::StencilOp pass_op;
+    vk::StencilOp depth_fail_op;
+    u32 reference;
+};
+
+// tlg: from shadPS4-Infamous-FixBuild 03db8f14 (GPL-2.0-or-later). GCN has separate stencil test
+// (STENCILTESTVAL) and replace (STENCILOPVAL) values, while a Vulkan face has a single reference
+// for both. Finds a reference that keeps the test exact and still writes what every replacing op
+// should, turning such ops into equivalent ones (zero, keep, invert, increment, decrement) where
+// the stencil value is known. Returns nullopt if it can't. inFAMOUS hits the conflict ~9500 times
+// a session (effects masked by the character silhouette). Checked by the fork against a model of
+// the GCN stencil unit (400k random face configurations).
+static std::optional<StencilFaceState> ResolveStencilFace(AmdGpu::CompareFunc func,
+                                                          const AmdGpu::StencilRefMask& ref,
+                                                          u32 write_mask, AmdGpu::StencilFunc fail,
+                                                          AmdGpu::StencilFunc zpass,
+                                                          AmdGpu::StencilFunc zfail) {
+    using AmdGpu::CompareFunc;
+    using AmdGpu::StencilFunc;
+    const u32 test_val = ref.stencil_test_val;
+    const u32 compare_mask = ref.stencil_mask;
+    write_mask &= 0xFF;
+    const bool test_uses_reference = func != CompareFunc::Always && func != CompareFunc::Never;
+
+    const auto written_value = [&](StencilFunc op) -> std::optional<u32> {
+        switch (op) {
+        case StencilFunc::ReplaceTest:
+            return test_val;
+        case StencilFunc::ReplaceOp:
+            return ref.stencil_op_val;
+        case StencilFunc::Ones:
+            return 0xFFU;
+        default:
+            return std::nullopt;
+        }
+    };
+
+    // An EQUAL test that passed, or a NOTEQUAL test that failed, means the stencil value matches
+    // test_val in the compared bits, which is enough to know what a write will change.
+    const bool written_bits_compared = (write_mask & ~compare_mask) == 0;
+    const bool whole_value_known = compare_mask == 0xFF && write_mask == 0xFF;
+    const bool known_on_pass = func == CompareFunc::Equal && written_bits_compared;
+    const bool known_on_fail = func == CompareFunc::NotEqual && written_bits_compared;
+
+    const auto resolve = [&](StencilFunc op, u32 reference,
+                             bool value_known) -> std::optional<vk::StencilOp> {
+        const auto value = written_value(op);
+        if (!value) {
+            return LiverpoolToVK::StencilOp(op);
+        }
+        const u32 target = *value & write_mask;
+        if (target == (reference & write_mask)) {
+            return vk::StencilOp::eReplace;
+        }
+        if (target == 0) {
+            return vk::StencilOp::eZero;
+        }
+        if (value_known) {
+            if (target == (test_val & write_mask)) {
+                return vk::StencilOp::eKeep;
+            }
+            if (target == (~test_val & write_mask)) {
+                return vk::StencilOp::eInvert;
+            }
+            if (whole_value_known && *value == ((test_val + 1) & 0xFF)) {
+                return vk::StencilOp::eIncrementAndWrap;
+            }
+            if (whole_value_known && *value == ((test_val - 1) & 0xFF)) {
+                return vk::StencilOp::eDecrementAndWrap;
+            }
+        }
+        return std::nullopt;
+    };
+
+    // Try each written value as the reference. When the test reads the reference, its compared
+    // bits must stay those of test_val, and only the rest can carry the written value.
+    const std::array<std::optional<u32>, 4> candidates = {
+        written_value(zpass), written_value(zfail), written_value(fail), test_val};
+    for (const auto& candidate : candidates) {
+        if (!candidate) {
+            continue;
+        }
+        const u32 reference = test_uses_reference
+                                  ? (test_val & compare_mask) | (*candidate & ~compare_mask & 0xFF)
+                                  : *candidate;
+        const auto fail_op = resolve(fail, reference, known_on_fail);
+        const auto pass_op = resolve(zpass, reference, known_on_pass);
+        const auto depth_fail_op = resolve(zfail, reference, known_on_pass);
+        if (fail_op && pass_op && depth_fail_op) {
+            return StencilFaceState{*fail_op, *pass_op, *depth_fail_op, reference};
+        }
+    }
+    return std::nullopt;
+}
+
 void Rasterizer::UpdateDepthStencilState() const {
     const auto& regs = Regs();
     auto& dynamic_state = scheduler.GetDynamicState();
@@ -3562,74 +3662,63 @@ void Rasterizer::UpdateDepthStencilState() const {
     const bool stencil_test_enabled = depth_stencil.stencil_test_enable;
     dynamic_state.SetStencilTestEnabled(stencil_test_enabled);
     if (stencil_test_enabled) {
-        const StencilOps front_ops{
-            .fail_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_fail_front),
-            .pass_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_zpass_front),
-            .depth_fail_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_zfail_front),
-            .compare_op = LiverpoolToVK::CompareOp(regs.depth_control.stencil_ref_func),
-        };
-        const StencilOps back_ops = regs.depth_control.backface_enable ? StencilOps{
-            .fail_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_fail_back),
-            .pass_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_zpass_back),
-            .depth_fail_op = LiverpoolToVK::StencilOp(regs.stencil_control.stencil_zfail_back),
-            .compare_op = LiverpoolToVK::CompareOp(regs.depth_control.stencil_bf_func),
-        } : front_ops;
-        dynamic_state.SetStencilOps(front_ops, back_ops);
-
         const bool stencil_clear = regs.depth_render_control.stencil_clear_enable;
         const auto front = regs.stencil_ref_front;
         const auto back =
             regs.depth_control.backface_enable ? regs.stencil_ref_back : regs.stencil_ref_front;
-        // GCN REPLACE_OP writes DB_STENCILREFMASK.STENCILOPVAL, so a face whose stencil ops
-        // include ReplaceOp takes its Vulkan reference from op_val.
+        const u32 front_write_mask = !stencil_clear ? front.stencil_write_mask : 0U;
+        const u32 back_write_mask = !stencil_clear ? back.stencil_write_mask : 0U;
+
+        const auto setup_face = [](AmdGpu::CompareFunc func, const AmdGpu::StencilRefMask& ref,
+                                   u32 write_mask, AmdGpu::StencilFunc fail,
+                                   AmdGpu::StencilFunc zpass,
+                                   AmdGpu::StencilFunc zfail) -> std::pair<StencilOps, u32> {
+            if (const auto face = ResolveStencilFace(func, ref, write_mask, fail, zpass, zfail)) {
+                return {StencilOps{
+                            .fail_op = face->fail_op,
+                            .pass_op = face->pass_op,
+                            .depth_fail_op = face->depth_fail_op,
+                            .compare_op = LiverpoolToVK::CompareOp(func),
+                        },
+                        face->reference};
+            }
+            // GCN REPLACE_OP writes DB_STENCILREFMASK.STENCILOPVAL, so when both values can't be
+            // honored a face whose stencil ops include ReplaceOp takes its reference from op_val.
+            const bool uses_op_val = fail == AmdGpu::StencilFunc::ReplaceOp ||
+                                     zpass == AmdGpu::StencilFunc::ReplaceOp ||
+                                     zfail == AmdGpu::StencilFunc::ReplaceOp;
+            const u32 reference = uses_op_val ? ref.stencil_op_val : ref.stencil_test_val;
+            // tlg: per draw; the first 32 are enough to see which configurations remain.
+            static std::atomic<u32> warned{0};
+            if (warned.fetch_add(1, std::memory_order_relaxed) < 32) {
+                LOG_WARNING(Render_Vulkan,
+                            "Stencil func {} test_val {:#x} mask {:#x} can't be combined with ops "
+                            "{}/{}/{} op_val {:#x} write mask {:#x}; using reference {:#x}",
+                            static_cast<u32>(func), ref.stencil_test_val, ref.stencil_mask,
+                            static_cast<u32>(fail), static_cast<u32>(zpass), static_cast<u32>(zfail),
+                            ref.stencil_op_val, write_mask, reference);
+            }
+            return {StencilOps{
+                        .fail_op = LiverpoolToVK::StencilOp(fail),
+                        .pass_op = LiverpoolToVK::StencilOp(zpass),
+                        .depth_fail_op = LiverpoolToVK::StencilOp(zfail),
+                        .compare_op = LiverpoolToVK::CompareOp(func),
+                    },
+                    reference};
+        };
+
         const auto& sc = regs.stencil_control;
-        const auto uses_op_val = [](AmdGpu::StencilFunc fail, AmdGpu::StencilFunc zpass,
-                                    AmdGpu::StencilFunc zfail) {
-            return fail == AmdGpu::StencilFunc::ReplaceOp ||
-                   zpass == AmdGpu::StencilFunc::ReplaceOp ||
-                   zfail == AmdGpu::StencilFunc::ReplaceOp;
-        };
-        const bool front_op =
-            uses_op_val(sc.stencil_fail_front, sc.stencil_zpass_front, sc.stencil_zfail_front);
-        const bool back_op =
+        const auto [front_ops, front_reference] =
+            setup_face(regs.depth_control.stencil_ref_func, front, front_write_mask,
+                       sc.stencil_fail_front, sc.stencil_zpass_front, sc.stencil_zfail_front);
+        const auto [back_ops, back_reference] =
             regs.depth_control.backface_enable
-                ? uses_op_val(sc.stencil_fail_back, sc.stencil_zpass_back, sc.stencil_zfail_back)
-                : front_op;
-        // tlg: Vulkan has one reference for the test and for ReplaceOp. The test only sees the
-        // compare-mask bits and the write only stores the write-mask bits, so one reference
-        // serves both exactly when the two values agree on the bits in both masks: compare bits
-        // from test_val, the rest from op_val. inFAMOUS hits this ~9500 times a session (effects
-        // masked by the character silhouette went missing with op_val as the test reference).
-        const auto reference = [](bool uses_op, AmdGpu::CompareFunc func,
-                                  const AmdGpu::StencilRefMask& ref, bool& unresolved) -> u32 {
-            if (!uses_op) {
-                return ref.stencil_test_val;
-            }
-            const u32 test = ref.stencil_test_val, op = ref.stencil_op_val;
-            const u32 compare_mask = ref.stencil_mask, write_mask = ref.stencil_write_mask;
-            if (func == AmdGpu::CompareFunc::Always || func == AmdGpu::CompareFunc::Never ||
-                test == op) {
-                return op;
-            }
-            if ((test ^ op) & compare_mask & write_mask) {
-                unresolved = true;
-                return op;
-            }
-            return ((test & compare_mask) | (op & ~compare_mask)) & 0xffu;
-        };
-        bool unresolved = false;
-        const u32 front_ref =
-            reference(front_op, regs.depth_control.stencil_ref_func, front, unresolved);
-        const u32 back_ref = regs.depth_control.backface_enable
-                                 ? reference(back_op, regs.depth_control.stencil_bf_func, back, unresolved)
-                                 : front_ref;
-        if (unresolved) {
-            LOG_WARNING(Render_Vulkan, "Stencil test_val and ReplaceOp op_val differ on bits both "
-                                       "tested and written; the stencil test will use op_val");
-        }
-        dynamic_state.SetStencilReferences(front_ref, back_ref);
-        dynamic_state.SetStencilWriteMasks(!stencil_clear ? front.stencil_write_mask : 0U,
-                                           !stencil_clear ? back.stencil_write_mask : 0U);
+                ? setup_face(regs.depth_control.stencil_bf_func, back, back_write_mask,
+                             sc.stencil_fail_back, sc.stencil_zpass_back, sc.stencil_zfail_back)
+                : std::pair{front_ops, front_reference};
+        dynamic_state.SetStencilOps(front_ops, back_ops);
+        dynamic_state.SetStencilReferences(front_reference, back_reference);
+        dynamic_state.SetStencilWriteMasks(front_write_mask, back_write_mask);
         dynamic_state.SetStencilCompareMasks(front.stencil_mask, back.stencil_mask);
     }
 }
