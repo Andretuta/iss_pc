@@ -253,18 +253,20 @@ static void load_button_maps(void) {
  * Pro...) reports its gyro/accelerometer through SDL; the orientation integrates the gyro and
  * leans on gravity. Without sensors the tilt is simulated, so motion prompts can be passed with
  * any controller or the keyboard:
- *   keyboard: T / G hold the controller turned sideways (to one side / the other), Y shakes it;
+ *   keyboard: T / G hold the controller turned sideways (to one side / the other) and, while held,
+ *   the arrow keys point it (the graffiti cursor), Y shakes it, F sprays (R2);
  *   gamepad: "sensor mode", toggled by a tap on TLG_MOTION_BUTTON (default "misc1": Share/Capture;
- *   any SDL button name) or on L3+R3 together. While it is on, either stick (the left one is the
- *   one to use) turns the controller to aim, left/right and up/down like a spray can (the graffiti
- *   cursor; it stays where it is left), a tap on the left face button (square / X / Nintendo Y)
- *   turns it on its side and back upright ("Hold Wireless Controller Sideways"), and the bottom
- *   face button (cross / A / Nintendo B) shakes it. All are hidden from the game, so the character
- *   neither walks, jumps nor turns the camera. A notice on screen tells the mode.
+ *   any SDL button name) or on L3+R3 together. Sensor mode is the spray can of the graffiti (the
+ *   only scene that asks for motion; the others use the touchpad): the controller is held on its
+ *   side, as the game asks ("Hold Wireless Controller Sideways"), the left stick (or the right)
+ *   points it left/right and up/down (the graffiti cursor; it stays where it is left) and the
+ *   bottom face button (cross / A / Nintendo B) shakes it; R2 still sprays. The sticks and that
+ *   button are hidden from the game, so the character neither walks, jumps nor turns the camera.
+ *   A notice on screen tells the mode; leaving it puts the controller upright again.
  * TLG_MOTION=off disables real sensors (simulation still works). */
 static int injected_motion; /* TLG_PAD_FILE tokens: 1 tilt_right (T), 2 tilt_left (G), 4 shake (Y) */
 typedef struct { float w, x, y, z; } Quat;
-static struct { Quat q; float roll, pitch, yaw, aim_pitch; uint64_t last_us; int sensors, warned, mode, toggle_held, sideways, side_held; } motion={{1,0,0,0},0,0,0,0,0,-1,0,0,0,0,0};
+static struct { Quat q; float roll, pitch, yaw, aim_pitch; uint64_t last_us; int sensors, warned, mode, toggle_held; } motion={{1,0,0,0},0,0,0,0,0,-1,0,0,0};
 static Quat quat_mul(Quat a, Quat b) {
     return (Quat){a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z, a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
                   a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x, a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w};
@@ -286,6 +288,14 @@ static int motion_button(void) {
         button=(int)SDL_GetGamepadButtonFromString(name && *name ? name : "misc1");
     }
     return button;
+}
+/* A stick's push (-1..1) as an aiming speed (-1..1): nothing inside the dead zone, then the square
+ * of the rest, so small pushes are fine and a full one is fast. */
+static float aim_curve(float v) {
+    const float dead=0.15f, a=fabsf(v);
+    if (a<=dead) return 0.f;
+    const float t=fminf((a-dead)/(1.f-dead),1.f);
+    return v<0 ? -t*t : t*t;
 }
 static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
     const uint64_t now=now_us();
@@ -310,6 +320,15 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
     if ((k && k[SDL_SCANCODE_T]) || (injected_motion & 1)) { roll=1.5708f; simulated=1; }
     if ((k && k[SDL_SCANCODE_G]) || (injected_motion & 2)) { roll=-1.5708f; simulated=1; }
     if ((k && k[SDL_SCANCODE_Y]) || (injected_motion & 4)) { shake=1; simulated=1; }
+    /* Keyboard: while T or G holds the can on its side, the arrow keys point it (they leave the
+     * camera alone meanwhile, see read_pad). */
+    const int key_can=k && (k[SDL_SCANCODE_T] || k[SDL_SCANCODE_G]);
+    if (key_can) {
+        motion.yaw-=(float)(k[SDL_SCANCODE_RIGHT]-k[SDL_SCANCODE_LEFT])*0.5f*1.2f*dt;
+        motion.aim_pitch+=(float)(k[SDL_SCANCODE_UP]-k[SDL_SCANCODE_DOWN])*0.5f*1.2f*dt;
+        motion.yaw=fminf(fmaxf(motion.yaw,-1.4f),1.4f);
+        motion.aim_pitch=fminf(fmaxf(motion.aim_pitch,-1.2f),1.2f);
+    }
     if (g) {
         const int sticks=SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_LEFT_STICK) && SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_RIGHT_STICK);
         const int toggle=sticks || (motion_button()>=0 && SDL_GetGamepadButton(g,(SDL_GamepadButton)motion_button()));
@@ -317,41 +336,31 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
             motion.mode=!motion.mode;
             const char *lang=getenv("TLG_UI_LANG");
             const int pt=!(lang && !strncmp(lang,"en",2));
-            tlggpu_overlay_notice(motion.mode ? (pt ? "Modo sensor LIGADO: analógico esquerdo mira, Quadrado vira de lado, X sacode"
-                                                    : "Sensor mode ON: left stick aims, square turns it sideways, cross shakes")
+            tlggpu_overlay_notice(motion.mode ? (pt ? "Modo sensor LIGADO (lata de spray): X sacode, R2 pinta, analógico esquerdo mira"
+                                                    : "Sensor mode ON (spray can): cross shakes, R2 sprays, left stick aims")
                                               : (pt ? "Modo sensor desligado" : "Sensor mode off"), 3.0f);
             printf("Runtime: sensor mode %s\n",motion.mode ? "on" : "off");
-            motion.sideways=0;
         }
         motion.toggle_held=toggle;
         if (sticks) d->buttons&=~(uint32_t)(BTN_L3|BTN_R3);
         if (motion.mode) {
-            /* Square: on its side / upright again. */
-            const int side=SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_WEST);
-            if (side && !motion.side_held) {
-                motion.sideways=!motion.sideways;
-                const char *lang=getenv("TLG_UI_LANG");
-                const int pt=!(lang && !strncmp(lang,"en",2));
-                tlggpu_overlay_notice(motion.sideways ? (pt ? "Controle de lado" : "Controller on its side")
-                                                      : (pt ? "Controle em pé" : "Controller upright"), 1.5f);
-            }
-            motion.side_held=side;
-            if (motion.sideways) roll=1.5708f;
+            roll=1.5708f; /* on its side, like a spray can */
             if (SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_SOUTH)) shake=1;
-            /* Either stick turns the controller while it is held (a rate, so the aim stays where it
-             * was left), as far as ~80 degrees each way. Right = turn right, up = tip up. */
-            const float dead=0.15f;
+            /* Either stick points the can while it is held (a rate, so the aim stays where it was
+             * left), as far as ~80 degrees each way. Right = turn right, up = tip up. The speed
+             * grows with the square of the push past the dead zone: slow for tracing a stencil,
+             * fast at full tilt (~70 degrees/s). */
             float sx=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTX)/32767.f;
             float sy=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTY)/32767.f;
             const float rx=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)/32767.f;
             const float ry=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f;
             if (fabsf(rx)>fabsf(sx)) sx=rx;
             if (fabsf(ry)>fabsf(sy)) sy=ry;
-            if (fabsf(sx)>dead) motion.yaw-=sx*1.6f*dt;
-            if (fabsf(sy)>dead) motion.aim_pitch-=sy*1.2f*dt;
+            motion.yaw-=aim_curve(sx)*1.2f*dt;
+            motion.aim_pitch-=aim_curve(sy)*1.2f*dt;
             motion.yaw=fminf(fmaxf(motion.yaw,-1.4f),1.4f);
             motion.aim_pitch=fminf(fmaxf(motion.aim_pitch,-1.2f),1.2f);
-            d->buttons&=~(uint32_t)(BTN_CROSS|BTN_SQUARE);
+            d->buttons&=~(uint32_t)BTN_CROSS;
             d->left_x=d->left_y=128;
             d->right_x=d->right_y=128;
             simulated=1;
@@ -376,7 +385,7 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
         const float rate=dt>0 ? 1.f-expf(-dt*12.f) : 1.f;
         const Quat old=motion.q;
         motion.roll+=(roll-motion.roll)*rate; motion.pitch+=(pitch-motion.pitch)*rate;
-        if (!motion.mode) { motion.yaw-=motion.yaw*rate; motion.aim_pitch-=motion.aim_pitch*rate; } /* back to centre */
+        if (!motion.mode && !key_can) { motion.yaw-=motion.yaw*rate; motion.aim_pitch-=motion.aim_pitch*rate; } /* back to centre */
         const float up=motion.pitch+motion.aim_pitch;
         Quat qr={cosf(motion.roll*0.5f),0,0,sinf(-motion.roll*0.5f)}; /* roll about z (toward player) */
         Quat qp={cosf(up*0.5f),sinf(up*0.5f),0,0};                   /* pitch about x */
@@ -474,6 +483,7 @@ static void sample_host(PadData *d) {
     key_axis(&d->left_y,k[SDL_SCANCODE_W],k[SDL_SCANCODE_S]);
     key_axis(&d->right_x,k[SDL_SCANCODE_LEFT],k[SDL_SCANCODE_RIGHT]);
     key_axis(&d->right_y,k[SDL_SCANCODE_UP],k[SDL_SCANCODE_DOWN]);
+    if (k[SDL_SCANCODE_T] || k[SDL_SCANCODE_G]) d->right_x=d->right_y=128; /* the arrows point the can */
     apply_swipe(d,g,k);
 }
 

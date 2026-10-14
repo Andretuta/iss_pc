@@ -45,9 +45,9 @@ No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 
 ### Sensor de movimento e touchpad
 Para o grafite, absorver poderes (fumaça, neon...), abrir portas e outras cenas de sensor ou touchpad. No DualShock 4/DualSense, o giroscópio e o touchpad funcionam direto.
-- **Modo sensor:** um toque em **L3+R3** juntos liga, outro toque desliga (ou Share no Xbox Series, Capture no Switch Pro, microfone no DualSense). Ligado, o **analógico esquerdo mira** (o cursor do grafite), o **Quadrado vira o controle de lado** e **X/A sacode**; o Delsin não anda nem pula, então desligue depois da cena. Um aviso na tela mostra o estado.
+- **Modo sensor:** um toque em **L3+R3** juntos liga, outro toque desliga (ou Share no Xbox Series, Capture no Switch Pro, microfone no DualSense). Ligado, ele é a lata de spray do grafite: o controle fica **de lado**, **X/A sacode**, **R2 pinta** e o **analógico esquerdo mira** (o cursor do grafite); o Delsin não anda nem pula, então desligue depois da cena. Um aviso na tela mostra o estado.
 - **Touchpad:** **View/Select** clica (segurar = segurar o touchpad, para absorver poderes); **segure View/Select + analógico direito** para deslizar (porta "Open Door", scanner de mão).
-- **Teclado:** **T/G** viram o controle de lado, **Y** sacode, **F** é o R2 (pintar); **Tab/Backspace** clicam o touchpad, **Tab + setas** deslizam.
+- **Teclado:** **T/G** viram o controle de lado (enquanto seguram, as **setas** miram), **Y** sacode, **F** é o R2 (pintar); **Tab/Backspace** clicam o touchpad, **Tab + setas** deslizam.
 - **Launcher:** "Zona morta dos analógicos" (padrão 10%), se algo se mexer sozinho.
 
 ### Problemas
@@ -92,9 +92,9 @@ On Linux, `./install_desktop.sh` adds the game to the applications menu.
 
 ### Motion sensor and touchpad
 For the graffiti, absorbing powers (smoke, neon...), opening doors and other sensor or touchpad scenes. On a DualShock 4/DualSense, the gyro and the touchpad work as is.
-- **Sensor mode:** one tap on **L3+R3** together turns it on, another turns it off (or Share on an Xbox Series, Capture on a Switch Pro, the microphone button on a DualSense). While on, the **left stick aims** (the graffiti cursor), **square turns the controller sideways** and **cross/A shakes**; Delsin neither walks nor jumps, so turn it off after the scene. A notice on screen shows the state.
+- **Sensor mode:** one tap on **L3+R3** together turns it on, another turns it off (or Share on an Xbox Series, Capture on a Switch Pro, the microphone button on a DualSense). While on, it is the graffiti's spray can: the controller is **on its side**, **cross/A shakes**, **R2 sprays** and the **left stick aims** (the graffiti cursor); Delsin neither walks nor jumps, so turn it off after the scene. A notice on screen shows the state.
 - **Touchpad:** **View/Select** clicks (hold = hold the touchpad, to absorb powers); **hold View/Select + right stick** to swipe ("Open Door", hand scanner).
-- **Keyboard:** **T/G** turn the controller sideways, **Y** shakes, **F** is R2 (spray); **Tab/Backspace** click the touchpad, **Tab + arrow keys** swipe.
+- **Keyboard:** **T/G** turn the controller sideways (while held, the **arrow keys** aim), **Y** shakes, **F** is R2 (spray); **Tab/Backspace** click the touchpad, **Tab + arrow keys** swipe.
 - **Launcher:** "Stick dead zone" (default 10%), if something moves on its own.
 
 ### Problems
