@@ -136,6 +136,9 @@ private:
 
     void EnsureResident(const Buffer* arena, u64 first_block, u64 last_block);
 
+    /// Returns device memory and an offset into it (bytes) to back size bytes of arena blocks.
+    std::pair<vk::DeviceMemory, u64> AllocateResidency(u64 size);
+
     void DownloadMemory(const Buffer* arena, VAddr device_addr, u64 size);
 
 public:
@@ -234,6 +237,11 @@ private:
         }
     };
     IntervalList<Backing> resident_ranges;
+    /// tlg: residency is carved out of chunks (see AllocateResidency, from the
+    /// shadPS4-Infamous-FixBuild fork). Driver allocations made for it, for the slow-bind log.
+    vk::DeviceMemory residency_chunk{};
+    u64 residency_chunk_used{};
+    u64 residency_allocations{};
 
     u32 arena_memory_type_index{};
     u32 block_size{};
