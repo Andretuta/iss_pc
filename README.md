@@ -128,6 +128,8 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 
 **Variáveis de ambiente:** `ISS_MOTION_BUTTON=<botão do SDL>` troca o botão do modo sensor (padrão `misc1`; o L3+R3 vale sempre), e `ISS_MOTION=off` ignora o giroscópio real (a simulação continua funcionando).
 
+**Processadores Intel:** o código do jogo usa instruções SSE4A (EXTRQ), que só existem em processadores AMD. Num Intel o port troca essas instruções por uma emulação na partida (precisa do `iced-x86`, que já vem nos pacotes). `ISS_ISA_REWRITE=sse4a` força a emulação num AMD (teste), `ISS_ISA_REWRITE=1` força todos os conjuntos emulados (MOVBE, BMI1, LZCNT, SSE4A) e `ISS_ISA_REWRITE=0` desliga.
+
 ## Compilar do código-fonte
 
 ```bash
@@ -271,6 +273,8 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 **Launcher:** the **Controller** box has the **Stick dead zone** (0–40%, default 10%). Raise it if the character, the camera or the sensor-mode tilt moves on its own (stick drift).
 
 **Environment variables:** `ISS_MOTION_BUTTON=<SDL button>` changes the sensor-mode button (default `misc1`; L3+R3 always works), and `ISS_MOTION=off` ignores the real gyro (the simulation still works).
+
+**Intel CPUs:** the game's code uses SSE4A instructions (EXTRQ), which only AMD CPUs have. On Intel the port replaces them with an emulation at start (needs `iced-x86`, included in the packages). `ISS_ISA_REWRITE=sse4a` forces the emulation on AMD (testing), `ISS_ISA_REWRITE=1` forces every emulated set (MOVBE, BMI1, LZCNT, SSE4A) and `ISS_ISA_REWRITE=0` turns it off.
 
 ## Building from source
 

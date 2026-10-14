@@ -18,6 +18,14 @@ fi
  python3 prepare.py "$dump" --out ../out >/dev/null &&
  python3 link_modules.py "$dump" --out ../out --modules libc.prx libSceFios2.prx >/dev/null &&
  python3 content_profile.py "$dump" --out ../out >/dev/null) || { echo "prepare failed" >&2; exit 1; }
+# ISS_ISA_REWRITE=1 or a list of sets (e.g. sse4a): rewrite those instructions even on a CPU that has
+# them, to test the emulation (needs iced-x86; ISA_PYTHON picks the Python that has it).
+isa=()
+if [[ -n ${ISS_ISA_REWRITE:-} && ${ISS_ISA_REWRITE} != 0 ]]; then
+    rm -f "$port/out/isa-rewrite.bin"
+    (cd "$port/scripts" && "${ISA_PYTHON:-python3}" isa_rewrite.py ../out/boot-linked.bin --out ../out) &&
+        isa=(--isa-rewrite "$port/out/isa-rewrite.bin") || { echo "isa_rewrite.py failed" >&2; exit 1; }
+fi
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
@@ -29,7 +37,7 @@ if [[ -n $shots ]]; then
 fi
 export ISS_APP_NAME="inFAMOUS Second Son" ISS_APP_ID=infamous-pc
 (cd "$port/user" && exec "$port/out/tlg-probe" "$port/out/boot-linked.bin" --app0 "$dump" --user . \
-    --content-profile "$port/out/content.bin" --timeout "$seconds") > "$log" 2>&1 &
+    --content-profile "$port/out/content.bin" "${isa[@]}" --timeout "$seconds") > "$log" 2>&1 &
 game=$!
 start=$(date +%s)
 if [[ -n $script && -f $script ]]; then
