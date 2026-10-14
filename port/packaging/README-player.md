@@ -43,6 +43,13 @@ No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 - **F10**: contador de FPS · **Insert** (ou R3 + L2): menu do port
 - Controles de PS4/PS5, Xbox e 8BitDo via SDL3, por USB ou Bluetooth.
 
+### Sensor de movimento e touchpad
+Para o grafite, absorver poderes (fumaça, neon...), abrir portas e outras cenas de sensor ou touchpad. No DualShock 4/DualSense, o giroscópio e o touchpad funcionam direto.
+- **Modo sensor:** um toque em **L3+R3** juntos liga, outro toque desliga (ou Share no Xbox Series, Capture no Switch Pro, microfone no DualSense). Ligado, o **analógico esquerdo inclina** e **X/A sacode**; o Delsin não anda nem pula, então desligue depois da cena. Um aviso na tela mostra o estado.
+- **Touchpad:** **View/Select** clica (segurar = segurar o touchpad, para absorver poderes); **segure View/Select + analógico direito** para deslizar (porta "Open Door", scanner de mão).
+- **Teclado:** **T/G** viram o controle de lado, **Y** sacode, **F** é o R2 (pintar); **Tab/Backspace** clicam o touchpad, **Tab + setas** deslizam.
+- **Launcher:** "Zona morta dos analógicos" (padrão 10%), se algo se mexer sozinho.
+
 ### Problemas
 - **Não abre ou fecha sozinho**: é o esperado nesta fase. Mande o `out/last_run.log` no [Discord](https://discord.gg/UMkdMYZh9g) ou numa [issue](https://github.com/HayatoG/infamous_pc/issues) se quiser ajudar.
 
@@ -82,6 +89,13 @@ On Linux, `./install_desktop.sh` adds the game to the applications menu.
 ### While playing
 - **F10**: FPS counter · **Insert** (or R3 + L2): the port's menu
 - PS4/PS5, Xbox and 8BitDo controllers via SDL3, over USB or Bluetooth.
+
+### Motion sensor and touchpad
+For the graffiti, absorbing powers (smoke, neon...), opening doors and other sensor or touchpad scenes. On a DualShock 4/DualSense, the gyro and the touchpad work as is.
+- **Sensor mode:** one tap on **L3+R3** together turns it on, another turns it off (or Share on an Xbox Series, Capture on a Switch Pro, the microphone button on a DualSense). While on, the **left stick tilts** and **cross/A shakes**; Delsin neither walks nor jumps, so turn it off after the scene. A notice on screen shows the state.
+- **Touchpad:** **View/Select** clicks (hold = hold the touchpad, to absorb powers); **hold View/Select + right stick** to swipe ("Open Door", hand scanner).
+- **Keyboard:** **T/G** turn the controller sideways, **Y** shakes, **F** is R2 (spray); **Tab/Backspace** click the touchpad, **Tab + arrow keys** swipe.
+- **Launcher:** "Stick dead zone" (default 10%), if something moves on its own.
 
 ### Problems
 - **Does not start or closes by itself**: expected at this stage. Send `out/last_run.log` on [Discord](https://discord.gg/UMkdMYZh9g) or in an [issue](https://github.com/HayatoG/infamous_pc/issues) if you want to help.

@@ -149,6 +149,10 @@ jobs:
           - Linux x86-64 (glibc 2.39+): \`infamous-linux-x86_64.tar.gz\`
           - Windows 10/11 64-bit: \`infamous-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
 
+          **Sensor de movimento e touchpad** (grafite, absorver poderes, portas): no DualShock 4/DualSense funcionam direto. Em outros controles, um toque em **L3+R3** liga/desliga o modo sensor (ou Share no Xbox Series): o analógico esquerdo inclina e X/A sacode. **View/Select** é o clique do touchpad (segurar para absorver fumaça, neon...), e **View/Select + analógico direito** desliza. Teclado: T/G inclinam, Y sacode, F pinta (R2), Tab/Backspace clicam, Tab + setas deslizam. A zona morta dos analógicos fica no launcher.
+
+          **Motion sensor and touchpad** (graffiti, absorbing powers, doors): on a DualShock 4/DualSense they work as is. On other controllers, one tap on **L3+R3** toggles sensor mode (or Share on an Xbox Series): the left stick tilts and cross/A shakes. **View/Select** is the touchpad click (hold it to absorb smoke, neon...), and **View/Select + right stick** swipes. Keyboard: T/G tilt, Y shakes, F sprays (R2), Tab/Backspace click, Tab + arrow keys swipe. The stick dead zone is in the launcher.
+
           NOTES
           # The list of game files the player needs (docs/ARQUIVOS_NECESSARIOS.md), before the download.
           sed '1,/^\[Português\]/d' docs/ARQUIVOS_NECESSARIOS.md >> notes.md
