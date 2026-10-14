@@ -52,6 +52,7 @@ Para o grafite, absorver poderes (fumaça, neon...), abrir portas e outras cenas
 
 ### Problemas
 - **Não abre ou fecha sozinho**: é o esperado nesta fase. Mande o `out/last_run.log` no [Discord](https://discord.gg/UMkdMYZh9g) ou numa [issue](https://github.com/HayatoG/infamous_pc/issues) se quiser ajudar.
+- **Tela congelada (o jogo para, a janela continua aberta)**: depois de 10 s sem quadro novo, o `out/last_run.log` recebe um bloco `FREEZE:` com o que cada thread está esperando. Feche o jogo e mande esse log. `ISS_FREEZE_REPORT_SECONDS` muda o tempo (`0` desliga).
 
 ---
 
@@ -99,6 +100,7 @@ For the graffiti, absorbing powers (smoke, neon...), opening doors and other sen
 
 ### Problems
 - **Does not start or closes by itself**: expected at this stage. Send `out/last_run.log` on [Discord](https://discord.gg/UMkdMYZh9g) or in an [issue](https://github.com/HayatoG/infamous_pc/issues) if you want to help.
+- **Frozen screen (the game stops, the window stays open)**: after 10 s without a new frame, `out/last_run.log` gets a `FREEZE:` block with what each thread is waiting on. Close the game and send that log. `ISS_FREEZE_REPORT_SECONDS` changes the time (`0` turns it off).
 
 ---
 
