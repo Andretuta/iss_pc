@@ -13,6 +13,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -80,18 +81,115 @@ def save_settings(settings):
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
+# The supported eboot.bin (update 1.07, US): entry point and memory image size from its ELF
+# headers, the same whatever tool decrypted it (base 1.00 is 0x933850 / 85,115,231 bytes).
+EBOOT_107 = (0x61dfd0, 133_846_143)
+
+# Messages about the player's game folder (en, pt); the launcher shows them in its language,
+# the command line prints both. {detail} names the file.
+_COPY_UPDATE = ('Copy every file of update 1.07 (CUSA00223-patch: eboot.bin, sce_module/, sce_sys/ and the rest) '
+                'over the base game folder, replacing the files; see "Required game files" in the README.',
+                'Copie todos os arquivos do update 1.07 (CUSA00223-patch: eboot.bin, sce_module/, sce_sys/ e o resto) '
+                'por cima da pasta do jogo base, substituindo os arquivos; veja "Arquivos do jogo necessários" no README.')
+TEXT = {
+    'old_module': ('{detail} is not the one from update 1.07 (it comes from the base game 1.00 or another '
+                   'version) and the game cannot start with it. ' + _COPY_UPDATE[0],
+                   'O {detail} não é o do update 1.07 (é do jogo base 1.00 ou de outra versão) e o jogo não '
+                   'abre com ele. ' + _COPY_UPDATE[1]),
+    'other_eboot': ('eboot.bin is not the one from update 1.07 ({detail}); the port is only tested with '
+                    'CUSA00223 (US) 1.07. ' + _COPY_UPDATE[0],
+                    'O eboot.bin não é o do update 1.07 ({detail}); o port só é testado com o CUSA00223 (EUA) '
+                    '1.07. ' + _COPY_UPDATE[1]),
+    'unreadable': ('{detail} could not be read (damaged, incomplete or still encrypted): dump it again from the PS4.',
+                   'Não deu para ler o {detail} (danificado, incompleto ou ainda criptografado): faça o dump de novo no PS4.'),
+}
+# Problems that are reported but do not block Play.
+WARNINGS = {'other_eboot'}
+
+
+def message(key, portuguese=None, **fmt):
+    """TEXT[key] in one language, or both (pt, then en) when portuguese is None."""
+    en, pt = TEXT[key]
+    if portuguese is None:
+        return f'{pt.format(**fmt)}\n{en.format(**fmt)}'
+    return (pt if portuguese else en).format(**fmt)
+
+
+class GameError(RuntimeError):
+    """A problem with the player's game files (TEXT key + detail); str() holds both languages."""
+
+    def __init__(self, key, detail):
+        super().__init__(message(key, detail=detail))
+        self.key, self.detail = key, detail
+
+
+_inspected = {}
+
+
+def _scripts():
+    scripts = str(PORT_DIR / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+
+
+def external_tls_relocations(path):
+    """How many TLS relocations of this module need another module's thread-local symbol, which
+    link_modules.py cannot link (the libc.prx of base 1.00, SDK 1.50, has 4; the 1.07 one has none)."""
+    _scripts()
+    import link_modules
+    return link_modules.external_tls_relocations(link_modules.module(path))
+
+
+def eboot_layout(path):
+    """(entry point, memory image size) from the eboot's ELF headers."""
+    _scripts()
+    from prepare import parse_self, read_self
+    _, header, ph, _, _ = parse_self(read_self(path))
+    return header[4], max(p['vaddr'] + p['memsz'] for p in ph if p['type'] in (1, 0x61000010))
+
+
+def _cached(path, kind, inspect):
+    """inspect(path), remembered while the file keeps its size and time (check_game runs on
+    every change in the launcher window)."""
+    stat = path.stat()
+    key = (str(path), kind, stat.st_size, stat.st_mtime_ns)
+    if key not in _inspected:
+        _inspected[key] = inspect(path)
+    return _inspected[key]
+
+
 def check_game(game_dir):
-    """Problems that keep the game from starting, as (key, detail) pairs; empty means ready."""
+    """Problems that keep the game from starting, as (key, detail) pairs; empty means ready.
+    Keys in WARNINGS are only reported."""
     game = Path(game_dir)
     problems = []
-    if not (game / 'eboot.bin').is_file():
+    eboot = game / 'eboot.bin'
+    if not eboot.is_file():
         problems.append(('missing', 'eboot.bin'))
+    else:
+        try:
+            entry, size = _cached(eboot, 'layout', eboot_layout)
+            if (entry, size) != EBOOT_107:
+                problems.append(('other_eboot', f'entry={entry:#x}, image={size:,} bytes'))
+        except (OSError, ValueError, KeyError, StopIteration) as error:
+            problems.append(('unreadable', f'eboot.bin ({error})'))
     for module in MODULES:
-        if not (game / 'sce_module' / module).is_file():
+        path = game / 'sce_module' / module
+        if not path.is_file():
             problems.append(('missing', f'sce_module/{module}'))
+            continue
+        try:
+            if _cached(path, 'tls', external_tls_relocations):
+                problems.append(('old_module', f'sce_module/{module}'))
+        except (OSError, ValueError, KeyError, StopIteration) as error:
+            problems.append(('unreadable', f'sce_module/{module} ({error})'))
     if not PROBE.is_file():
         problems.append(('not_built', str(PROBE)))
     return problems
+
+
+def blocking(problems):
+    return [problem for problem in problems if problem[0] not in WARNINGS]
 
 
 def update_ini(path, values):
@@ -148,7 +246,25 @@ def run_script(argv):
         runpy.run_path(str(script), run_name='__main__')
     except SystemExit as stop:
         return stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
+    except Exception as error:  # noqa: BLE001  never PyInstaller's "unhandled exception" dialog
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        print(f'{script.name}: {error}', file=sys.stderr, flush=True)  # last line: the reason
+        return 1
     return 0
+
+
+EXTERNAL_TLS = re.compile(r'([\w.-]+\.s?prx): unsupported external TLS relocation')
+
+
+def step_error(name, output):
+    """The error of a failed preparation step: GameError for a known problem with the game files,
+    else RuntimeError with the step's last line (its full output goes to the log)."""
+    old = EXTERNAL_TLS.search(output)
+    if old:
+        return GameError('old_module', f'sce_module/{old.group(1)}')
+    lines = [line for line in output.splitlines() if line.strip()]
+    return RuntimeError(f'{name}: {lines[-1] if lines else "failed"}')
 
 
 def prepare(settings, log=print):
@@ -166,7 +282,10 @@ def prepare(settings, log=print):
                                 creationflags=NO_WINDOW)
         if result.returncode:
             name = next(Path(arg).name for arg in step if arg.endswith('.py'))
-            raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
+            output = (result.stderr or '') + (result.stdout or '')
+            for line in output.splitlines():
+                log(line)
+            raise step_error(name, output)
         for line in result.stdout.splitlines():
             log(line)
     isa_table(log)
@@ -323,11 +442,19 @@ def main(argv=None):
     if os.environ.get('ISS_GAME_DIR'):
         settings['game_dir'] = os.environ['ISS_GAME_DIR']
     problems = check_game(settings['game_dir'])
-    if problems:
-        for kind, detail in problems:
-            print(f'{"Compile primeiro" if kind == "not_built" else "Faltando"}: {detail}', file=sys.stderr)
+    for kind, detail in problems:
+        if kind in TEXT:
+            print(message(kind, detail=detail), file=sys.stderr)
+        else:
+            print(f'{"Compile primeiro / Build first" if kind == "not_built" else "Faltando / Missing"}: {detail}',
+                  file=sys.stderr)
+    if blocking(problems):
         return 1
-    prepare(settings, log=lambda line: None)
+    try:
+        prepare(settings, log=lambda line: None)
+    except RuntimeError as error:  # GameError included: a message, never a traceback
+        print(error, file=sys.stderr)
+        return 1
     process, log = launch(settings, seconds)
     print(f'Rodando (log: {log})', flush=True)
     with open(log, 'w', encoding='utf-8') as out:
