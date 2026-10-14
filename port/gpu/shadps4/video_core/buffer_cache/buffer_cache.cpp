@@ -585,11 +585,14 @@ const Buffer* BufferCache::GetArena(u64 first_block, u64 last_block) {
         }
     }
     const u64 num_pages = hi - lo + 1;
-    ASSERT_MSG(num_pages <= max_arena_pages,
-               "Buffer request cannot span more than {} VA arena pages (blocks {:#x}-{:#x}: "
-               "{:#x}+{} MiB, arena pages of {} MiB)",
-               max_arena_pages, first_block, last_block, first_block << block_shift,
-               ((last_block - first_block + 1) << block_shift) >> 20, arena_page_size >> 20);
+    // Over the driver's limit: the old code built such arenas too (two merged arenas could
+    // exceed it) and drivers accepted them, so warn instead of stopping.
+    if (num_pages > max_arena_pages) {
+        LOG_WARNING(Render, "Arena of {} pages of {} MiB exceeds the driver buffer limit "
+                    "(request {:#x}+{} MiB)", num_pages, arena_page_size >> 20,
+                    first_block << block_shift,
+                    ((last_block - first_block + 1) << block_shift) >> 20);
+    }
 
     bool any_arena = false;
     for (u64 page = lo; page <= hi; ++page) {
