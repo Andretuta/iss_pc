@@ -398,9 +398,13 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
             const float sign=dq.w<0 ? -2.f : 2.f;
             d->angular_velocity[0]=sign*dq.x/dt; d->angular_velocity[1]=sign*dq.y/dt; d->angular_velocity[2]=sign*dq.z/dt;
         }
-        if (shake) { /* ~7 Hz up/down shake of +-2.5 g */
-            const float t=(float)(now%1000000u)*1e-6f, s=sinf(t*6.2831853f*7.f);
-            d->acceleration[1]+=2.5f*s; d->angular_velocity[0]+=6.f*cosf(t*6.2831853f*7.f);
+        if (shake) { /* ~7 Hz up/down shake of +-2.5 g along the real vertical (gv: up in the
+                      * controller's frame), so a can held on its side shakes up and down too */
+            const float t=(float)(now%1000000u)*1e-6f, s=sinf(t*6.2831853f*7.f), c=cosf(t*6.2831853f*7.f);
+            for (int i=0;i<3;++i) d->acceleration[i]+=2.5f*s*gv[i];
+            /* and a wobble about the horizontal axis across the controller's face */
+            const float side[3]={gv[1],-gv[0],0.f};
+            for (int i=0;i<3;++i) d->angular_velocity[i]+=6.f*c*side[i];
         }
         if (simulated && !motion.warned) { motion.warned=1; puts("Runtime: simulated controller tilt/shake in use"); }
     }
