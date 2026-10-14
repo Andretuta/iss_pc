@@ -57,6 +57,8 @@ struct Profile {
     /// tlg: TLG_LIGHTING_TEST=dref (vk_lighting_test.h): depth comparisons return the result
     /// in all four channels instead of (v, 0, 0, 0).
     bool dref_broadcast{};
+    /// tlg: block-compressed 1D textures are 2D images (video_core/amdgpu/tlg_block1d.h).
+    bool block1d_as_2d{};
 
     bool operator==(const Profile&) const = default;
 };

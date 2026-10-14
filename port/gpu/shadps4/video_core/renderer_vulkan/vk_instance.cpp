@@ -12,6 +12,7 @@
 #include "common/types.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
+#include "video_core/amdgpu/tlg_block1d.h"
 #include "video_core/amdgpu/tlg_msaa.h"
 #include "video_core/amdgpu/tlg_msaa_default.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -841,6 +842,26 @@ void Instance::CollectDeviceParameters() {
     AmdGpu::no_msaa.store(no_msaa, std::memory_order_relaxed);
     std::printf("GPU: guest multisampling %s\n",
                 no_msaa ? "off (single-sampled images; TLG_NO_MSAA=0 keeps it)" : "on");
+
+    // tlg: see video_core/amdgpu/tlg_block1d.h. The query uses the plainest usage the game's BC
+    // 1D textures need (sampled, filled by copies).
+    const char* block1d_env = std::getenv("TLG_BLOCK1D");
+    const bool bc1d_refused =
+        physical_device
+            .getImageFormatProperties(vk::Format::eBc1RgbaUnormBlock, vk::ImageType::e1D,
+                                      vk::ImageTiling::eOptimal,
+                                      vk::ImageUsageFlagBits::eSampled |
+                                          vk::ImageUsageFlagBits::eTransferDst)
+            .result != vk::Result::eSuccess;
+    const bool block1d_as_2d = block1d_env && *block1d_env
+                                   ? *block1d_env == '1'
+                                   : bc1d_refused && driver_id != vk::DriverId::eNvidiaProprietary;
+    AmdGpu::block1d_as_2d.store(block1d_as_2d, std::memory_order_relaxed);
+    if (bc1d_refused || block1d_as_2d) {
+        std::printf("GPU: block-compressed 1D textures %s\n",
+                    block1d_as_2d ? "as 2D images (the driver refuses BC 1D; TLG_BLOCK1D=0 keeps 1D)"
+                                  : "kept 1D although the driver refuses them (TLG_BLOCK1D=1 makes them 2D)");
+    }
 
     const std::string model_name{GetModelName()};
     const std::string driver_version = GetDriverVersionName();
