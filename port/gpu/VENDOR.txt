@@ -15,3 +15,8 @@ GPL-2.0-or-later; authors Eye Of The Ruins/rayhlancaner-png, TOXIC-KID, 0xDefton
   4a206865 residency granules, 0c3fada0 residency OOM retry, a107bf06 uploads in parts,
   89854b0b + bde510f8 compute pipelines off the GPU thread, 0dff21f1 pipeline creation retry,
   7e1c7cab submit in pieces, ee423726 + 2d2511fe + 9a5224bf guest threads wait for their own readbacks.
+Ported from the Shadow of the Colossus native port (https://github.com/AjncSystem/ShadowOfTheColossus-PC,
+GPL-2.0, AjncSystem; its multi-wave/ReadLane part credits Pink-shadPS4 by luizgustavs), adapted to our tree
+(shader_recompiler/recompiler_toggles.h):
+  6f0b3e56 + shared_memory_barrier_pass.cpp at 70bb4385 LDS barriers for partial-wave and multi-wave
+  compute workgroups (IR SubgroupBarrier), debb0c49 + e3227814 S_WQM_B64.
