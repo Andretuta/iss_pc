@@ -8,6 +8,10 @@
 
 static int capture;
 int tlggpu_overlay_captures_input(void) { return capture; }
+/* The GPU library (not linked here): on-screen notices, the graffiti guide, the menu's aim speed. */
+void tlggpu_overlay_notice(const char *text, float seconds) { (void)text; (void)seconds; }
+void tlggpu_graffiti_guide(int force) { (void)force; }
+float tlggpu_sensor_aim_scale(void) { return 1.0f; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

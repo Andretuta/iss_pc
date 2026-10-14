@@ -91,13 +91,26 @@ static pthread_rwlock_t lock=PTHREAD_RWLOCK_INITIALIZER;
 static __thread unsigned exclusive_depth;
 /* Odd while a writer holds the lock; readers' region caches are valid for one even value. */
 static uint64_t table_generation;
+/* Contended acquisitions are marked for the freeze report (the uncontended path only adds a try). */
 static void write_lock(void) {
-    if (!exclusive_depth++) { table_wrlock(); __atomic_add_fetch(&table_generation,1,__ATOMIC_ACQ_REL); }
+    if (!exclusive_depth++) {
+        if (table_trywrlock()) {
+            runtime_wait_begin("runtime memory map lock (write)",&lock,NULL,NULL,0);
+            table_wrlock();
+            runtime_wait_end();
+        }
+        __atomic_add_fetch(&table_generation,1,__ATOMIC_ACQ_REL);
+    }
 }
 static void write_unlock(void) {
     if (!--exclusive_depth) { __atomic_add_fetch(&table_generation,1,__ATOMIC_RELEASE); table_wrunlock(); }
 }
-static void read_lock(void) { if (!exclusive_depth) table_rdlock(); }
+static void read_lock(void) {
+    if (exclusive_depth || !table_tryrdlock()) return;
+    runtime_wait_begin("runtime memory map lock (read)",&lock,NULL,NULL,0);
+    table_rdlock();
+    runtime_wait_end();
+}
 static void read_unlock(void) { if (!exclusive_depth) table_rdunlock(); }
 static Block blocks[LIMIT];
 static Vma *vmas; static size_t vma_count, vma_capacity;
