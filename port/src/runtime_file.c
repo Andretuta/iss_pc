@@ -47,7 +47,14 @@ typedef struct {
 _Static_assert(sizeof(GuestStat)==120,"FreeBSD stat layout");
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
-typedef struct { int used, host; Listing *dir; size_t position; char path[512]; } File;
+/* Windows: `offset` is the descriptor's position, kept here (under `io`) instead of in the CRT/
+ * Win32 file pointer. Positioned reads there move that pointer (compat_pread restores it, racing
+ * with any other thread's read on the descriptor), and the CRT's read() reports a GPU-protected
+ * destination page as EINVAL, not EFAULT, so it was never retried: short or misplaced reads made
+ * inFAMOUS say "the disc or hard disk is corrupted" at the graffiti. Reads at the position go
+ * through compat_pread like pread. */
+typedef struct { int used, host; Listing *dir; size_t position; char path[512];
+                 int64_t offset; int append; pthread_mutex_t io; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
@@ -241,7 +248,8 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     int fd=-1;
     for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
     if (fd<0) { pthread_mutex_unlock(&lock); if (host>=0) close(host); free_listing(dir); return -EMFILE; }
-    files[fd]=(File){.used=1,.host=host,.dir=dir};
+    files[fd]=(File){.used=1,.host=host,.dir=dir,.append=(flags&0x8)!=0};
+    pthread_mutex_init(&files[fd].io,NULL);
     snprintf(files[fd].path,sizeof(files[fd].path),"%s",guest);
     ++opens;
     pthread_mutex_unlock(&lock);
@@ -266,6 +274,7 @@ static int64_t do_close(int fd) {
     if (!f) { pthread_mutex_unlock(&lock); return -EBADF; }
     if (f->host>=0) close(f->host);
     free_listing(f->dir);
+    pthread_mutex_destroy(&f->io);
     *f=(File){0};
     pthread_mutex_unlock(&lock);
     return 0;
@@ -316,7 +325,18 @@ static ssize_t full_io(int h,void *buffer,uint64_t size,int64_t offset) {
 static int64_t do_read(int fd,void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
+#ifdef _WIN32
+    File *f=fd>=3 ? get(fd) : NULL;
+    ssize_t n;
+    if (f) {
+        pthread_mutex_lock(&f->io);
+        n=full_io(h,buffer,size,f->offset);
+        if (n>0) f->offset+=n;
+        pthread_mutex_unlock(&f->io);
+    } else n=full_io(h,buffer,size,-1);
+#else
     ssize_t n=full_io(h,buffer,size,-1);
+#endif
     if (n<0) { if (audio_trace()) printf("Audio trace: read(fd %d, %llu) failed, errno %d\n",fd,(unsigned long long)size,errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
@@ -332,7 +352,22 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
 static int64_t do_write(int fd,const void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
+#ifdef _WIN32
+    /* The CRT writes at its own file pointer: put it at the descriptor's position first. */
+    File *f=fd>=3 ? get(fd) : NULL;
+    ssize_t n;
+    if (f) {
+        pthread_mutex_lock(&f->io);
+        if (f->append || host_lseek(h,f->offset,SEEK_SET)>=0) {
+            n=host_write(h,buffer,size);
+            const int64_t at=host_lseek(h,0,SEEK_CUR);
+            if (at>=0) f->offset=at;
+        } else n=-1;
+        pthread_mutex_unlock(&f->io);
+    } else n=host_write(h,buffer,size);
+#else
     ssize_t n=host_write(h,buffer,size);
+#endif
     if (n<0) return -errno;
     __atomic_add_fetch(&writes,1,__ATOMIC_RELAXED);
     return n;
@@ -352,8 +387,25 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
         if (whence==0 && offset>=0) { f->position=(size_t)offset; return offset; }
         return -EINVAL;
     }
+#ifdef _WIN32
+    pthread_mutex_lock(&f->io);
+    int64_t base=0;
+    if (whence==1) base=f->offset;
+    else if (whence==2) {
+        HostStat s;
+        if (host_fstat(f->host,&s)) { pthread_mutex_unlock(&f->io); return -errno; }
+        base=(int64_t)s.st_size;
+    }
+    const int64_t r=base+offset;
+    if (r<0) { pthread_mutex_unlock(&f->io); return -EINVAL; }
+    f->offset=r;
+    host_lseek(f->host,r,SEEK_SET); /* the CRT pointer follows, for anything that still uses it */
+    pthread_mutex_unlock(&f->io);
+    return r;
+#else
     int64_t r=host_lseek(f->host,offset,whence);
     return r<0 ? -errno : r;
+#endif
 }
 static int64_t do_fstat(int fd,GuestStat *out) {
     int h=host_fd(fd);
