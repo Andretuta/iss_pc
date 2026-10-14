@@ -324,8 +324,9 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
      * camera alone meanwhile, see read_pad). */
     const int key_can=k && (k[SDL_SCANCODE_T] || k[SDL_SCANCODE_G]);
     if (key_can) {
-        motion.yaw-=(float)(k[SDL_SCANCODE_RIGHT]-k[SDL_SCANCODE_LEFT])*0.5f*1.2f*dt;
-        motion.aim_pitch+=(float)(k[SDL_SCANCODE_UP]-k[SDL_SCANCODE_DOWN])*0.5f*1.2f*dt;
+        const float speed=0.6f*tlggpu_sensor_aim_scale();
+        motion.yaw-=(float)(k[SDL_SCANCODE_RIGHT]-k[SDL_SCANCODE_LEFT])*speed*dt;
+        motion.aim_pitch+=(float)(k[SDL_SCANCODE_UP]-k[SDL_SCANCODE_DOWN])*speed*dt;
         motion.yaw=fminf(fmaxf(motion.yaw,-1.4f),1.4f);
         motion.aim_pitch=fminf(fmaxf(motion.aim_pitch,-1.2f),1.2f);
     }
@@ -340,6 +341,7 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
                                                     : "Sensor mode ON (spray can): cross shakes, R2 sprays, left stick aims")
                                               : (pt ? "Modo sensor desligado" : "Sensor mode off"), 3.0f);
             printf("Runtime: sensor mode %s\n",motion.mode ? "on" : "off");
+            if (motion.mode) tlggpu_graffiti_guide(0); /* the steps, the first time only */
         }
         motion.toggle_held=toggle;
         if (sticks) d->buttons&=~(uint32_t)(BTN_L3|BTN_R3);
@@ -356,8 +358,9 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
             const float ry=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f;
             if (fabsf(rx)>fabsf(sx)) sx=rx;
             if (fabsf(ry)>fabsf(sy)) sy=ry;
-            motion.yaw-=aim_curve(sx)*1.2f*dt;
-            motion.aim_pitch-=aim_curve(sy)*1.2f*dt;
+            const float speed=1.2f*tlggpu_sensor_aim_scale(); /* the menu's Controls tab */
+            motion.yaw-=aim_curve(sx)*speed*dt;
+            motion.aim_pitch-=aim_curve(sy)*speed*dt;
             motion.yaw=fminf(fmaxf(motion.yaw,-1.4f),1.4f);
             motion.aim_pitch=fminf(fmaxf(motion.aim_pitch,-1.2f),1.2f);
             d->buttons&=~(uint32_t)BTN_CROSS;
@@ -682,6 +685,13 @@ static ABI int32_t pad_vibration(int32_t handle, const uint8_t *param) {
 }
 static ABI int32_t pad_ok_handle(int32_t handle) { return handle==PAD_HANDLE && opened ? 0 : ERR_INVALID_HANDLE; }
 static ABI int32_t pad_ok_handle_flag(int32_t handle, uint8_t flag) { (void)flag; return pad_ok_handle(handle); }
+/* Logged when it changes: if a game turns the sensor on only for its motion scenes (inFAMOUS's
+ * graffiti?), the graffiti guide can open right then. */
+static ABI int32_t pad_motion_state(int32_t handle, uint8_t enable) {
+    static int last=-1;
+    if (last!=(int)enable) { last=enable; printf("Runtime: scePadSetMotionSensorState(%d)\n",(int)enable); }
+    return pad_ok_handle(handle);
+}
 
 static ABI int32_t pad_light_bar(int32_t handle, const uint8_t *rgb) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;
@@ -694,7 +704,7 @@ static const RuntimeExport exports[]={
     {"scePadGetControllerInformation",pad_info}, {"scePadSetVibration",pad_vibration},
     {"scePadResetOrientation",pad_ok_handle},
     {"scePadSetAngularVelocityDeadbandState",pad_ok_handle_flag}, {"scePadSetTiltCorrectionState",pad_ok_handle_flag},
-    {"scePadSetMotionSensorState",pad_ok_handle_flag},
+    {"scePadSetMotionSensorState",pad_motion_state},
 };
 uintptr_t runtime_pad_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 void runtime_pad_report(void) { printf("Runtime: pad reads=%zu, gamepad=%s\n",reads,gamepad ? SDL_GetGamepadName(gamepad) : "none"); }

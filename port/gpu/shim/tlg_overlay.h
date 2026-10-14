@@ -73,6 +73,9 @@ void CloseSaveDialog();
 /// "Saving..." panel: active 1 on (percent < 0: no bar; text null keeps the last), 0 off,
 /// 2 on for a moment (dialogs the port answers at once).
 void SaveProgress(int kind, int active, int percent, const char* text);
+/// The graffiti guide (sensor mode without a gyro) in the middle of the screen, closed with a
+/// button; `force` false shows it only the first time (remembered in tlg.ini).
+void ShowGraffitiGuide(bool force);
 /// "Game saved" in the bottom-right corner.
 void SaveToast(int kind);
 

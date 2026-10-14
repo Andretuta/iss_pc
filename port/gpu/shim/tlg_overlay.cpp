@@ -402,6 +402,25 @@ void PerformanceTab() {
     }
 }
 
+void OpenGuide(); // the graffiti guide (below, with the save dialogs)
+
+void ControlsTab() {
+    auto& s = TlgSettings::Get();
+    ImGui::SeparatorText(TL("Sensor mode (graffiti)", "Modo sensor (grafite)"));
+    if (BeginRows("##sensor")) {
+        SliderRow(TL("Graffiti aiming speed", "Velocidade da mira do grafite"), s.sensor_aim, 25, 200, "%d%%",
+                  TL("How fast the stick moves the graffiti cursor in sensor mode (100% = default).",
+                     "Quão rápido o analógico move o cursor do grafite no modo sensor (100% = padrão)."));
+        ImGui::EndTable();
+    }
+    if (ImGui::Button(TL("How to do the graffiti without a gyro", "Como fazer o grafite sem giroscópio"))) {
+        SetOpen(false);
+        OpenGuide();
+    }
+    Help(TL("Shows the steps again (the same screen as the first time).",
+            "Mostra os passos de novo (a mesma tela da primeira vez)."));
+}
+
 void OverlayTab() {
     namespace P = TlgPerfStats;
     auto& s = TlgSettings::Get();
@@ -491,7 +510,7 @@ void Menu() {
         return;
     }
     footer_help = nullptr;
-    constexpr int TabCount = 3;
+    constexpr int TabCount = 4;
     const ImGuiIO& io = ImGui::GetIO();
     if (!io.WantTextInput) {
         const int step = ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false) || ImGui::IsKeyPressed(ImGuiKey_E, false) ? 1
@@ -504,7 +523,8 @@ void Menu() {
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
     if (ImGui::BeginTabBar("##tabs")) {
-        static const char* const tabs[TabCount] = {"Overlay", TL("Image", "Imagem"), TL("Performance", "Desempenho")};
+        static const char* const tabs[TabCount] = {"Overlay", TL("Image", "Imagem"), TL("Performance", "Desempenho"),
+                                                   TL("Controls", "Controle")};
         for (int tab = 0; tab < TabCount; ++tab) {
             const ImGuiTabItemFlags flags = requested_tab == tab ? ImGuiTabItemFlags_SetSelected : 0;
             if (!ImGui::BeginTabItem(tabs[tab], nullptr, flags)) {
@@ -518,6 +538,7 @@ void Menu() {
                 switch (tab) {
                 case 1: ImageTab(); break;
                 case 2: PerformanceTab(); break;
+                case 3: ControlsTab(); break;
                 default: OverlayTab(); break;
                 }
             }
@@ -1102,9 +1123,96 @@ void SaveToastBox(SaveClock::time_point now) {
     p.Text(52, 14, 14.0f, kSaveText, text, true, alpha);
 }
 
+// ---- The graffiti guide: how to paint without a gyro (sensor mode). Shown in the middle of the
+// screen the first time sensor mode is used, closed with its button; the menu's Controls tab
+// opens it again. imgui_mutex guards it. ----
+std::atomic<bool> guide_active{false};
+ImRect guide_button_rect;
+
+void GuideBox() {
+    const bool pt = UiPortuguese();
+    const char* sticks = PadText("L3+R3", "LS+RS", "LS+RS");
+    const char* shake = PadText(pt ? "✕ (Xis)" : "✕ (cross)", "A", "B");
+    const char* spray = PadText("R2", "RT", "ZR");
+    char steps[4][200];
+    std::snprintf(steps[0], sizeof(steps[0]), pt ? "Toque em %s juntos: liga o modo sensor e a lata já fica de lado."
+                                                 : "Tap %s together: sensor mode turns on and the can is held sideways.", sticks);
+    std::snprintf(steps[1], sizeof(steps[1]), pt ? "Segure %s para sacudir a lata." : "Hold %s to shake the can.", shake);
+    std::snprintf(steps[2], sizeof(steps[2]), pt ? "Segure %s para pintar e mire com o analógico esquerdo (pouco inclinado vai devagar)."
+                                                 : "Hold %s to spray and aim with the left stick (a small push is slow).", spray);
+    std::snprintf(steps[3], sizeof(steps[3]), pt ? "Toque em %s de novo para voltar a andar." : "Tap %s again to walk again.", sticks);
+    const char* keys = TL("Keyboard: hold T or G (can sideways), Y shakes, F sprays, the arrow keys aim.",
+                          "Teclado: segure T ou G (lata de lado), Y sacode, F pinta, as setas miram.");
+    const char* again = TL("The Insert menu, Controls tab, shows this again.",
+                           "O menu Insert, aba Controle, mostra isto de novo.");
+    const float w = 640, pad = 30, inner = w - pad * 2, text_x = pad + 40;
+    ImFont* font = ImGui::GetFont();
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float k0 = std::min(viewport->WorkSize.y / 720.0f, viewport->WorkSize.x * 0.94f / w);
+    auto height = [&](const char* text, float size, float width) {
+        return font->CalcTextSizeA(size * k0, FLT_MAX, width * k0, text).y / k0;
+    };
+    float step_h[4], h = pad + 30 + 8 + 20 + 22;
+    for (int i = 0; i < 4; ++i) {
+        step_h[i] = std::max(28.0f, height(steps[i], 15.0f, inner - 40));
+        h += step_h[i] + 12;
+    }
+    const float keys_h = height(keys, 13.0f, inner);
+    h += 8 + keys_h + 22 + 46 + pad;
+    SaveBackdrop(0.70f);
+    SavePainter p = SavePainterFor(w, h);
+    p.Panel(w, h);
+    float y = pad;
+    p.Text(pad, y, 23.0f, kSaveText, TL("Graffiti without a gyro", "Grafite sem giroscópio"), true);
+    y += 30 + 8;
+    p.Text(pad, y, 14.0f, kSaveMuted, TL("No motion sensor on your controller? Use sensor mode:",
+                                         "Seu controle não tem sensor de movimento? Use o modo sensor:"));
+    y += 20 + 22;
+    for (int i = 0; i < 4; ++i) {
+        const ImVec2 c = p.P(pad + 13, y + 11);
+        p.dl->AddCircleFilled(c, 13.0f * p.k, SaveColor(kSaveCardOn));
+        p.dl->AddCircle(c, 13.0f * p.k, SaveColor(kSaveAccent), 0, 1.5f * p.k);
+        char number[4];
+        std::snprintf(number, sizeof(number), "%d", i + 1);
+        p.Text(pad + 13 - p.Width(14.0f, number) / 2, y + 2, 14.0f, kSaveAccent, number, true);
+        p.Text(text_x, y + 1, 15.0f, kSaveText, steps[i], false, 1.0f, inner - 40);
+        y += step_h[i] + 12;
+    }
+    y += 8;
+    p.Text(pad, y, 13.0f, kSaveDim, keys, false, 1.0f, inner);
+    y += keys_h + 22;
+    p.Text(pad, y + 15, 12.5f, 0x6f7c92, again, false, 1.0f, inner - 180);
+    const char* ok = TL("Got it", "Entendi");
+    const float bw = 22 + 20 + 10 + p.Width(15.0f, ok) + 22, x0 = w - pad - bw;
+    p.Box(x0, y, w - pad, y + 46, kSaveAccent, 12.0f);
+    p.Button(x0 + 32, y + 23, 0);
+    p.Text(x0 + 52, y + 13, 15.0f, 0x0b0e14, ok, true);
+    guide_button_rect = ImRect(p.P(x0, y), p.P(w - pad, y + 46));
+}
+
+// imgui_mutex held.
+void OpenGuide() {
+    guide_button_rect = ImRect();
+    guide_active = true;
+    ImGui::GetIO().MouseDrawCursor = true;
+}
+
+void CloseGuide() {
+    guide_active = false;
+    ImGui::GetIO().MouseDrawCursor = menu_open;
+    auto& s = TlgSettings::Get();
+    if (!s.graffiti_guide_seen.exchange(true)) {
+        TlgSettings::Save();
+    }
+}
+
 // Present thread, imgui_mutex held, after NewFrame: whichever save dialog is up.
 void SaveDialogs() {
     const auto now = SaveClock::now();
+    if (guide_active) {
+        GuideBox();
+        return;
+    }
     if (choice_active) {
         SaveListBox();
     } else if (message_active) {
@@ -1318,6 +1426,44 @@ void UpdateChoiceTextures() {
     choice_retiring = !choice_retired.empty();
 }
 
+// The guide takes the buttons, keys and mouse until it is closed (its button, cross/A, Enter,
+// Esc, circle/B); the game's input is held neutral meanwhile.
+bool HandleGuideEvent(const SDL_Event& event) {
+    bool close = false;
+    switch (event.type) {
+    case SDL_EVENT_KEY_DOWN: {
+        const SDL_Keycode key = event.key.key;
+        close = key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_SPACE || key == SDLK_ESCAPE;
+        break;
+    }
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        close = event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH || event.gbutton.button == SDL_GAMEPAD_BUTTON_EAST;
+        break;
+    case SDL_EVENT_MOUSE_MOTION: {
+        const float density = PixelDensity(event.motion.windowID);
+        ImGui::GetIO().AddMousePosEvent(event.motion.x * density, event.motion.y * density);
+        break;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+        const ImVec2 at = ImGui::GetIO().MousePos;
+        close = event.button.button == SDL_BUTTON_LEFT && guide_button_rect.GetWidth() > 0 &&
+                guide_button_rect.Contains(at);
+        break;
+    }
+    case SDL_EVENT_KEY_UP:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    case SDL_EVENT_MOUSE_WHEEL:
+        return true;
+    default:
+        return false;
+    }
+    if (close) {
+        CloseGuide();
+    }
+    return true;
+}
+
 void FinishSaveDialog() {
     RetireChoiceTextures();
     ImGui::GetIO().MouseDrawCursor = menu_open;
@@ -1407,6 +1553,9 @@ bool HandleEvent(const SDL_Event& event) {
     std::scoped_lock lock{imgui_mutex};
     if (!initialized) {
         return false;
+    }
+    if (guide_active && !menu_open) {
+        return HandleGuideEvent(event);
     }
     if ((choice_active || message_active) && !menu_open) {
         return HandleSaveEvent(event);
@@ -1560,14 +1709,22 @@ bool Visible() {
     const auto& s = TlgSettings::Get();
     const auto now = std::chrono::steady_clock::now();
     return initialized && (loading || background_total || menu_open || text_entry_active || choice_active ||
-                           message_active || progress_on || now < progress_until || now < toast_until ||
+                           message_active || guide_active || progress_on || now < progress_until || now < toast_until ||
                            NoticeActive() ||
                            choice_retiring || s.show_fps ||
                            (s.actor_watch_supported && s.enemy_health_bar));
 }
 
 bool CapturesInput() {
-    return menu_open || text_entry_active || choice_active || message_active;
+    return menu_open || text_entry_active || choice_active || message_active || guide_active;
+}
+
+void ShowGraffitiGuide(bool force) {
+    std::scoped_lock lock{imgui_mutex};
+    if (!force && TlgSettings::Get().graffiti_guide_seen) {
+        return;
+    }
+    OpenGuide();
 }
 
 void BeginSaveList(int kind, std::vector<SaveRow> rows, std::vector<TlgPng::Image> pictures, int focus) {

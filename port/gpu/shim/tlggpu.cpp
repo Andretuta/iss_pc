@@ -415,6 +415,14 @@ extern "C" void tlggpu_save_progress(int kind, int active, int percent, const ch
     if (g_window) TlgOverlay::SaveProgress(kind, active, percent, text);
 }
 
+extern "C" float tlggpu_sensor_aim_scale(void) {
+    return float(TlgSettings::Get().sensor_aim.load()) / 100.0f;
+}
+
+extern "C" void tlggpu_graffiti_guide(int force) {
+    if (g_window) TlgOverlay::ShowGraffitiGuide(force != 0);
+}
+
 extern "C" void tlggpu_save_toast(int kind) {
     if (g_window) TlgOverlay::SaveToast(kind);
 }

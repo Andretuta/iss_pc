@@ -52,6 +52,10 @@ void tlggpu_save_dialog_close(void);
 /* "Saving..." panel: active 1 shows it (percent < 0: no bar; text NULL keeps the last), 0 hides
  * it; active 2 shows it briefly, for dialogs the port answers at once. */
 void tlggpu_save_progress(int kind, int active, int percent, const char *text);
+/* Sensor mode's aiming speed from the menu's Controls tab (1.0 = default). */
+float tlggpu_sensor_aim_scale(void);
+/* The graffiti guide over the game: the first time only (force 0), or again (force 1). */
+void tlggpu_graffiti_guide(int force);
 /* "Game saved" in the corner (repeats within a few seconds are dropped). */
 void tlggpu_save_toast(int kind);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
