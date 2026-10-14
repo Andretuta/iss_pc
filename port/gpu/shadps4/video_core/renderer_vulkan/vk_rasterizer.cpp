@@ -1087,6 +1087,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         return;
     }
     const auto state = BeginRendering(pipeline);
+    // tlg: before anything of the draw itself is recorded, which has to go with it.
+    SubmitIfWorkPiledUp(state);
+    scheduler.CountWork();
 
     if (!inputs_resolved) {
         ResolveVertexBuffers(pipeline, draw_prepared);
@@ -1306,6 +1309,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
         return;
     }
     const auto state = BeginRendering(pipeline);
+    // tlg: before anything of the draw itself is recorded, which has to go with it.
+    SubmitIfWorkPiledUp(state);
+    scheduler.CountWork();
 
     BindVertexBuffers(pipeline);
     if (is_indexed) {
@@ -1397,6 +1403,37 @@ void Rasterizer::DispatchDirect() {
     DispatchRecord(pipeline);
 }
 
+void Rasterizer::SubmitIfWorkPiledUp(const RenderState& next_state) {
+    // tlg: commands were submitted only when a guest submission ended or something had to wait,
+    // so the GPU idled while thousands of draws were recorded and then had all of them to do,
+    // and whatever waited on the GPU (inFAMOUS' threads wait for readbacks hundreds of times a
+    // second) waited for all of it. Once TLG_SUBMIT_DRAWS (default 1024, 0: off) draws and
+    // dispatches are recorded, they are submitted where the next draw starts a render pass
+    // anyway, so the GPU works on them while the rest is recorded.
+    static const u32 limit = [] {
+        const char* env = std::getenv("TLG_SUBMIT_DRAWS");
+        return env && *env ? static_cast<u32>(std::strtoul(env, nullptr, 10)) : 1024u;
+    }();
+    if (limit == 0 || scheduler.WorkSinceSubmit() < limit ||
+        !scheduler.WillBeginRendering(next_state)) {
+        return;
+    }
+    // The submission waits for the recording thread, which may be waiting for a compute
+    // pipeline being built (ComputeBind): the draw pipe would stall behind the build.
+    if (Pipeline::deferred_binds.load(std::memory_order_relaxed) != 0) {
+        return;
+    }
+    // The frame recorder and capture read back what each submission did: left as they were.
+    if (FrameRecord::IsRecording() || FrameCapture::Active()) {
+        return;
+    }
+    if ((++work_submits & 255) == 1) {
+        std::printf("GPU: %llu submissions of piled-up draws so far (TLG_SUBMIT_DRAWS=%u)\n",
+                    static_cast<unsigned long long>(work_submits), limit);
+    }
+    scheduler.Flush();
+}
+
 Rasterizer::ComputeBinder Rasterizer::ComputeBind(const ComputePipeline* pipeline) {
     if (pipeline->IsBuilt()) {
         return {pipeline->Handle(), nullptr};
@@ -1476,6 +1513,7 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     });
     DebugState.IncDispatch();
+    scheduler.CountWork();
 
     // tlg diagnostics: TLG_DIAG_IMAGES=1 writes the images a dispatch read and wrote, after
     // it, while a frame capture records (TLG_CAPTURE_TRIGGER).
@@ -1552,6 +1590,7 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
         }
     });
     DebugState.IncDispatch();
+    scheduler.CountWork();
 
     ResetBindings(true);
     scheduler.KickRecording();

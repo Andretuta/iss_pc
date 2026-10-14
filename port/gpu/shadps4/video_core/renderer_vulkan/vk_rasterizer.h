@@ -247,6 +247,10 @@ private:
         void operator()(vk::CommandBuffer cmdbuf) const;
     };
     static ComputeBinder ComputeBind(const ComputePipeline* pipeline);
+    /// tlg: submits what was recorded so far if a lot was and the next draw starts a render
+    /// pass anyway (TLG_SUBMIT_DRAWS). On the thread recording draws (stage B or the GPU thread).
+    void SubmitIfWorkPiledUp(const RenderState& next_state);
+    u64 work_submits = 0; ///< submissions made by SubmitIfWorkPiledUp
     /// tlg: TLG_FRAME_RECORD_TRIGGER: inputs of the draw or dispatch being recorded
     /// (vk_frame_record.h). `state`: the draw's render state, null for dispatches.
     void RecordFrameInputs(const Pipeline* pipeline, const PreparedDraw* prepared,

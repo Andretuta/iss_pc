@@ -864,6 +864,16 @@ public:
         return is_rendering && render_state == state;
     }
 
+    /// tlg: counts a draw or dispatch recorded since the last submission.
+    void CountWork() noexcept {
+        work_since_submit.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    /// tlg: draws and dispatches recorded since the last submission.
+    [[nodiscard]] u32 WorkSinceSubmit() const noexcept {
+        return work_since_submit.load(std::memory_order_relaxed);
+    }
+
     /// Whether BeginRendering(state) would start a new render pass.
     [[nodiscard]] bool WillBeginRendering(const RenderState& state) const {
         return !(is_rendering && render_state == state);
@@ -964,6 +974,7 @@ private:
     bool recorder_busy = false;
     std::atomic<size_t> queued_chunks{0}; ///< recorder_queue.size() for lock-free polling
     bool recorder_sleeping = false; ///< waiting on recorder_cv (guarded by recorder_mutex)
+    std::atomic<u32> work_since_submit{0}; ///< tlg: CountWork(), reset by each submission
     bool direct_mode = false; ///< the command buffer is recorded on the caller's thread
     u64 host_copies_issued = 0;
     std::atomic<u64> host_copies_done{0};
