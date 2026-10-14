@@ -54,6 +54,10 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 | Linux | ✅ Testado (Nobara/Fedora 44) |
 | Windows | 🧪 Build automático, ainda sem teste em jogo |
 
+![Desempenho de uma sessão de 7 minutos andando pela cidade](docs/screenshots/desempenho.png)
+
+<sub>FPS, pior quadro e draws por quadro a cada 5 s, tirados do log do port (`TLG_FRAME_STATS=1`), na RTX 2060: mediana de 27 FPS, 44% do tempo acima de 30 FPS. O jogo não tem trava de FPS. Gerado por `scripts/session_chart.py` (com `0` = sem trava).</sub>
+
 ## Download
 
 O [**build nightly**](https://github.com/HayatoG/iss_pc/releases/tag/nightly) é gerado pelo GitHub Actions a cada mudança e substitui o anterior:
@@ -157,6 +161,10 @@ The screenshots are at the top of this page.
 | Graphics | 🔧 Some fog, water and light effects flicker |
 | Linux | ✅ Tested (Nobara/Fedora 44) |
 | Windows | 🧪 Automatic build, not yet tested in game |
+
+![Performance over a 7-minute session walking through the city](docs/screenshots/desempenho.png)
+
+<sub>FPS, worst frame and draws per frame every 5 s, from the port's log (`TLG_FRAME_STATS=1`), on an RTX 2060: median 27 FPS, above 30 FPS 44% of the time. The game has no frame cap. Made with `scripts/session_chart.py` (`0` = uncapped).</sub>
 
 ## Download
 
