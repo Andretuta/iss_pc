@@ -48,11 +48,13 @@ TEXT = {
     'deadzone': ('Stick dead zone', 'Zona morta dos analógicos'),
     'deadzone_hint': ('Raise it if the character or camera moves on its own (stick drift).',
                       'Aumente se o personagem ou a câmera se mexer sozinho (drift).'),
-    'sensor_hint': ('Motion sensor: DualShock/DualSense gyro works as is. Without a sensor, tap Share '
-                    'or L3+R3 for sensor mode (left stick tilts, cross/A shakes); keyboard T/G/Y.',
-                    'Sensor de movimento: o giroscópio do DualShock/DualSense funciona direto. Sem sensor, '
-                    'toque em Share ou L3+R3 para o modo sensor (analógico esquerdo inclina, X/A sacode); '
-                    'teclado T/G/Y.'),
+    'sensor_hint': ('Motion sensor: DualShock/DualSense gyro works as is. Without a sensor, press L3+R3 '
+                    '(or Share on Xbox Series) for sensor mode: left stick tilts, cross/A shakes; L3+R3 again '
+                    'turns it off. Touchpad: View/Select (hold + right stick = swipe). Keyboard T/G/Y.',
+                    'Sensor de movimento: o giroscópio do DualShock/DualSense funciona direto. Sem sensor, aperte L3+R3 '
+                    '(ou Share no Xbox Series) para o modo sensor: analógico esquerdo inclina, X/A sacode; '
+                    'L3+R3 de novo desliga. Touchpad: View/Select (segurar + analógico direito = deslizar). '
+                    'Teclado T/G/Y.'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),
     'logs': ('Logs folder', 'Pasta de logs'),
