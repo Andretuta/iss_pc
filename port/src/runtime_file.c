@@ -303,6 +303,19 @@ static void touch_for_write(void *buffer,uint64_t size) {
         *b=*b;
     }
 }
+/* A failed or short game read is logged (the first 32): on Windows "The disc or Hard Disk Drive
+ * is corrupt" is the game's answer to EIO from a file read, so the log must say why. */
+static void log_read_problem(const char *what,int fd,uint64_t size,int64_t offset,ssize_t n,int error) {
+    static int logged;
+    if (__atomic_fetch_add(&logged,1,__ATOMIC_RELAXED)>=32) return;
+#ifdef _WIN32
+    printf("Runtime: %s(fd %d, %llu bytes @%lld) %s %lld, errno %d, Win32 error %lu\n",what,fd,(unsigned long long)size,
+           (long long)offset,n<0 ? "failed" : "short:",(long long)n,error,compat_last_io_error);
+#else
+    printf("Runtime: %s(fd %d, %llu bytes @%lld) %s %lld, errno %d\n",what,fd,(unsigned long long)size,(long long)offset,
+           n<0 ? "failed" : "short:",(long long)n,error);
+#endif
+}
 /* Reads `size` bytes (offset<0: at the file position), re-touching the rest of the destination
  * after a short read or EFAULT: with precise readbacks the GPU tracker can protect a page again
  * between touch_for_write and the kernel copy, which then stops early without an error. The
@@ -310,16 +323,19 @@ static void touch_for_write(void *buffer,uint64_t size) {
 static ssize_t full_io(int h,void *buffer,uint64_t size,int64_t offset) {
     unsigned char *at=buffer;
     uint64_t done=0;
-    for (int stalls=0; done<size && stalls<64;) {
+    int stalls=0;
+    for (; done<size && stalls<64;) {
         touch_for_write(at+done,size-done);
         ssize_t n=offset<0 ? host_read(h,at+done,size-done) : pread(h,at+done,size-done,offset+(int64_t)done);
         if (n<0) {
             if (errno==EINTR || errno==EFAULT) { ++stalls; continue; }
+            if (done) log_read_problem("io (error after a partial read)",h,size,offset,(ssize_t)done,errno);
             return done ? (ssize_t)done : -1;
         }
         if (n==0) break; /* end of file */
         done+=(uint64_t)n;
     }
+    if (stalls>=64) log_read_problem("io (gave up after 64 retries)",h,size,offset,(ssize_t)done,EFAULT);
     return (ssize_t)done;
 }
 static int64_t do_read(int fd,void *buffer,uint64_t size) {
@@ -337,7 +353,7 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
 #else
     ssize_t n=full_io(h,buffer,size,-1);
 #endif
-    if (n<0) { if (audio_trace()) printf("Audio trace: read(fd %d, %llu) failed, errno %d\n",fd,(unsigned long long)size,errno); return -errno; }
+    if (n<0) { int e=errno; log_read_problem("read",fd,size,-1,n,e); return -e; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
 }
@@ -345,7 +361,7 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     ssize_t n=full_io(h,buffer,size,offset);
-    if (n<0) { if (audio_trace()) printf("Audio trace: pread(fd %d, %llu @%lld) failed, errno %d\n",fd,(unsigned long long)size,(long long)offset,errno); return -errno; }
+    if (n<0) { int e=errno; log_read_problem("pread",fd,size,offset,n,e); return -e; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
 }
