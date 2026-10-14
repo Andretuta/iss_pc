@@ -348,9 +348,18 @@ def cpu_missing_sets(log=print):
     that lacks a set nothing can rewrite (AVX and older) stops here (exit 20) with the probe's reason."""
     try:
         result = subprocess.run([str(PROBE), '--cpu-features'], stdin=subprocess.DEVNULL, capture_output=True,
-                                text=True, timeout=30, creationflags=NO_WINDOW, env=probe_env())
-    except (OSError, subprocess.SubprocessError):
-        return []  # no probe yet: check_game reports it
+                                text=True, timeout=120, creationflags=NO_WINDOW, env=probe_env())
+    except subprocess.SubprocessError as error:
+        # Windows players with Intel CPUs met this: the first --cpu-features run went past the
+        # timeout (the antivirus scanning the new exe), no table was built and the game stopped on
+        # the first SSE4A instruction (exception 0xc000001d). Unknown: build the table anyway.
+        log(f'CPU check failed ({error.__class__.__name__}); building the instruction rewrite table anyway')
+        return None
+    except OSError as error:
+        if not PROBE.is_file():
+            return []  # no probe yet: check_game reports it
+        log(f'CPU check failed ({error}); building the instruction rewrite table anyway')
+        return None
     if result.returncode == 20:
         raise RuntimeError(result.stdout.strip() or 'this CPU cannot run the game')
     for line in result.stdout.splitlines():
