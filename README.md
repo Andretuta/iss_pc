@@ -36,7 +36,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
   - **Menos travadas ao surgir um efeito novo:** os shaders de compute compilam fora da thread da GPU (`ISS_COMPUTE_ASYNC_BUILD`), e o jogo tenta de novo quando o driver falha ao criar um pipeline.
   - **VRAM:** quando a memória de vídeo aperta, o port libera texturas antigas e tenta de novo, em vez de fechar. Uploads gigantes, como ao carregar um save, vão em partes, e o driver pode mover memória para a RAM.
   - **Atomics de float** corrigidos em placas sem suporte nativo, como as NVIDIA.
-- **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em L3+R3 (ou Share no Xbox Series) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode. É o que passa do grafite ("Hold Wireless Controller Sideways") e dos outros pedidos de movimento.
+- **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em L3+R3 (ou Share no Xbox Series) liga o "modo sensor": o analógico esquerdo inclina o controle, o direito mira (o cursor do grafite) e X/A sacode. No teclado, T/G inclinam e Y sacode. É o que passa do grafite ("Hold Wireless Controller Sideways") e dos outros pedidos de movimento.
 - **Analógicos:** zona morta de 10% contra drift (`ISS_STICK_DEADZONE`, também no launcher), e o último controle usado é o que vale.
 - **Touchpad sem touchpad:** segure View/Select (ou Tab) e mova o analógico direito (ou as setas) para deslizar o dedo, como no "Open Door"; um toque rápido continua sendo clique.
 - **Desempenho:** o FPS não cai mais com o tempo (caía de 60 para 6 em 2 minutos: as variantes de shader nunca se repetiam), e transições parciais de imagem repetidas são puladas.
@@ -94,7 +94,7 @@ A lista completa e o passo a passo, que também vão nas notas de cada Release, 
 1. Extraia o pacote.
 2. Abra o **inFAMOUS Second Son**, escolha a pasta do jogo e o idioma e clique em **Jogar**. Se a imagem engasgar demais, a opção "Precisão da GPU" tem um modo rápido (sem as partículas da GPU).
 3. No jogo, **F10** liga o contador de FPS, e **Insert** (ou R3 + L2 no controle) abre o menu do port.
-4. Quando o jogo pedir para virar ou sacudir o controle e o seu não tiver sensor: toque em L3+R3 (ou Share no Xbox Series), use o analógico esquerdo para inclinar e X/A para sacudir, e toque de novo para sair. No teclado: T/G/Y. Veja [Sensor de movimento e touchpad](#sensor-de-movimento-e-touchpad).
+4. Quando o jogo pedir para virar ou sacudir o controle e o seu não tiver sensor: toque em L3+R3 (ou Share no Xbox Series), use o analógico esquerdo para inclinar, o direito para mirar e X/A para sacudir, e toque de novo para sair. No teclado: T/G/Y. Veja [Sensor de movimento e touchpad](#sensor-de-movimento-e-touchpad).
 
 O passo a passo completo está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
 
@@ -104,8 +104,8 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 
 **Modo sensor (ligar e desligar):**
 - **Um toque em L3+R3 juntos** liga o modo sensor; outro toque desliga. Funciona em qualquer controle. Também serve o botão extra do controle: **Share** no Xbox Series, **Capture** no Switch Pro e **microfone** no DualSense. No DualShock 4 e no DualSense, o Share/Create **não** liga o modo sensor: ele é o clique do touchpad.
-- Um aviso na tela confirma: "Modo sensor LIGADO: analógico esquerdo inclina, X/A sacode" ou "Modo sensor desligado".
-- Com o modo ligado, o **analógico esquerdo inclina** o controle (esquerda/direita = virar de lado; cima/baixo = para a frente/para trás) e **X/A sacode**. Os dois ficam escondidos do jogo, então o Delsin não anda nem pula: **desligue o modo depois da cena**. O L3+R3 juntos também não chega ao jogo.
+- Um aviso na tela confirma: "Modo sensor LIGADO: analógico esquerdo inclina, direito mira, X/A sacode" ou "Modo sensor desligado".
+- Com o modo ligado, o **analógico esquerdo inclina** o controle (esquerda/direita = virar de lado; cima/baixo = para a frente/para trás) o **analógico direito mira**, girando o controle para os lados e para cima/baixo como uma lata de spray (é o que move o cursor do grafite; ele fica onde você soltou), e **X/A sacode**. Os três ficam escondidos do jogo, então o Delsin não anda, não pula e a câmera não gira: **desligue o modo depois da cena**. O L3+R3 juntos também não chega ao jogo.
 - Com o modo ligado, a inclinação simulada substitui o giroscópio real.
 - **Teclado** (sem modo, a qualquer hora): segure **T** ou **G** para virar o controle de lado (um lado ou o outro) e **Y** para sacudir.
 
@@ -120,7 +120,7 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 | Interação de "toque no touchpad" | clicar o touchpad | toque em View/Select | Tab ou Backspace |
 | Grafite: virar o controle de lado | virar o controle | L3+R3 (modo sensor) + analógico esquerdo para o lado | segurar T ou G |
 | Grafite: sacudir a lata | sacudir o controle | X/A no modo sensor | Y |
-| Grafite: pintar | R2, mirando com o controle | R2, inclinando com o analógico esquerdo no modo sensor | F (R2); T/G só viram de lado, sem frente/trás |
+| Grafite: pintar | R2, mirando com o controle | R2, mirando com o analógico direito no modo sensor (esquerdo segura de lado) | F (R2); T/G só viram de lado, sem frente/trás |
 | Deslizar no touchpad (porta "Open Door", scanner de mão) | deslizar o dedo | segurar View/Select + analógico direito na direção pedida | segurar Tab + setas |
 | Voltar ao normal depois do grafite | — | L3+R3 de novo ("Modo sensor desligado") | — |
 
@@ -182,7 +182,7 @@ The screenshots are at the top of this page.
   - **Fewer hitches when a new effect shows up:** compute shaders compile off the GPU thread (`ISS_COMPUTE_ASYNC_BUILD`), and pipeline creation is retried when the driver fails.
   - **VRAM:** when video memory runs short, the port frees old textures and tries again instead of closing. Huge uploads, such as loading a save, go in parts, and the driver may page memory out to RAM.
   - **Float atomics** fixed on GPUs without native support, such as NVIDIA.
-- **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on L3+R3 (or Share on an Xbox Series) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes. This is what gets you past the graffiti ("Hold Wireless Controller Sideways") and the other motion prompts.
+- **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on L3+R3 (or Share on an Xbox Series) toggles "sensor mode": the left stick tilts the controller, the right stick aims (the graffiti cursor) and cross/A shakes it. On the keyboard, T/G tilt and Y shakes. This is what gets you past the graffiti ("Hold Wireless Controller Sideways") and the other motion prompts.
 - **Sticks:** a 10% dead zone against drift (`ISS_STICK_DEADZONE`, also in the launcher), and the last controller used is the one that counts.
 - **Touchpad without a touchpad:** hold View/Select (or Tab) and move the right stick (or the arrow keys) to swipe, as in "Open Door"; a quick tap still clicks.
 - **Performance:** FPS no longer drops over time (it went from 60 to 6 in 2 minutes: shader variants were never reused), and repeated partial image transitions are skipped.
@@ -250,8 +250,8 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 
 **Sensor mode (turning it on and off):**
 - **One tap on L3+R3 together** turns sensor mode on; another tap turns it off. It works on any controller. The controller's extra button works too: **Share** on an Xbox Series, **Capture** on a Switch Pro and the **microphone** button on a DualSense. On a DualShock 4 or DualSense, Share/Create does **not** toggle sensor mode: it is the touchpad click.
-- A notice on screen confirms it: "Sensor mode ON: left stick tilts, cross/A shakes" or "Sensor mode off".
-- While it is on, the **left stick tilts** the controller (left/right = turn it sideways; up/down = forward/back) and **cross/A shakes** it. Both are hidden from the game, so Delsin neither walks nor jumps: **turn the mode off after the scene**. L3+R3 together never reaches the game either.
+- A notice on screen confirms it: "Sensor mode ON: left stick tilts, right stick aims, cross/A shakes" or "Sensor mode off".
+- While it is on, the **left stick tilts** the controller (left/right = turn it sideways; up/down = forward/back) the **right stick aims**, turning the controller left/right and up/down like a spray can (this moves the graffiti cursor; it stays where you let go), and **cross/A shakes** it. All three are hidden from the game, so Delsin neither walks nor jumps and the camera does not turn: **turn the mode off after the scene**. L3+R3 together never reaches the game either.
 - While it is on, the simulated tilt replaces the real gyro.
 - **Keyboard** (no mode needed, any time): hold **T** or **G** to turn the controller sideways (one side or the other) and **Y** to shake it.
 
@@ -266,7 +266,7 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 | "Press the touchpad" interactions | click the touchpad | tap View/Select | Tab or Backspace |
 | Graffiti: turn the controller sideways | turn the controller | L3+R3 (sensor mode) + left stick to the side | hold T or G |
 | Graffiti: shake the can | shake the controller | cross/A in sensor mode | Y |
-| Graffiti: spray | R2, aiming with the controller | R2, tilting with the left stick in sensor mode | F (R2); T/G only turn sideways, no forward/back |
+| Graffiti: spray | R2, aiming with the controller | R2, aiming with the right stick in sensor mode (left stick holds it sideways) | F (R2); T/G only turn sideways, no forward/back |
 | Touchpad swipe ("Open Door", hand scanner) | swipe a finger | hold View/Select + right stick in the asked direction | hold Tab + arrow keys |
 | Back to normal after the graffiti | — | L3+R3 again ("Sensor mode off") | — |
 

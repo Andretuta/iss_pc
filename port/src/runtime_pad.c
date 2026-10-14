@@ -256,12 +256,14 @@ static void load_button_maps(void) {
  *   keyboard: T / G hold the controller turned sideways (to one side / the other), Y shakes it;
  *   gamepad: "sensor mode", toggled by a tap on TLG_MOTION_BUTTON (default "misc1": Share/Capture;
  *   any SDL button name) or on L3+R3 together. While it is on, the left stick tilts the controller
- *   and the bottom face button (cross / A / Nintendo B) shakes it; both are hidden from the game,
- *   so the character neither walks nor jumps. A notice on screen tells the mode.
+ *   (sideways, forward/back), the right stick turns it to aim (left/right and up/down, like moving
+ *   a spray can: the graffiti cursor) and the bottom face button (cross / A / Nintendo B) shakes it;
+ *   all are hidden from the game, so the character neither walks nor jumps nor turns the camera.
+ *   A notice on screen tells the mode.
  * TLG_MOTION=off disables real sensors (simulation still works). */
 static int injected_motion; /* TLG_PAD_FILE tokens: 1 tilt_right (T), 2 tilt_left (G), 4 shake (Y) */
 typedef struct { float w, x, y, z; } Quat;
-static struct { Quat q; float roll, pitch; uint64_t last_us; int sensors, warned, mode, toggle_held; } motion={{1,0,0,0},0,0,0,-1,0,0,0};
+static struct { Quat q; float roll, pitch, yaw, aim_pitch; uint64_t last_us; int sensors, warned, mode, toggle_held; } motion={{1,0,0,0},0,0,0,0,0,-1,0,0,0};
 static Quat quat_mul(Quat a, Quat b) {
     return (Quat){a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z, a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
                   a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x, a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w};
@@ -314,8 +316,8 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
             motion.mode=!motion.mode;
             const char *lang=getenv("TLG_UI_LANG");
             const int pt=!(lang && !strncmp(lang,"en",2));
-            tlggpu_overlay_notice(motion.mode ? (pt ? "Modo sensor LIGADO: analógico esquerdo inclina, X/A sacode"
-                                                    : "Sensor mode ON: left stick tilts, cross/A shakes")
+            tlggpu_overlay_notice(motion.mode ? (pt ? "Modo sensor LIGADO: analógico esquerdo inclina, direito mira, X/A sacode"
+                                                    : "Sensor mode ON: left stick tilts, right stick aims, cross/A shakes")
                                               : (pt ? "Modo sensor desligado" : "Sensor mode off"), 3.0f);
             printf("Runtime: sensor mode %s\n",motion.mode ? "on" : "off");
         }
@@ -325,8 +327,18 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
             roll=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTX)/32767.f*1.5708f;
             pitch=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTY)/32767.f*1.5708f;
             if (SDL_GetGamepadButton(g,SDL_GAMEPAD_BUTTON_SOUTH)) shake=1;
+            /* Right stick: the controller turns while it is held (a rate, so the aim stays where
+             * it was left), as far as ~80 degrees each way. Right = turn right. */
+            const float rx=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)/32767.f;
+            const float ry=(float)SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY)/32767.f;
+            const float dead=0.15f;
+            if (fabsf(rx)>dead) motion.yaw-=rx*1.6f*dt;
+            if (fabsf(ry)>dead) motion.aim_pitch-=ry*1.2f*dt;
+            motion.yaw=fminf(fmaxf(motion.yaw,-1.4f),1.4f);
+            motion.aim_pitch=fminf(fmaxf(motion.aim_pitch,-1.2f),1.2f);
             d->buttons&=~(uint32_t)BTN_CROSS;
             d->left_x=d->left_y=128;
+            d->right_x=d->right_y=128;
             simulated=1;
         }
     }
@@ -347,14 +359,21 @@ static void sample_motion(PadData *d, SDL_Gamepad *g, const bool *k) {
     } else {
         /* Ease toward the target so the game sees a turning motion, not a jump. */
         const float rate=dt>0 ? 1.f-expf(-dt*12.f) : 1.f;
-        float old_roll=motion.roll, old_pitch=motion.pitch;
+        const Quat old=motion.q;
         motion.roll+=(roll-motion.roll)*rate; motion.pitch+=(pitch-motion.pitch)*rate;
-        Quat qr={cosf(motion.roll*0.5f),0,0,sinf(-motion.roll*0.5f)};  /* roll about z (toward player) */
-        Quat qp={cosf(motion.pitch*0.5f),sinf(motion.pitch*0.5f),0,0}; /* pitch about x */
-        motion.q=quat_norm(quat_mul(qp,qr));
+        if (!motion.mode) { motion.yaw-=motion.yaw*rate; motion.aim_pitch-=motion.aim_pitch*rate; } /* back to centre */
+        const float up=motion.pitch+motion.aim_pitch;
+        Quat qr={cosf(motion.roll*0.5f),0,0,sinf(-motion.roll*0.5f)}; /* roll about z (toward player) */
+        Quat qp={cosf(up*0.5f),sinf(up*0.5f),0,0};                   /* pitch about x */
+        Quat qy={cosf(motion.yaw*0.5f),0,sinf(motion.yaw*0.5f),0};   /* turn about y (up) */
+        motion.q=quat_norm(quat_mul(qy,quat_mul(qp,qr)));
         float gv[3]; gravity_of(motion.q,gv);
         for (int i=0;i<3;++i) d->acceleration[i]=gv[i];
-        if (dt>0) { d->angular_velocity[0]=(motion.pitch-old_pitch)/dt; d->angular_velocity[2]=-(motion.roll-old_roll)/dt; }
+        if (dt>0) { /* the gyro's rate, in the controller's frame: the turn old^-1 * q since the last sample */
+            const Quat dq=quat_mul((Quat){old.w,-old.x,-old.y,-old.z},motion.q);
+            const float sign=dq.w<0 ? -2.f : 2.f;
+            d->angular_velocity[0]=sign*dq.x/dt; d->angular_velocity[1]=sign*dq.y/dt; d->angular_velocity[2]=sign*dq.z/dt;
+        }
         if (shake) { /* ~7 Hz up/down shake of +-2.5 g */
             const float t=(float)(now%1000000u)*1e-6f, s=sinf(t*6.2831853f*7.f);
             d->acceleration[1]+=2.5f*s; d->angular_velocity[0]+=6.f*cosf(t*6.2831853f*7.f);
