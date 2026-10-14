@@ -168,7 +168,45 @@ def prepare(settings, log=print):
             raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
         for line in result.stdout.splitlines():
             log(line)
+    isa_table(log)
     return modules
+
+
+ISA_TABLE = OUT_DIR / 'isa-rewrite.bin'
+
+
+def cpu_missing_sets():
+    """Instruction sets `tlg-probe --cpu-features` reports missing ([] when complete). A CPU that
+    lacks a set nothing can rewrite (AVX and older) stops here (exit 20) with the probe's reason."""
+    try:
+        result = subprocess.run([str(PROBE), '--cpu-features'], stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=30, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return []  # no probe yet: check_game reports it
+    if result.returncode == 20:
+        raise RuntimeError(result.stdout.strip() or 'this CPU cannot run the game')
+    for line in result.stdout.splitlines():
+        if line.startswith('CPU: missing '):
+            return [name.strip() for name in line[len('CPU: missing '):].split(',') if name.strip()]
+    return []
+
+
+def isa_table(log=print):
+    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1 or LZCNT the
+    probe replaces those instructions in the image, from the table scripts/isa_rewrite.py writes
+    (iced-x86). TLG_ISA_REWRITE=1 builds it on any CPU (testing), =0 never. A failed table is
+    reported and the probe then explains what is missing."""
+    ISA_TABLE.unlink(missing_ok=True)  # always matches the boot-linked.bin just written
+    policy = os.environ.get('TLG_ISA_REWRITE')
+    missing = cpu_missing_sets()
+    if not (policy == '1' or (policy != '0' and missing)):
+        return
+    scripts = PORT_DIR / 'scripts'
+    result = subprocess.run([*python_command(scripts / 'isa_rewrite.py'), str(OUT_DIR / 'boot-linked.bin'),
+                             '--out', str(OUT_DIR)], cwd=str(scripts), capture_output=True, text=True,
+                            creationflags=NO_WINDOW)
+    for line in (result.stdout + result.stderr).splitlines():
+        log(line)
 
 
 def window_icon(settings):
@@ -185,6 +223,24 @@ def window_icon(settings):
         return target if target.is_file() else None
     except Exception:
         return None
+
+
+def pad_glyphs():
+    """TLG_GLYPHS for the in-game menu (xbox or nintendo button names) from the first controller
+    `tlg-probe --gamepad` finds; None for PlayStation pads, none attached or when it fails.
+    TLG_GLYPHS in the environment (playstation, xbox, nintendo) skips the question."""
+    if os.environ.get('TLG_GLYPHS'):
+        return None
+    try:
+        out = subprocess.run([str(PROBE), '--gamepad'], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=10, creationflags=NO_WINDOW).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if line.startswith('Gamepad: type='):
+            kind = line.split()[1][len('type='):]
+            return 'xbox' if kind.startswith('xbox') else 'nintendo' if kind.startswith(('switch', 'joycon')) else None
+    return None
 
 
 def build_env(settings, extra=None):
@@ -206,6 +262,9 @@ def build_env(settings, extra=None):
     icon = window_icon(settings)
     if icon:
         env.setdefault('TLG_WINDOW_ICON', str(icon))
+    glyphs = pad_glyphs()
+    if glyphs:
+        env.setdefault('TLG_GLYPHS', glyphs)
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
@@ -245,6 +304,8 @@ def launch(settings, seconds=0, extra_env=None):
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),
            '--timeout', str(int(seconds))]
+    if ISA_TABLE.is_file():
+        cmd += ['--isa-rewrite', str(ISA_TABLE)]
     process = subprocess.Popen(cmd, cwd=str(USER_DIR), env=build_env(settings, extra_env),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding='utf-8', errors='replace', bufsize=1)
