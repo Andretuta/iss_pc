@@ -399,6 +399,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .needs_clip_distance_emulation = instance.GetDriverID() == vk::DriverId::eNvidiaProprietary,
         .supports_shader_stencil_export = instance_.IsShaderStencilExportSupported(),
         .dref_broadcast = LightingTest::Current().dref,
+        .block1d_as_2d = AmdGpu::Block1DAs2D(),
     };
 
     auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
