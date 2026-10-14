@@ -635,6 +635,18 @@ void BufferCache::ApplyEagerSubtractsLocked() {
     eager_subtracts.clear();
 }
 
+void BufferCache::MarkEagerStale(VAddr addr, u64 size) {
+    if (!eager_count.load(std::memory_order_acquire)) {
+        return;
+    }
+    std::scoped_lock lock{eager_mutex};
+    for (auto it = eager_pages.lower_bound(Common::AlignDown(addr, EagerPageSize));
+         it != eager_pages.end() && it->first < addr + size; ++it) {
+        it->second.dirty = true;
+        it->second.valid = false;
+    }
+}
+
 void BufferCache::NoteGpuWriteForEager(VAddr addr, u64 size) {
     if (!eager_count.load(std::memory_order_acquire)) {
         return;
@@ -769,6 +781,9 @@ bool BufferCache::CpuWriteMerge(VAddr dst, const void* src, int fill, u64 size) 
             done += n;
         }
     }
+    // The eager copy of these pages lacks the bytes just written: drop it (guest thread: only
+    // marks the pages, gpu_modified_ranges belongs to the GPU-side threads).
+    MarkEagerStale(dst, size);
     std::scoped_lock lock{merge_mutex};
     VAddr start = dst, end = dst + size;
     auto it = merged_writes.upper_bound(start);
@@ -815,6 +830,9 @@ void BufferCache::FlushMergedWrites(const Buffer* arena, VAddr device_addr, u64 
     }
     if (ranges.empty()) {
         return;
+    }
+    for (const auto& [s, e] : ranges) {
+        NoteGpuWriteForEager(s, e - s); // the GPU copy changes: an older eager copy is stale
     }
     u64 total = 0;
     for (const auto& [s, e] : ranges) {

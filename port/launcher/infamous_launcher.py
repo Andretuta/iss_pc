@@ -36,6 +36,8 @@ TEXT = {
     'Fullscreen': ('Fullscreen', 'Tela cheia'),
     'vsync': ('VSync', 'VSync'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
+    'eager_readback': ('Read GPU results ahead (faster)', 'Ler resultados da GPU antecipado (mais rápido)'),
+    'write_merge': ('Write to GPU memory without waiting (faster)', 'Escrever na memória da GPU sem esperar (mais rápido)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('3500 for 6 GB cards, 5000 for 8 GB', '3500 para placas de 6 GB, 5000 para 8 GB'),
     'gpu_readbacks': ('GPU accuracy', 'Precisão da GPU'),
@@ -201,6 +203,8 @@ class Launcher:
         self.check(video, 1, 'vsync')
         self.check(video, 2, 'show_fps')
         self.combo(video, 5, 'gpu_readbacks', ['0', '1', '2'], lambda k: self.t('readbacks_' + k))
+        self.check(video, 6, 'eager_readback')
+        self.check(video, 7, 'write_merge')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram

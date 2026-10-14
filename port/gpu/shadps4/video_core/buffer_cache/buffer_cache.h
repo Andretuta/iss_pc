@@ -170,6 +170,7 @@ private:
     };
     static bool EagerEnabled();
     void NoteGpuWriteForEager(VAddr addr, u64 size); ///< GPU-side threads, before the write
+    void MarkEagerStale(VAddr addr, u64 size);       ///< any thread: CPU bytes the copy lacks
     void ApplyEagerSubtractsLocked();                ///< GPU-side threads, eager_mutex held
     std::mutex eager_mutex;
     std::map<VAddr, EagerPage> eager_pages; ///< by 4 KiB page address

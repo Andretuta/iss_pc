@@ -53,6 +53,8 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
     'stick_deadzone': 10,    # percent; runtime_pad.c TLG_STICK_DEADZONE
+    'eager_readback': True,  # TLG_EAGER_READBACK: copy GPU results the game reads back at each fence
+    'write_merge': True,     # TLG_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 
@@ -191,6 +193,8 @@ def build_env(settings, extra=None):
         env.setdefault(key, value)  # explicit TLG_* in the environment always win
     env['TLG_GC_BUDGET_MB'] = os.environ.get('TLG_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
     env['TLG_READBACKS'] = os.environ.get('TLG_READBACKS', str(settings.get('gpu_readbacks', '2')))
+    env['TLG_EAGER_READBACK'] = os.environ.get('TLG_EAGER_READBACK', '1' if settings.get('eager_readback', True) else '0')
+    env['TLG_WRITE_MERGE'] = os.environ.get('TLG_WRITE_MERGE', '1' if settings.get('write_merge', True) else '0')
     env['TLG_STICK_DEADZONE'] = os.environ.get('TLG_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
     env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
