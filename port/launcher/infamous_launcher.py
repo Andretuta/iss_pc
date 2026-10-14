@@ -74,6 +74,7 @@ TEXT = {
     'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
     'discord': ('Discord community', 'Comunidade no Discord'),
 }
+TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
 GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
@@ -234,6 +235,7 @@ class Launcher:
         self.play_button.pack(side='right', ipadx=30, ipady=8)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
         ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
+        self.reported = ()  # new (empty) log: report the folder's problems again
         self.refresh_status()
 
     def load_art(self):
@@ -297,13 +299,18 @@ class Launcher:
 
     def refresh_status(self):
         problems = tlg_run.check_game(self.settings['game_dir'])
-        if problems:
-            text = '; '.join(self.t('not_built') if k == 'not_built' else f"{self.t('missing')}: {d}"
-                             for k, d in problems)
-        else:
-            text = self.t('ready')
-        self.status.configure(text=text)
-        self.play_button.configure(state='disabled' if problems or self.process else 'normal')
+        texts = [self.t('not_built') if k == 'not_built' else self.t(k, detail=d) if k in tlg_run.TEXT
+                 else f"{self.t('missing')}: {d}" for k, d in problems]
+        if not tlg_run.blocking(problems):
+            texts.append(self.t('ready'))
+        self.status.configure(text='\n'.join(texts), foreground='#b00020' if problems else '#555')
+        self.play_button.configure(state='disabled' if tlg_run.blocking(problems) or self.process else 'normal')
+        reported = tuple(problems)
+        if reported != getattr(self, 'reported', ()):  # each new problem also goes to the log once
+            self.reported = reported
+            for (key, _), text in zip(problems, texts):
+                if key in tlg_run.TEXT:
+                    self.append(text)
 
     def browse(self, key):
         path = filedialog.askdirectory(initialdir=self.vars[key].get() or str(Path.home()))
@@ -338,7 +345,13 @@ class Launcher:
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lines.put(line))
             self.process, log = tlg_run.launch(self.settings)
+        except tlg_run.GameError as error:  # a problem with the game files, in the launcher's language
+            text = self.t(error.key, detail=error.detail)
+            self.lines.put(text)
+            self.lines.put(('error', text))
+            return
         except Exception as error:  # shown to the user, the launcher keeps running
+            self.lines.put(str(error))
             self.lines.put(('error', str(error)))
             return
         self.lines.put(f"{self.t('running')} {log}")
