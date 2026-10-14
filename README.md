@@ -30,6 +30,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 
 ## Novidades
 
+- **Grafite com um analógico só (modo sensor):** o **analógico esquerdo mira** o cursor para os lados e para cima/baixo (antes ele só subia e descia), e um toque no **□ (Quadrado/X no Xbox)** vira o controle de lado ("Hold Wireless Controller Sideways"); outro toque o põe em pé. X/A continua sacudindo. Ver [Sensor de movimento e touchpad](#sensor-de-movimento-e-touchpad).
 - **Correções vindas do [shadPS4-Infamous-FixBuild](https://github.com/rayhlancaner-png/shadPS4-Infamous-FixBuild):**
   - **Brilho do Delsin ao drenar energia corrigido:** o stencil passa a respeitar o valor de teste e o de escrita, que são separados no PS4.
   - **Mais FPS:** quando o jogo lê algo da GPU, só a thread que pediu espera, não a GPU inteira (`ISS_DEFERRED_READBACK`, ligado por padrão), e o trabalho vai para a GPU em partes (`ISS_SUBMIT_DRAWS`, padrão 1024).
@@ -176,6 +177,7 @@ The screenshots are at the top of this page.
 
 ## What's new
 
+- **Graffiti with a single stick (sensor mode):** the **left stick aims** the cursor left/right and up/down (it used to move only up and down), and a tap on **square (X on Xbox)** turns the controller on its side ("Hold Wireless Controller Sideways"); another tap puts it upright. Cross/A still shakes. See [Motion sensor and touchpad](#motion-sensor-and-touchpad).
 - **Fixes from [shadPS4-Infamous-FixBuild](https://github.com/rayhlancaner-png/shadPS4-Infamous-FixBuild):**
   - **Delsin's glow while draining energy fixed:** stencil now honors both the test and the write values, which are separate on PS4.
   - **More FPS:** when the game reads GPU results, only the thread that asked waits, not the whole GPU (`ISS_DEFERRED_READBACK`, on by default), and work goes to the GPU in pieces (`ISS_SUBMIT_DRAWS`, default 1024).
