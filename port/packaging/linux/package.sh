@@ -49,6 +49,8 @@ done
 cp -r scripts "$dest/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
+# The release name (vYYYY.MM.DD-<commit>, as the CI publishes it): the launcher shows it and compares it with the latest release.
+if [[ -n ${GITHUB_SHA:-} ]]; then printf 'v%s-%s\n' "$(date -u +%Y.%m.%d)" "${GITHUB_SHA::7}" > "$dest/VERSION"; fi
 cp packaging/linux/install_desktop.sh packaging/port.env "$dest/"
 cat > "$dest/system_lib/LEIA-ME.txt" <<'TXT'
 Este jogo não precisa de módulos do firmware do console: a pasta fica vazia.

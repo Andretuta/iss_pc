@@ -18,6 +18,8 @@ LevelSlider 1.0 LevelSlider.qml
 SectionTitle 1.0 SectionTitle.qml
 NoteBar 1.0 NoteBar.qml
 SavesPage 1.0 SavesPage.qml
+SupportPage 1.0 SupportPage.qml
+UpdatesPage 1.0 UpdatesPage.qml
 SlotCard 1.0 SlotCard.qml
 ConfirmCard 1.0 ConfirmCard.qml
 Rail 1.0 Rail.qml

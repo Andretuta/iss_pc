@@ -55,6 +55,41 @@ def demo_saves(user, pt=True, auto_ts=1_792_008_146):
             os.utime(f, (auto_ts - n * 5400,) * 2)
 
 
+def demo_info():
+    return {'version': 'v2026.10.13-3f2a9c1', 'game': {'title_id': 'CUSA00223', 'app_ver': '01.07'},
+            'os': 'Windows 11 (10.0.22631)',
+            'cpu': {'name': 'Intel(R) Core(TM) i5-9400F CPU @ 2.90GHz',
+                    'features': {'SSE4A': False, 'AVX2': True, 'F16C': True, 'MOVBE': True, 'BMI1': True, 'LZCNT': True}},
+            'ram': 16 * 2 ** 30,
+            'gpu': {'name': 'AMD Radeon RX 580 Series', 'driver': 'AMD proprietary driver 24.9.1', 'vulkan': '1.3',
+                    'vendor': 'AMD', 'type': 'discrete_gpu', 'vram_gb': 8.0}}
+
+
+def demo_release():
+    return {'tag': 'v2026.10.15-61e8942', 'name': 'v2026.10.15', 'published': '2026-10-15',
+            'url': 'https://github.com/HayatoG/iss_pc/releases/tag/v2026.10.15-61e8942',
+            'body': ('Build automatico do commit 61e8942.\n\n## Novidades\n- Corrige luzes piscando em GPUs NVIDIA RTX 30 (#72) (PR #80)\n'
+                     '- Novo launcher com telas de Saves e Suporte (PR #81)\n\nIssues relatadas por: #72 (@jogador). Obrigado!\n\n'
+                     "## What's new\n- Fixes flickering lights on NVIDIA RTX 30 GPUs (#72) (PR #80)\n"
+                     '- New launcher with Saves and Support screens (PR #81)\n\nReported by: #72 (@player). Thank you!\n')}
+
+
+def demo_logs():
+    logs = sandbox / 'logs'
+    logs.mkdir(parents=True, exist_ok=True)
+    for n, (name, fps) in enumerate((('run-20261013-211500.log', 58.2), ('run-20261014-184022.log', 43.7),
+                                     ('run-20261015-093110.log', 60.0))):
+        text = ('Build: 3f2a9c1d8e41 (built Oct 13 2026 09:12:44); game CUSA00223 01.07; threads inherit the creator\'s MXCSR/x87 control\n'
+                'Config: window=Windowed vsync=1 vram_budget=3500\n  BP01=1 BP02=1 BP09=0\n  user=C:\\Users\\Maria Silva\\Documents\\inFAMOUS-PC\n'
+                'Settings: /home/maria/inFAMOUS-PC/user/tlg.ini\nGPU: using AMD Radeon RX 580 Series\n')
+        text += ''.join(f'Frame stats: {fps + d:.1f} FPS, worst frame {17 + 9 * k:.1f} ms (vblank 60 Hz); 0 shader compiles\n'
+                        for k, d in enumerate((0.4, -0.3, 0.2, -1.5)))
+        if n == 1:
+            text += 'Fault: exception 0xc0000005 at amdvlk64.dll+0xebbbb (thread 4412)\nSTOP: watchdog timeout; thread stacks:\n'
+        (logs / name).write_text(text, encoding='utf-8')
+        os.utime(logs / name, (1_792_000_000 + n * 40000,) * 2)
+
+
 def demo_backend(with_art=False, saves_dir=None, pt=True):
     settings = dict(tlg_run.DEFAULT_SETTINGS, ui_language='pt_BR' if pt else 'en_US', game_dir=str(sandbox / 'game'))
     if with_art:
@@ -77,6 +112,11 @@ def demo_backend(with_art=False, saves_dir=None, pt=True):
     probes['saves'] = {'running': lambda: False, 'scan': lambda: [
         {'path': '/home/demo/Downloads/infamous-windows-x86_64/infamous-windows-x86_64/user', 'saves': 3,
          'newest': 1_791_000_000.0}]}
+    probes['support'] = {'info': demo_info, 'logs_dir': lambda: sandbox / 'logs', 'names': lambda: {'maria'}, 'os_key': lambda: 'windows',
+                         'clipboard': lambda text: None, 'open_url': lambda url: None}
+    probes['updates'] = {'version': lambda: 'v2026.10.13-3f2a9c1', 'open_url': lambda url: None, 'save': lambda s: None,
+                         'fetch': lambda version: demo_release()}
+    demo_logs()
     backend = Backend(settings=settings, probes=probes)
     backend._gpu = probes['gpu']()
     backend.fix_states = states
@@ -182,6 +222,61 @@ def screens_a_shots(app, backend, out):
         controls.setValue('m:mouse_sensitivity', '1.0')
 
 
+def support_shots(app, backend, out):
+    """Support (the three steps, known problems, sending) and Updates (before, new version, up to date,
+    offline) in both languages, with demo data and stubs: no network, no real logs."""
+    from qt import releases
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    def wait(ms=300):
+        loop = QEventLoop()
+        QTimer.singleShot(ms, loop.quit)
+        loop.exec()
+    support, updates = backend.support, backend.updates
+    support.collect()
+    wait()
+    for lang, pt in (('pt', True), ('en', False)):
+        backend.setLang('pt_BR' if pt else 'en_US')
+        support.setStep(0)
+        support.selectLog(0)
+        wait()
+        app.go(5)
+        app.grab(out / f'suporte-{lang}.png')
+        support.scrollRequested.emit(900)
+        app.grab(out / f'suporte-{lang}-passo1.png')
+        support.setStep(1)
+        wait()
+        app.grab(out / f'suporte-{lang}-passo2.png')
+        support.setStep(2)
+        support.setDescription('O jogo fecha depois de uns 10 minutos.' if pt else 'The game closes after about 10 minutes.')
+        app.grab(out / f'suporte-{lang}-passo3.png')
+        support.scrollRequested.emit(0)
+        support.copyReport()
+        app.grab(out / f'suporte-{lang}-copiado.png')
+        support.dismissMessage()
+        support.setStep(0)
+        support.setDescription('')
+        app.go(6)
+        app.grab(out / f'atualizacoes-{lang}-antes.png')
+        updates.check()
+        wait()
+        app.grab(out / f'atualizacoes-{lang}-nova.png')
+        app.go(0)
+        app.grab(out / f'inicio-{lang}-ponto.png')
+        app.go(6)
+    updates.probes['version'] = lambda: 'v2026.10.15-61e8942'
+    updates.changed.emit()
+    app.grab(out / 'atualizacoes-en-atual.png')
+    updates.probes['fetch'] = lambda version: (_ for _ in ()).throw(releases.UpdateError('offline'))
+    updates.release = None
+    updates.check()
+    wait()
+    app.grab(out / 'atualizacoes-en-offline.png')
+    backend.setLang('pt_BR')
+    app.grab(out / 'atualizacoes-pt-offline.png')
+    app.go(0)
+
+
 def main(out):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -208,6 +303,7 @@ def main(out):
             app.grab(out / f'{name}.png')
         screens_a_shots(app, backend, out)
         saves_shots(app, backend, out)
+        support_shots(app, backend, out)
     print('ok', out)
 
 

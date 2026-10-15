@@ -105,6 +105,8 @@ class App:
         self.engine.rootContext().setContextProperty('Saves', self.backend.saves)
         self.engine.rootContext().setContextProperty('Graphics', self.graphics)
         self.engine.rootContext().setContextProperty('PadControls', self.controls)
+        self.engine.rootContext().setContextProperty('Support', self.backend.support)
+        self.engine.rootContext().setContextProperty('Updates', self.backend.updates)
         self.engine.loadFromModule('Launcher', 'Window')
         if not self.engine.rootObjects():
             raise RuntimeError('the QML interface did not load (see the messages above)')

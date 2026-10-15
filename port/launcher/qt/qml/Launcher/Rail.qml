@@ -36,7 +36,7 @@ Rectangle {
                 iconPath: Theme.icons[modelData.key]
                 accent: Theme.accents[modelData.key]
                 current: root.current === index
-                badge: modelData.key === "updates"
+                badge: modelData.key === "updates" && Updates.available
                 onClicked: root.pick(index)
             }
         }
