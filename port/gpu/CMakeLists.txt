@@ -288,6 +288,12 @@ if (WIN32)
     set_target_properties(isa-sse4a-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
     target_compile_options(isa-sse4a-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
     target_include_directories(isa-sse4a-test PRIVATE .. ../src)
+    # F16C sites against the real VCVTPH2PS/VCVTPS2PH (hosts with F16C) or recorded results.
+    add_executable(isa-f16c-test EXCLUDE_FROM_ALL ../tests/test_isa_f16c.c ../src/isa_rewrite.c ../src/isa_emulate.c)
+    set_source_files_properties(../tests/test_isa_f16c.c PROPERTIES COMPILE_OPTIONS "-mavx;-mf16c")
+    set_target_properties(isa-f16c-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_compile_options(isa-f16c-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_include_directories(isa-f16c-test PRIVATE .. ../src)
     # tlg: the runtime memory table's reader-preferring lock (winpthreads' rwlock deadlocks nested readers).
     add_executable(rwlock-rp-test EXCLUDE_FROM_ALL ../tests/test_rwlock_rp.c)
     set_target_properties(rwlock-rp-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
