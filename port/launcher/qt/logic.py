@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402
+import savemanager  # noqa: E402
 import shader_cache  # noqa: E402
 
 # ---------------------------------------------------------------------------------------- i18n
@@ -293,22 +294,7 @@ def release_version():
 
 
 # ---------------------------------------------------------------------------------- last save
-def read_sfo(data):
-    """{key: value} of a PSF file (param.sfo / param.bin); {} when it is not one."""
-    try:
-        magic, _, keys, values, count = unpack_from('<4sIIII', data, 0)
-        if magic != b'\0PSF':
-            return {}
-        out = {}
-        for i in range(count):
-            key, fmt, size, _, offset = unpack_from('<HHIII', data, 20 + i * 16)
-            name = data[keys + key:data.index(0, keys + key)].decode('ascii')
-            raw = data[values + offset:values + offset + size]
-            out[name] = (unpack_from('<I', raw)[0] if fmt == 0x0404 else
-                         raw.split(b'\0', 1)[0].decode('utf-8', 'replace'))
-        return out
-    except Exception:  # damaged file: no save name, the button just says Play
-        return {}
+read_sfo = savemanager.read_sfo   # PSF reader shared with the save manager
 
 
 def last_save_title(savedata_dir, limit=200):
@@ -327,13 +313,4 @@ def last_save_title(savedata_dir, limit=200):
         return None
     if newest is None:
         return None
-    sfo = read_sfo(newest.read_bytes())
-    parts = [str(sfo.get(k, '')).strip() for k in ('SUBTITLE', 'DETAIL')]
-    parts = [p for p in parts if p]
-    if not parts and sfo.get('TITLE'):
-        parts = [str(sfo['TITLE']).strip()]
-    unique = []
-    for p in parts:
-        if p not in unique:
-            unique.append(p)
-    return ' — '.join(unique) or None
+    return savemanager.display_title(savemanager.read_param(newest.read_bytes())) or None

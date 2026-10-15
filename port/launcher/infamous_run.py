@@ -19,6 +19,7 @@ import sys
 
 import backports_table
 import shader_cache
+import savemanager
 import userdata
 
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
@@ -559,6 +560,9 @@ def launch(settings, seconds=0, extra_env=None):
         'show_fps': int(bool(settings['show_fps'])),
     })
     log = new_log()
+    note = savemanager.backup_before_play(data)   # saves copied aside before every start (and to the extra folder)
+    if note:
+        print(note, flush=True)
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(data), '--content-profile', str(OUT_DIR / 'content.bin'),
            '--timeout', str(int(seconds))]
