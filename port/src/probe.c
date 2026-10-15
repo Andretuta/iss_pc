@@ -880,13 +880,13 @@ int main(int argc, char **argv) {
     }
     if (!cpu_supported(missing, sizeof missing)) return 20;
     if (cpu_missing_sets) printf("CPU: missing %s\n", missing);
-    /* TLG_ISA_REWRITE=0 never rewrites, =1 rewrites every emulated site (MOVBE, BMI1, LZCNT, SSE4A: a
-     * test on a complete CPU; F16C left out, its sites are never emulated and inFAMOUS has 13), a list
-     * such as "sse4a" or "movbe,bmi1" rewrites those sets; by default the sets the CPU lacks. */
+    /* TLG_ISA_REWRITE=0 never rewrites, =1 rewrites every emulated site (MOVBE, BMI1, LZCNT, F16C, SSE4A:
+     * a test on a complete CPU), a list such as "sse4a", "f16c" or "movbe,bmi1" rewrites those sets; by
+     * default the sets the CPU lacks. */
     const char *policy = getenv("TLG_ISA_REWRITE");
     int policy_valid;
     const unsigned isa_forced = cpu_sets_named(policy, &policy_valid);
-    if (!policy_valid) printf("ISA: TLG_ISA_REWRITE=%s ignored (use 0, 1 or a list of movbe, bmi1, lzcnt, sse4a)\n", policy);
+    if (!policy_valid) printf("ISA: TLG_ISA_REWRITE=%s ignored (use 0, 1 or a list of movbe, bmi1, lzcnt, f16c, sse4a)\n", policy);
     const int forced = isa_forced != 0;
     unsigned isa_sets = forced ? isa_forced | cpu_missing_sets : policy && !strcmp(policy, "0") ? 0 : cpu_missing_sets;
     if (cpu_missing_sets && !isa_sets) {

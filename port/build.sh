@@ -129,6 +129,9 @@ if [[ ${1:-} == --test ]]; then
     # SSE4A (EXTRQ/INSERTQ): the CPU is the oracle on AMD; elsewhere recorded AMD results.
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -msse4a -I. -Isrc tests/test_isa_sse4a.c out/isa_rewrite.o out/isa_emulate.o -o out/isa-sse4a-test
     out/isa-sse4a-test
+    # F16C (VCVTPH2PS/VCVTPS2PH, #51): the CPU is the oracle where it has F16C; elsewhere recorded results.
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -mavx -mf16c -I. -Isrc tests/test_isa_f16c.c out/isa_rewrite.o out/isa_emulate.o -o out/isa-f16c-test
+    out/isa-f16c-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -UNDEBUG -I. -Isrc tests/test_cpu_check.c -o out/cpu-check-test
     out/cpu-check-test
 fi

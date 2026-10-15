@@ -384,10 +384,10 @@ def red_zone_wanted(env=None):
 
 
 def isa_table(log=print):
-    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1, LZCNT or SSE4A
-    (every Intel CPU) the probe replaces those instructions in the image, from the table
-    scripts/isa_rewrite.py writes (iced-x86). ISS_ISA_REWRITE=1 (every set) or a list such as
-    ISS_ISA_REWRITE=sse4a builds it on any CPU (testing), =0 never. The same table carries the
+    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1, LZCNT, F16C or
+    SSE4A (SSE4A: every Intel CPU; F16C: Sandy Bridge, #51) the probe replaces those instructions in
+    the image, from the table scripts/isa_rewrite.py writes (iced-x86). ISS_ISA_REWRITE=1 (every set)
+    or a list such as ISS_ISA_REWRITE=sse4a or =f16c builds it on any CPU (testing), =0 never. The same table carries the
     red-zone protection (red_zone_wanted), so on Windows it is always built; the script keeps a
     table that already matches the image. A failed table is reported and the probe then explains
     what is missing."""
