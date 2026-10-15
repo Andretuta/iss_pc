@@ -167,7 +167,7 @@ class Backend(QObject):
             self.settings, self.t_, gpu=self._gpu, pad=self._pad, problems=problems,
             states=self.fix_states, cache_bytes=cache)
         self._news = self.probe('news', lambda: logic.news(self.t_, self.t_.pt()))
-        savedata = tlg_run.USER_DIR / 'savedata'
+        savedata = tlg_run.user_dir() / 'savedata'
         self._save = self.probe('save', lambda: logic.last_save_title(savedata))
         self.chipsChanged.emit()
         self.stateChanged.emit()

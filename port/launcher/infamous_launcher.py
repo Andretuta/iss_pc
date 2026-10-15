@@ -283,7 +283,7 @@ class Launcher:
         self.play_button.pack(side='right', ipadx=30, ipady=8)
         ttk.Button(buttons, text=self.t('experimental'), command=self.open_experimental).pack(side='left', padx=12)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
-        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
+        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.user_dir() / 'savedata')).pack(side='right')
         self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
         self.cache_button.pack(side='right', padx=(0, 6))
         self.reported = ()  # new (empty) log: report the folder's problems again
