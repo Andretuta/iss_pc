@@ -8,6 +8,7 @@ from pathlib import Path
 from paths import ROOT
 sys.path.insert(0, str(ROOT / 'launcher'))
 import backports_table as t  # noqa: E402
+import infamous_run  # noqa: E402,F401
 
 HEADER = ROOT / 'gpu' / 'shadps4' / 'common' / 'backports.h'
 TOGGLES = ROOT / 'gpu' / 'shadps4' / 'shader_recompiler' / 'recompiler_toggles.h'
@@ -129,6 +130,30 @@ class StatesTest(unittest.TestCase):
             path.write_text('# c\nvsync=1\nbp01=0\nbp02=0\n', encoding='utf-8')
             t.write_ini(path, {'bp01': None, 'bp03': '0', 'bp02': '0'})
             self.assertEqual(path.read_text(encoding='utf-8'), '# c\nvsync=1\nbp02=0\nbp03=0\n')
+
+
+class LaunchEnvTest(unittest.TestCase):
+    def test_build_env_carries_only_the_changes(self):
+        import os
+        import infamous_run as run
+        with tempfile.TemporaryDirectory() as folder:
+            old_dir, old_env = run.USER_DIR, dict(os.environ)
+            try:
+                for name in list(os.environ):
+                    if name.startswith(('ISS_BP', 'TLG_BP')):
+                        del os.environ[name]
+                run.USER_DIR = Path(folder)
+                settings = dict(run.DEFAULT_SETTINGS)
+                env = run.build_env(settings)
+                self.assertFalse([k for k in env if k.startswith('ISS_BP')])
+                (Path(folder) / 'tlg.ini').write_text('bp01=0\nbp06=1\n', encoding='utf-8')
+                env = run.build_env(settings)
+                self.assertEqual((env['ISS_BP01'], env['ISS_BP06']), ('0', '1'))
+                self.assertFalse([k for k in env if k.startswith('ISS_BP') and k not in ('ISS_BP01', 'ISS_BP06')])
+            finally:
+                run.USER_DIR = old_dir
+                os.environ.clear()
+                os.environ.update(old_env)
 
 
 if __name__ == '__main__':

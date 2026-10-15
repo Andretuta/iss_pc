@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
 
 TEXT = {
@@ -84,6 +85,33 @@ TEXT = {
     'port_by': ('PC port by HayatoG', 'Port para PC por HayatoG'),
     'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
     'discord': ('Discord community', 'Comunidade no Discord'),
+    'experimental': ('Experimental fixes…', 'Correções experimentais…'),
+    'exp_title': ('Experimental fixes and game menu options', 'Correções experimentais e opções do menu do jogo'),
+    'exp_intro': ('Everything here is saved in tlg.ini and applies the next time the game starts. Items tagged "in game" can also be changed while playing, in the Insert menu. If you do not touch anything, the defaults of the port are used.', 'Tudo aqui é salvo no tlg.ini e vale na próxima vez que o jogo abrir. Os itens com a etiqueta "no jogo" também podem ser mudados durante a partida, no menu Insert. Se você não mexer em nada, valem os padrões do port.'),
+    'exp_tab_menu': ('Game menu (Insert)', 'Menu do jogo (Insert)'),
+    'exp_tab_bp': ('Experimental fixes (BPnn)', 'Correções experimentais (BPnn)'),
+    'exp_tab_ab': ('Diagnostic / A-B switches', 'Chaves de diagnóstico / A-B'),
+    'exp_menu_note': ('Display mode, VSync and the FPS overlay switch are in the Video box of the main window. The options below are the other ones of the Insert menu.', 'Modo de exibição, VSync e o botão do overlay de FPS ficam no quadro Vídeo da janela principal. Abaixo estão as outras opções do menu Insert.'),
+    'exp_bp_note': ('Fixes taken from other PS4 ports and from shadPS4. Those tagged "experimental" are off by default: turn them on only to test.', 'Correções tiradas de outros ports de PS4 e do shadPS4. As marcadas como "experimental" vêm desligadas: ligue só para testar.'),
+    'exp_ab_note': ('Switches for finding which change causes a problem. Defaults are what the port uses. "Automatic" lets the GPU code decide for your driver.', 'Chaves para descobrir qual mudança causa um problema. Os padrões são os que o port usa. "Automático" deixa o código da GPU decidir para o seu driver.'),
+    'exp_tab_Image': ('Image', 'Imagem'),
+    'exp_tab_Performance': ('Performance', 'Desempenho'),
+    'exp_tab_Controls': ('Controls', 'Controle'),
+    'exp_tab_Overlay': ('Overlay', 'Overlay'),
+    'exp_live': ('in game', 'no jogo'),
+    'exp_restart': ('restarts the game', 'reinicia o jogo'),
+    'exp_experimental': ('experimental', 'experimental'),
+    'exp_broken': ('still crashes the game', 'ainda derruba o jogo'),
+    'exp_shader': ('the first game after changing it recompiles the shaders (may flicker or look green for a while)', 'a primeira partida depois de mudar recompila os shaders (pode piscar ou ficar verde por um tempo)'),
+    'exp_source': ('source: {source}', 'origem: {source}'),
+    'exp_default': ('default', 'padrão'),
+    'exp_auto': ('Automatic', 'Automático'),
+    'exp_on': ('On', 'Ligado'),
+    'exp_off': ('Off', 'Desligado'),
+    'exp_defaults': ('Back to defaults', 'Voltar ao padrão'),
+    'exp_previous': ('Like the previous release (turn all BPnn off)', 'Como a release anterior (desliga todos os BPnn)'),
+    'exp_previous_hint': ('"Like the previous release" writes bp01=0 ... for every fix that is on by default (the same as starting with TLG_BACKPORTS=0); the boxes show it, and you can turn single ones back on.', '"Como a release anterior" grava bp01=0 ... em todas as correções que vêm ligadas (é o mesmo que iniciar com TLG_BACKPORTS=0); as caixas mostram isso e você pode religar uma a uma.'),
+    'exp_close': ('Close', 'Fechar'),
 }
 TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
@@ -244,6 +272,7 @@ class Launcher:
         style.configure('Play.TButton', font=('TkDefaultFont', 13, 'bold'))
         self.play_button = ttk.Button(buttons, text=self.t('play'), style='Play.TButton', command=self.play)
         self.play_button.pack(side='right', ipadx=30, ipady=8)
+        ttk.Button(buttons, text=self.t('experimental'), command=self.open_experimental).pack(side='left', padx=12)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
         ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
         self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
@@ -363,6 +392,154 @@ class Launcher:
             message = self.t('clear_cache_done', size=freed)
             messagebox.showinfo(self.t('clear_cache'), message)
         self.append(message)
+
+    # -- experimental fixes window ---------------------------------------------------------
+    def open_experimental(self):
+        window = getattr(self, 'exp_window', None)
+        if window is not None and window.winfo_exists():
+            window.lift()
+            return
+        window = self.exp_window = tk.Toplevel(self.root)
+        window.title(self.t('exp_title'))
+        window.geometry('860x640')
+        window.transient(self.root)
+        self.exp_states = tlg_run.experimental_states(self.settings)
+        self.build_experimental()
+
+    def exp_name(self, pair):
+        return pair[1] if self.pt() else pair[0]
+
+    def exp_save(self):
+        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
+        backports_table.write_ini(tlg_run.USER_DIR / 'tlg.ini', backports_table.ini_updates(self.exp_states))
+        for item in backports_table.ITEMS:
+            if item.store == 'launcher':  # already handled by build_env (settings.json)
+                value = backports_table.effective(item, self.exp_states)
+                self.settings[item.key] = value != '0'
+        tlg_run.save_settings(self.settings)
+
+    def exp_set(self, item, value):
+        self.exp_states[item.id] = backports_table.normalize(item, value)
+        self.exp_save()
+
+    def exp_reset(self, which):
+        if which == 'previous':
+            self.exp_states = backports_table.previous_release(self.exp_states)
+        else:
+            self.exp_states = backports_table.defaults(self.exp_states)
+        self.exp_save()
+        self.build_experimental()
+
+    def scrolled(self, parent):
+        canvas = tk.Canvas(parent, highlightthickness=0, height=400)
+        bar = ttk.Scrollbar(parent, command=canvas.yview)
+        inner = ttk.Frame(canvas, padding=(8, 4))
+        window = canvas.create_window((0, 0), window=inner, anchor='nw')
+        canvas.configure(yscrollcommand=bar.set)
+        inner.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfigure(window, width=e.width))
+        for sequence, step in (('<Button-4>', -1), ('<Button-5>', 1)):
+            canvas.bind_all(sequence, lambda _, s=step: canvas.yview_scroll(s, 'units') if canvas.winfo_exists() else None)
+        canvas.bind_all('<MouseWheel>', lambda e: canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+                        if canvas.winfo_exists() else None)
+        bar.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+        return inner
+
+    def build_experimental(self):
+        window = self.exp_window
+        for child in window.winfo_children():
+            child.destroy()
+        window.title(self.t('exp_title'))
+        top = ttk.Frame(window, padding=10)
+        top.pack(fill='both', expand=True)
+        ttk.Label(top, text=self.t('exp_intro'), wraplength=800, justify='left').pack(anchor='w', pady=(0, 6))
+        notebook = ttk.Notebook(top)
+        notebook.pack(fill='both', expand=True)
+        groups = (('menu', 'exp_tab_menu', 'exp_menu_note'), ('bp', 'exp_tab_bp', 'exp_bp_note'),
+                  ('ab', 'exp_tab_ab', 'exp_ab_note'))
+        for group, title_key, note_key in groups:
+            page = ttk.Frame(notebook)
+            notebook.add(page, text=self.t(title_key))
+            ttk.Label(page, text=self.t(note_key), wraplength=780, justify='left', foreground='#555').pack(
+                anchor='w', padx=8, pady=(6, 0))
+            inner = self.scrolled(page)
+            tab = None
+            for item in backports_table.ITEMS:
+                if item.group != group:
+                    continue
+                if item.tab and item.tab != tab:
+                    tab = item.tab
+                    ttk.Label(inner, text=self.t('exp_tab_' + tab), font=('TkDefaultFont', 10, 'bold')).pack(
+                        anchor='w', pady=(10, 2))
+                self.exp_row(inner, item)
+        buttons = ttk.Frame(top)
+        buttons.pack(fill='x', pady=(8, 0))
+        ttk.Label(buttons, text=self.t('exp_previous_hint'), wraplength=800, justify='left', foreground='#555').pack(
+            anchor='w', pady=(0, 6))
+        ttk.Button(buttons, text=self.t('exp_close'), command=window.destroy).pack(side='right')
+        ttk.Button(buttons, text=self.t('exp_previous'), command=lambda: self.exp_reset('previous')).pack(side='left')
+        ttk.Button(buttons, text=self.t('exp_defaults'), command=lambda: self.exp_reset('defaults')).pack(
+            side='left', padx=8)
+
+    def exp_tags(self, item):
+        tags = [self.t('exp_live') if item.live else self.t('exp_restart')]
+        if item.risky:
+            tags.append(self.t('exp_experimental'))
+        if item.broken:
+            tags.append(self.t('exp_broken'))
+        return tags
+
+    def exp_row(self, parent, item):
+        row = ttk.Frame(parent)
+        row.pack(fill='x', pady=3)
+        row.columnconfigure(0, weight=1)
+        name = self.exp_name(item.name)
+        label = f"{item.id} · {name}" if item.group == 'bp' else name
+        current = self.exp_states.get(item.id)
+        value = backports_table.effective(item, self.exp_states)
+        if item.vtype == 'bool' and item.default is not None:
+            var = tk.BooleanVar(value=value == '1')
+            ttk.Checkbutton(row, text=label, variable=var,
+                            command=lambda: self.exp_set(item, '1' if var.get() else '0')).grid(
+                row=0, column=0, sticky='w')
+        else:
+            ttk.Label(row, text=label).grid(row=0, column=0, sticky='w')
+            if item.vtype == 'int':
+                var = tk.IntVar(value=int(value))
+
+                def commit(_=None, item=item, var=var):
+                    try:
+                        self.exp_set(item, str(var.get()))
+                    except tk.TclError:
+                        pass
+                spin = ttk.Spinbox(row, from_=item.lo, to=item.hi, textvariable=var, width=7, command=commit)
+                spin.grid(row=0, column=1, padx=6)
+                spin.bind('<FocusOut>', commit)
+                spin.bind('<Return>', commit)
+                ttk.Label(row, text=f'{item.unit} ({self.t("exp_default")}: {item.default}{item.unit})',
+                          foreground='#777').grid(row=0, column=2, sticky='w')
+            else:
+                if item.vtype == 'bool':  # automatic
+                    options = [(None, self.t('exp_auto')), ('1', self.t('exp_on')), ('0', self.t('exp_off'))]
+                else:
+                    options = [(v, (pt if self.pt() else en) + (f' ({self.t("exp_default")})' if v == item.default else ''))
+                               for v, en, pt in item.choices]
+                box = ttk.Combobox(row, values=[o[1] for o in options], state='readonly', width=26)
+                box.current(next((i for i, o in enumerate(options) if o[0] == value), 0))
+                box.grid(row=0, column=1, padx=6)
+                box.bind('<<ComboboxSelected>>', lambda _, o=options, b=box, i=item: self.exp_set(i, o[b.current()][0]))
+        tags = ' · '.join(self.exp_tags(item))
+        ttk.Label(row, text=f'[{tags}]', foreground='#b36b00' if item.risky or item.broken else '#2a6fdb').grid(
+            row=1, column=0, columnspan=3, sticky='w')
+        what = self.exp_name(item.what)
+        if item.source:
+            what += ' (' + self.t('exp_source', source=item.source) + ')'
+        ttk.Label(row, text=what, wraplength=760, justify='left', foreground='#555').grid(
+            row=2, column=0, columnspan=3, sticky='w')
+        if item.shader:
+            ttk.Label(row, text='⚠ ' + self.t('exp_shader'), wraplength=760, justify='left',
+                      foreground='#b36b00').grid(row=3, column=0, columnspan=3, sticky='w')
 
     def append(self, line):
         self.log.configure(state='normal')
