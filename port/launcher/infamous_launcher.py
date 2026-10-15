@@ -443,13 +443,7 @@ class Launcher:
         return pair[1] if self.pt() else pair[0]
 
     def exp_save(self):
-        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
-        backports_table.write_ini(tlg_run.USER_DIR / 'tlg.ini', backports_table.ini_updates(self.exp_states))
-        for item in backports_table.ITEMS:
-            if item.store == 'launcher':  # already handled by build_env (settings.json)
-                value = backports_table.effective(item, self.exp_states)
-                self.settings[item.key] = value != '0'
-        tlg_run.save_settings(self.settings)
+        tlg_run.save_experimental(self.settings, self.exp_states)
 
     def exp_set(self, item, value):
         self.exp_states[item.id] = backports_table.normalize(item, value)

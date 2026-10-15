@@ -463,6 +463,18 @@ def experimental_states(settings):
     return backports_table.read_states(read_ini(USER_DIR / 'tlg.ini'), settings)
 
 
+def save_experimental(settings, states):
+    """Writes the choices of the "Experimental fixes" window: tlg.ini keys (the game's own file)
+    and the switches kept in settings.json. Shared by the Tk and Qt launchers."""
+    USER_DIR.mkdir(parents=True, exist_ok=True)
+    backports_table.write_ini(USER_DIR / 'tlg.ini', backports_table.ini_updates(states))
+    for item in backports_table.ITEMS:
+        if item.store == 'launcher':  # already handled by build_env (settings.json)
+            value = backports_table.effective(item, states)
+            settings[item.key] = value != '0'
+    save_settings(settings)
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
