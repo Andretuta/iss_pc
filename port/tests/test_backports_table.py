@@ -161,12 +161,12 @@ class LaunchEnvTest(unittest.TestCase):
         import os
         import infamous_run as run
         with tempfile.TemporaryDirectory() as folder:
-            old_dir, old_env = run.USER_DIR, dict(os.environ)
+            old_env = dict(os.environ)
             try:
                 for name in list(os.environ):
                     if name.startswith(('ISS_BP', 'TLG_BP')):
                         del os.environ[name]
-                run.USER_DIR = Path(folder)
+                os.environ['ISS_USER_DIR'] = folder
                 settings = dict(run.DEFAULT_SETTINGS)
                 env = run.build_env(settings)
                 self.assertFalse([k for k in env if k.startswith('ISS_BP')])
@@ -175,7 +175,6 @@ class LaunchEnvTest(unittest.TestCase):
                 self.assertEqual((env['ISS_BP01'], env['ISS_BP06']), ('0', '1'))
                 self.assertFalse([k for k in env if k.startswith('ISS_BP') and k not in ('ISS_BP01', 'ISS_BP06')])
             finally:
-                run.USER_DIR = old_dir
                 os.environ.clear()
                 os.environ.update(old_env)
 

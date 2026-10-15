@@ -19,20 +19,73 @@ import sys
 
 import backports_table
 import shader_cache
+import padsettings
+import savemanager
+import userdata
 
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
 FROZEN = bool(getattr(sys, 'frozen', False))
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 REPO_DIR = PORT_DIR.parent
 OUT_DIR = PORT_DIR / 'out'
-USER_DIR = PORT_DIR / 'user'
+
+
+def user_dir():
+    """The folder of saves, tlg.ini, backups and GPU caches: ISS_USER_DIR, else the per-user pointer
+    file (survives reinstalling), else <port folder>/user (userdata.py has the rules). Always call
+    this instead of caching it: the Qt launcher changes it while running."""
+    return userdata.user_dir(PORT_DIR)
+
+
+def __getattr__(name):  # old code that still reads tlg_run.USER_DIR gets the current folder
+    if name == 'USER_DIR':
+        return user_dir()
+    raise AttributeError(name)
+
+
 LOG_DIR = OUT_DIR / 'logs'
 PROBE = OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
 KEEP_LOGS = 30
 
 # Game language: PS4 system language ids (sceSystemServiceParamGetInt LANG). The list the game
 # really ships voice/text for is still to be checked against the dump.
-GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
+GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22, 'tr': 19, 'ru': 8}
+
+_LANGUAGE_PREFIX = {'pt': 'pt_BR', 'es': 'es_LA', 'fr': 'fr_CA', 'tr': 'tr', 'ru': 'ru'}
+
+
+def system_game_language(environ=None):
+    """The game language that follows the system one: LC_ALL, LC_MESSAGES, LANG, then the Python
+    locale and, on Windows, the user's default locale name. pt (also pt_PT) is pt_BR, es is es_LA,
+    fr is fr_CA, tr and ru stay, anything else is English."""
+    environ = os.environ if environ is None else environ
+    code = ''
+    for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
+        if environ.get(name):
+            code = environ[name]
+            break
+    if not code:
+        try:
+            import locale
+            code = locale.getlocale()[0] or ''
+        except Exception:
+            code = ''
+    if not code and os.name == 'nt':
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(85)
+            if ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85):
+                code = buf.value
+        except Exception:
+            code = ''
+    return _LANGUAGE_PREFIX.get(re.split(r'[_\-.@]', code.strip().lower())[0], 'en')
+
+
+def resolve_game_language(settings, environ=None):
+    """settings['game_language'] when it is one of GAME_LANGUAGES; 'auto' (or anything unknown) follows the system."""
+    choice = settings.get('game_language', 'auto')
+    return choice if choice in GAME_LANGUAGES else system_game_language(environ)
+
 
 # TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
@@ -50,7 +103,7 @@ MODULES = ['libc.prx', 'libSceFios2.prx']
 DEFAULT_SETTINGS = {
     # Source tree: the merged game view (base 1.00 + update 1.07). Package: the player picks it.
     'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA00223'),
-    'game_language': 'pt_BR',
+    'game_language': 'auto',       # auto (system language) | a key of GAME_LANGUAGES
     'ui_language': 'auto',         # auto | pt_BR | en_US
     'show_fps': False,
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
@@ -221,7 +274,7 @@ def shader_cache_serials(settings):
 def gpu_user_dir():
     """Where the GPU backend keeps its caches (shaders, pipelines): the saves folder, on every OS.
     ISS_GPU_USER_DIR/TLG_GPU_USER_DIR move it (the more specific name wins)."""
-    return Path(os.environ.get('ISS_GPU_USER_DIR') or os.environ.get('TLG_GPU_USER_DIR') or USER_DIR)
+    return Path(os.environ.get('ISS_GPU_USER_DIR') or os.environ.get('TLG_GPU_USER_DIR') or user_dir())
 
 
 def shader_cache_size(settings):
@@ -460,7 +513,19 @@ def read_ini(path):
 
 def experimental_states(settings):
     """The player's choices of the launcher's "Experimental fixes" window (tlg.ini + settings)."""
-    return backports_table.read_states(read_ini(USER_DIR / 'tlg.ini'), settings)
+    return backports_table.read_states(read_ini(user_dir() / 'tlg.ini'), settings)
+
+
+def save_experimental(settings, states):
+    """Writes the choices of the "Experimental fixes" window: tlg.ini keys (the game's own file)
+    and the switches kept in settings.json. Shared by the Tk and Qt launchers."""
+    user_dir().mkdir(parents=True, exist_ok=True)
+    backports_table.write_ini(user_dir() / 'tlg.ini', backports_table.ini_updates(states))
+    for item in backports_table.ITEMS:
+        if item.store == 'launcher':  # already handled by build_env (settings.json)
+            value = backports_table.effective(item, states)
+            settings[item.key] = value != '0'
+    save_settings(settings)
 
 
 def build_env(settings, extra=None):
@@ -473,10 +538,12 @@ def build_env(settings, extra=None):
     env['ISS_WRITE_MERGE'] = os.environ.get('ISS_WRITE_MERGE', '1' if settings.get('write_merge', True) else '0')
     env['ISS_DEFERRED_READBACK'] = os.environ.get('ISS_DEFERRED_READBACK', '1' if settings.get('deferred_readback', True) else '0')
     env['ISS_STICK_DEADZONE'] = os.environ.get('ISS_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
-    env['ISS_LANGUAGE'] = os.environ.get('ISS_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
+    for name, value in padsettings.environment(settings).items():   # mouse touchpad mode, TLG_KEY_MAP
+        env.setdefault(name, value)
+    env['ISS_LANGUAGE'] = os.environ.get('ISS_LANGUAGE', str(GAME_LANGUAGES[resolve_game_language(settings)]))
     if settings.get('ui_language', 'auto') != 'auto':
         env['ISS_UI_LANG'] = settings['ui_language']
-    env['ISS_CONFIG'] = str(USER_DIR / 'tlg.ini')
+    env['ISS_CONFIG'] = str(user_dir() / 'tlg.ini')
     # Window name, app id (matches infamous-pc.desktop for Alt+Tab and the dock) and icon.
     env.setdefault('ISS_APP_NAME', 'inFAMOUS Second Son')
     env.setdefault('ISS_APP_ID', 'infamous-pc')
@@ -524,19 +591,23 @@ def new_log():
 def launch(settings, seconds=0, extra_env=None):
     """Writes the in-game settings, starts the game; returns (process, log path).
     The process's combined output is a text pipe; the caller copies it to the log."""
-    USER_DIR.mkdir(parents=True, exist_ok=True)
-    update_ini(USER_DIR / 'tlg.ini', {
+    data = user_dir()
+    data.mkdir(parents=True, exist_ok=True)
+    update_ini(data / 'tlg.ini', {
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),
     })
     log = new_log()
+    note = savemanager.backup_before_play(data)   # saves copied aside before every start (and to the extra folder)
+    if note:
+        print(note, flush=True)
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
-           '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),
+           '--user', str(data), '--content-profile', str(OUT_DIR / 'content.bin'),
            '--timeout', str(int(seconds))]
     if ISA_TABLE.is_file():
         cmd += ['--isa-rewrite', str(ISA_TABLE)]
-    process = subprocess.Popen(cmd, cwd=str(USER_DIR), env=build_env(settings, extra_env),
+    process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding='utf-8', errors='replace', bufsize=1)
     return process, log

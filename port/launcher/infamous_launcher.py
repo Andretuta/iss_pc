@@ -28,6 +28,8 @@ TEXT = {
     'browse': ('Browse…', 'Procurar…'),
     'language': ('Language', 'Idioma'),
     'game_language': ('Game language (voice and text)', 'Idioma do jogo (voz e texto)'),
+    'game_language_auto': ('Automatic (system language)', 'Automático (idioma do sistema)'),
+    'game_language_now': ('Automatic: {name}', 'Automático: {name}'),
     'ui_language': ('Interface language', 'Idioma da interface'),
     'auto': ('Automatic (system)', 'Automático (sistema)'),
     'video': ('Video', 'Vídeo'),
@@ -127,7 +129,7 @@ TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), s
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
 GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
-                       'fr_CA': 'Français (Canada)'}
+                       'fr_CA': 'Français (Canada)', 'tr': 'Türkçe', 'ru': 'Русский'}
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
 UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']
@@ -248,7 +250,12 @@ class Launcher:
         lang = ttk.LabelFrame(middle, text=self.t('language'), padding=8)
         lang.grid(sticky='ew', pady=(0, 8))
         lang.columnconfigure(1, weight=1)
-        self.combo(lang, 0, 'game_language', list(tlg_run.GAME_LANGUAGES), lambda k: GAME_LANGUAGE_NAMES[k])
+        self.game_language_now = ttk.Label(lang)
+        self.game_language_now.grid(row=0, column=2, sticky='w')
+        self.combo(lang, 0, 'game_language', ['auto'] + list(tlg_run.GAME_LANGUAGES),
+                   lambda k: self.t('game_language_auto') if k == 'auto' else GAME_LANGUAGE_NAMES[k],
+                   on_change=self.show_game_language)
+        self.show_game_language()
         self.combo(lang, 1, 'ui_language', UI_LANGUAGES,
                    lambda k: self.t('auto') if k == 'auto' else UI_LANGUAGE_NAMES[k], on_change=self.build)
         video = ttk.LabelFrame(middle, text=self.t('video'), padding=8)
@@ -302,7 +309,7 @@ class Launcher:
         self.play_button.pack(side='right', ipadx=30, ipady=8)
         ttk.Button(buttons, text=self.t('experimental'), command=self.open_experimental).pack(side='left', padx=12)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
-        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
+        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.user_dir() / 'savedata')).pack(side='right')
         self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
         self.cache_button.pack(side='right', padx=(0, 6))
         self.reported = ()  # new (empty) log: report the folder's problems again
@@ -350,6 +357,15 @@ class Launcher:
                 self.refresh_status()
         box.bind('<<ComboboxSelected>>', picked)
         return box
+
+    def show_game_language(self):
+        """Beside the box: which language 'Automatic' resolves to (same function that build_env uses)."""
+        if self.settings.get('game_language', 'auto') in tlg_run.GAME_LANGUAGES:
+            self.game_language_now.config(text='')
+        else:
+            name = GAME_LANGUAGE_NAMES[tlg_run.resolve_game_language(self.settings)]
+            self.game_language_now.config(text=self.t('game_language_now').format(name=name))
+        self.refresh_status()
 
     def check(self, parent, row, key):
         var = tk.BooleanVar(value=bool(self.settings[key]))
@@ -462,13 +478,7 @@ class Launcher:
         return pair[1] if self.pt() else pair[0]
 
     def exp_save(self):
-        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
-        backports_table.write_ini(tlg_run.USER_DIR / 'tlg.ini', backports_table.ini_updates(self.exp_states))
-        for item in backports_table.ITEMS:
-            if item.store == 'launcher':  # already handled by build_env (settings.json)
-                value = backports_table.effective(item, self.exp_states)
-                self.settings[item.key] = value != '0'
-        tlg_run.save_settings(self.settings)
+        tlg_run.save_experimental(self.settings, self.exp_states)
 
     def exp_set(self, item, value):
         self.exp_states[item.id] = backports_table.normalize(item, value)
