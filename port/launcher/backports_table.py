@@ -151,10 +151,12 @@ BACKPORTS = [
         ('The first instance is counted once in indirect draws; fixes wrong per-instance data.',
          'A first instance é contada uma vez nos draws indiretos; corrige dados por instância errados.'),
         'shadPS4 #5348'),
-    _bp(12, True, False, True, ('shadPS4 fix #5264', 'Correção do shadPS4 #5264'),
-        ('Fix taken from shadPS4 pull request 5264 (see the source link).',
-         'Correção tirada do pull request 5264 do shadPS4 (veja a origem).'),
-        'shadPS4 #5264'),
+    _bp(12, True, True, False, ('Early fragment tests', 'Teste antecipado de fragmento'),
+        ('Turns on early fragment tests when the game asks for depth/stencil before the pixel shader; '
+         'fixes wrong overdraw and, in some scenes, missing or doubled effects.',
+         'Liga o teste antecipado de fragmento quando o jogo pede profundidade/stencil antes do pixel shader; '
+         'corrige sobreposição errada e, em algumas cenas, efeitos faltando ou duplicados.'),
+        'shadPS4 #5264 (7d28d279)'),
 ]
 
 # The older A/B switches (env names checked against the sources by the test). Defaults are the
