@@ -127,7 +127,7 @@ TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), s
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
 GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
-                       'fr_CA': 'Français (Canada)'}
+                       'fr_CA': 'Français (Canada)', 'tr': 'Türkçe', 'ru': 'Русский'}
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
 UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']

@@ -49,7 +49,7 @@ KEEP_LOGS = 30
 
 # Game language: PS4 system language ids (sceSystemServiceParamGetInt LANG). The list the game
 # really ships voice/text for is still to be checked against the dump.
-GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
+GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22, 'tr': 19, 'ru': 8}
 
 # TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
