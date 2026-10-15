@@ -112,14 +112,16 @@ Item {
                 Row {
                     spacing: 10
                     Text { text: Theme.tr("game_language_label"); color: Theme.textMuted; font.family: Theme.fontText; font.pixelSize: 12; font.weight: Font.Bold
-                           width: 84; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
+                           width: 60; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
                     Select {
-                        accent: page.accent; width: actions.width - 94
+                        accent: page.accent; width: actions.width - 70
                         model: Backend.gameLanguageOptions
                         currentIndex: Backend.gameLanguageIndex
                         onActivated: (i) => Backend.setGameLanguage(Backend.gameLanguageOptions[i].value)
                     }
                 }
+                Text { visible: Backend.gameLanguageNow !== ""; width: parent.width; text: Backend.gameLanguageNow; color: page.accent
+                       font.family: Theme.fontText; font.pixelSize: 12; font.weight: Font.Bold }
                 Text { width: parent.width; text: Theme.tr("game_language_hint"); wrapMode: Text.WordWrap; color: Theme.textSoft
                        font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.2; lineHeightMode: Text.ProportionalHeight }
             }

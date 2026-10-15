@@ -1,5 +1,7 @@
 {
   "game_language_label": {"en": "Game language", "pt": "Idioma do jogo"},
+  "game_language_auto": {"en": "Automatic (system language)", "pt": "Automático (idioma do sistema)"},
+  "game_language_now": {"en": "Automatic: {name}", "pt": "Automático: {name}"},
   "game_language_hint": {"en": "Applies on the next start. Works if your game files have that language.", "pt": "Vale na próxima partida. Funciona se os arquivos do seu jogo tiverem esse idioma."},
   "nav_play": {"en": "Play", "pt": "Jogar"},
   "nav_graphics": {"en": "Graphics", "pt": "Gráficos"},

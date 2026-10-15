@@ -28,6 +28,8 @@ TEXT = {
     'browse': ('Browse…', 'Procurar…'),
     'language': ('Language', 'Idioma'),
     'game_language': ('Game language (voice and text)', 'Idioma do jogo (voz e texto)'),
+    'game_language_auto': ('Automatic (system language)', 'Automático (idioma do sistema)'),
+    'game_language_now': ('Automatic: {name}', 'Automático: {name}'),
     'ui_language': ('Interface language', 'Idioma da interface'),
     'auto': ('Automatic (system)', 'Automático (sistema)'),
     'video': ('Video', 'Vídeo'),
@@ -248,7 +250,12 @@ class Launcher:
         lang = ttk.LabelFrame(middle, text=self.t('language'), padding=8)
         lang.grid(sticky='ew', pady=(0, 8))
         lang.columnconfigure(1, weight=1)
-        self.combo(lang, 0, 'game_language', list(tlg_run.GAME_LANGUAGES), lambda k: GAME_LANGUAGE_NAMES[k])
+        self.game_language_now = ttk.Label(lang)
+        self.game_language_now.grid(row=0, column=2, sticky='w')
+        self.combo(lang, 0, 'game_language', ['auto'] + list(tlg_run.GAME_LANGUAGES),
+                   lambda k: self.t('game_language_auto') if k == 'auto' else GAME_LANGUAGE_NAMES[k],
+                   on_change=self.show_game_language)
+        self.show_game_language()
         self.combo(lang, 1, 'ui_language', UI_LANGUAGES,
                    lambda k: self.t('auto') if k == 'auto' else UI_LANGUAGE_NAMES[k], on_change=self.build)
         video = ttk.LabelFrame(middle, text=self.t('video'), padding=8)
@@ -350,6 +357,15 @@ class Launcher:
                 self.refresh_status()
         box.bind('<<ComboboxSelected>>', picked)
         return box
+
+    def show_game_language(self):
+        """Beside the box: which language 'Automatic' resolves to (same function that build_env uses)."""
+        if self.settings.get('game_language', 'auto') in tlg_run.GAME_LANGUAGES:
+            self.game_language_now.config(text='')
+        else:
+            name = GAME_LANGUAGE_NAMES[tlg_run.resolve_game_language(self.settings)]
+            self.game_language_now.config(text=self.t('game_language_now').format(name=name))
+        self.refresh_status()
 
     def check(self, parent, row, key):
         var = tk.BooleanVar(value=bool(self.settings[key]))
