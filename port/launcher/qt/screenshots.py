@@ -132,6 +132,56 @@ def saves_shots(app, backend, out):
     backend.saves.answer('cancel')
 
 
+def screens_a_shots(app, backend, out):
+    """Graphics and Controls in both languages and in their main states (demo data only)."""
+    graphics, controls = app.graphics, app.controls
+    graphics.set_vram(6144)               # an RTX 2060: 6 GB, suggested budget 3500 MB
+    for lang, pt in (('pt', True), ('en', False)):
+        backend.setLang('pt_BR' if pt else 'en_US')
+        backend.settings['key_map'] = ''
+        graphics.applyPreset('balanced')
+        app.go(1)
+        app.grab(out / f'graficos-{lang}.png')
+        graphics.scrollRequested.emit(760)
+        app.grab(out / f'graficos-{lang}-meio.png')
+        graphics.scrollRequested.emit(99999)
+        app.grab(out / f'graficos-{lang}-fim.png')
+        graphics.scrollRequested.emit(0)
+        graphics.applyPreset('ps4')
+        graphics.setValue('s:vram_budget_mb', '6000')      # above 90% of the card: the warning
+        app.go(1)
+        app.grab(out / f'graficos-{lang}-ps4.png')
+        graphics.scrollRequested.emit(2150)
+        app.grab(out / f'graficos-{lang}-vram.png')
+        graphics.askClear()
+        graphics.scrollRequested.emit(99999)
+        app.grab(out / f'graficos-{lang}-limpar.png')
+        graphics.cancelClear()
+        graphics.scrollRequested.emit(0)
+        graphics.applyPreset('balanced')
+        graphics.setValue('s:vram_budget_mb', '3500')
+        controls.setValue('m:mouse_sensitivity', '1.5')
+        controls.setDraft('cross=Q,r2=Mouse Left|F')
+        controls.applyKeyMap()
+        app.go(2)
+        app.grab(out / f'controles-{lang}.png')
+        controls.scrollRequested.emit(700)
+        app.grab(out / f'controles-{lang}-meio.png')
+        controls.scrollRequested.emit(1700)
+        app.grab(out / f'controles-{lang}-teclado.png')
+        controls.setDraft('cross=Q,foo=A,r1')
+        controls.scrollRequested.emit(99999)
+        app.grab(out / f'controles-{lang}-erro.png')
+        controls.scrollRequested.emit(0)
+        controls.clearKeyMap()
+        controls.toggleMouse()
+        controls.scrollRequested.emit(560)
+        app.grab(out / f'controles-{lang}-semmouse.png')
+        controls.toggleMouse()
+        controls.scrollRequested.emit(0)
+        controls.setValue('m:mouse_sensitivity', '1.0')
+
+
 def main(out):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -156,6 +206,7 @@ def main(out):
         for index, name in ((0, 'home-en'), (3, 'fixes-en')):
             app.go(index)
             app.grab(out / f'{name}.png')
+        screens_a_shots(app, backend, out)
         saves_shots(app, backend, out)
     print('ok', out)
 
