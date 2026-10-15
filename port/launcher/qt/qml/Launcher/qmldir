@@ -1,0 +1,19 @@
+module Launcher
+singleton Theme 1.0 Theme.qml
+Icon 1.0 Icon.qml
+NavButton 1.0 NavButton.qml
+Chip 1.0 Chip.qml
+GhostButton 1.0 GhostButton.qml
+Tag 1.0 Tag.qml
+Toggle 1.0 Toggle.qml
+Select 1.0 Select.qml
+HomePage 1.0 HomePage.qml
+FixesPage 1.0 FixesPage.qml
+FixRow 1.0 FixRow.qml
+SoonPage 1.0 SoonPage.qml
+SavesPage 1.0 SavesPage.qml
+SlotCard 1.0 SlotCard.qml
+ConfirmCard 1.0 ConfirmCard.qml
+Rail 1.0 Rail.qml
+Window 1.0 Window.qml
+Main 1.0 Main.qml

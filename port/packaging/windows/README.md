@@ -74,3 +74,14 @@ works for menus and movies.
 Not ported: the watchdog/`--timeout` thread dumps (Linux signals), userfaultfd tracking
 (`TLG_UFFD`), MangoHud, PGO (GCC flags) and
 the `tests/` programs (several use Linux-only APIs).
+
+## Launchers in the package (Qt default, Tk "classic")
+
+`package.sh` now freezes two launchers into the same folder with `packaging/launcher.spec`:
+`inFAMOUS Second Son.exe` is the Qt Quick launcher (PySide6-Essentials, pinned by `PORT_QT_PACKAGE`
+in `packaging/port.env`) and `inFAMOUS Second Son (classic).exe` is the Tk one, kept as a fallback.
+Both are windowed and share their DLLs. The Qt data (`qml`, `fonts`, `i18n`, icon) is added by the spec
+under `qt\`; unused Qt modules, Controls styles, translations and platform plugins are trimmed
+(see `docs/QT_PACKAGING.md`). `"inFAMOUS Second Son.exe" --selftest` opens the QML offscreen, renders one
+frame and writes `selftest ok` to the file in `ISS_SELFTEST_OUT` (a windowed exe has no console); the
+CI runs it after Package. Estimated size: the zip grows by 55-70 MB.

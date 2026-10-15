@@ -159,6 +159,10 @@ O dedo começa no meio do touchpad e fica onde você o deixou. Os atalhos do tec
 
 O menu Insert, aba **Controle**, tem os ajustes da câmera do mouse.
 
+### Onde ficam seus saves e como atualizar sem perdê-los
+
+Por padrão os saves e configurações ficam em `user/`, ao lado do jogo. **A atualização não apaga nada**, mas se você extrair o zip novo em outra pasta (ou apagar a antiga), o jogo abre sem saves: eles continuam na pasta antiga, em `user/savedata`. Para nunca mais passar por isso, abra o launcher Qt, vá em **Saves e dados** e escolha uma pasta fixa fora do jogo (sugestão: `Documentos\inFAMOUS-PC` no Windows, `~/.local/share/infamous-pc` no Linux); o launcher copia seus saves para lá e guarda a escolha num arquivo do seu usuário (`%APPDATA%\inFAMOUS-PC\launcher.json` / `~/.config/infamous-pc/launcher.json`), que sobrevive a reinstalações. A mesma tela acha saves de outras pastas do port, importa e exporta `.zip`, e faz backups (também antes de cada partida). Variável `ISS_USER_DIR` tem prioridade sobre tudo.
+
 ## Sensor de movimento e touchpad
 
 O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorver poderes (fumaça, neon...), abrir portas e outras interações. No **DualShock 4 e no DualSense** o giroscópio e o touchpad funcionam direto, sem ligar nada. Nos outros controles e no teclado, o port simula os dois.
@@ -373,6 +377,10 @@ The finger starts in the middle of the touchpad and stays where you leave it. Th
 | `ISS_MOUSE_LOG` | `0` | `1` logs what the game gets from the mouse |
 
 The Insert menu's **Controls** tab has the mouse camera settings.
+
+### Where your saves live and how to update without losing them
+
+By default saves and settings live in `user/`, next to the game. **Updating deletes nothing**, but if you extract the new zip somewhere else (or delete the old folder) the game opens without saves: they are still in the old folder, under `user/savedata`. To never go through that again, open the Qt launcher, go to **Saves & data** and pick a fixed folder outside the game (suggestion: `Documents\inFAMOUS-PC` on Windows, `~/.local/share/infamous-pc` on Linux); the launcher copies your saves there and keeps the choice in a per-user file (`%APPDATA%\inFAMOUS-PC\launcher.json` / `~/.config/infamous-pc/launcher.json`) that survives reinstalls. The same screen finds saves in other port folders, imports and exports `.zip`, and makes backups (also before every play session). The `ISS_USER_DIR` variable overrides everything.
 
 ## Motion sensor and touchpad
 

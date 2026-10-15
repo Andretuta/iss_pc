@@ -302,7 +302,7 @@ class Launcher:
         self.play_button.pack(side='right', ipadx=30, ipady=8)
         ttk.Button(buttons, text=self.t('experimental'), command=self.open_experimental).pack(side='left', padx=12)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
-        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
+        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.user_dir() / 'savedata')).pack(side='right')
         self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
         self.cache_button.pack(side='right', padx=(0, 6))
         self.reported = ()  # new (empty) log: report the folder's problems again
@@ -462,13 +462,7 @@ class Launcher:
         return pair[1] if self.pt() else pair[0]
 
     def exp_save(self):
-        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
-        backports_table.write_ini(tlg_run.USER_DIR / 'tlg.ini', backports_table.ini_updates(self.exp_states))
-        for item in backports_table.ITEMS:
-            if item.store == 'launcher':  # already handled by build_env (settings.json)
-                value = backports_table.effective(item, self.exp_states)
-                self.settings[item.key] = value != '0'
-        tlg_run.save_settings(self.settings)
+        tlg_run.save_experimental(self.settings, self.exp_states)
 
     def exp_set(self, item, value):
         self.exp_states[item.id] = backports_table.normalize(item, value)
