@@ -9,11 +9,24 @@ import tempfile
 from pathlib import Path
 
 
+def say(text, error=False):
+    """print() does nothing in a windowed Windows exe (no console), so the result also goes to the
+    file named by ISS_SELFTEST_OUT, which the CI reads."""
+    stream = sys.stderr if error else sys.stdout
+    if stream is not None:
+        print(text, file=stream)
+    target = os.environ.get('ISS_SELFTEST_OUT')
+    if target:
+        with open(target, 'a', encoding='utf-8') as handle:
+            handle.write(text + '\n')
+
+
 def run():
     # Everything the launcher could touch is pointed at a throw-away folder before importing it.
     sandbox = tempfile.mkdtemp(prefix='iss-selftest-')
     os.environ['QT_QPA_PLATFORM'] = os.environ.get('QT_QPA_PLATFORM') or 'offscreen'
     os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'Basic')
+    os.environ.setdefault('QT_QUICK_BACKEND', 'software')  # no GPU or GL driver needed on a CI runner
     os.environ['ISS_USER_DIR'] = os.path.join(sandbox, 'user')
     os.environ['XDG_CONFIG_HOME'] = sandbox
     os.environ['APPDATA'] = sandbox
@@ -31,7 +44,7 @@ def run():
         from qt.backend import Backend
         import infamous_run as tlg_run
     except Exception as error:  # a missing Qt module or Python module in the bundle
-        print(f'selftest FAILED: import error: {error!r}', file=sys.stderr)
+        say(f'selftest FAILED: import error: {error!r}', True)
         return 2
     here = app_mod.HERE
     check((here / 'qml' / 'Launcher' / 'qmldir').is_file(), f'missing QML module: {here / "qml" / "Launcher" / "qmldir"}')
@@ -82,11 +95,11 @@ def run():
         check(False, f'the interface did not open: {error!r}')
     if problems:
         return fail(problems)
-    print('selftest ok')
+    say('selftest ok')
     return 0
 
 
 def fail(problems):
     for text in problems:
-        print(f'selftest FAILED: {text}', file=sys.stderr)
+        say(f'selftest FAILED: {text}', True)
     return 1

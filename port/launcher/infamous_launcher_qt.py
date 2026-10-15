@@ -24,8 +24,14 @@ def main():
     if args[:1] == ['--play']:
         sys.exit(tlg_run.main(args[1:]))
     if args[:1] == ['--selftest']:  # CI smoke test of the frozen launcher: opens offscreen, touches nothing
-        from qt import selftest
-        sys.exit(selftest.run())
+        try:
+            from qt import selftest
+            code = selftest.run()
+        except Exception as error:  # never let a windowed exe open an error dialog in CI
+            code = 3
+            if os.environ.get('ISS_SELFTEST_OUT'):
+                Path(os.environ['ISS_SELFTEST_OUT']).write_text(f'selftest FAILED: {error!r}\n', encoding='utf-8')
+        sys.exit(code)
     os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'Basic')  # we style the controls ourselves
     try:
         from qt.app import App
