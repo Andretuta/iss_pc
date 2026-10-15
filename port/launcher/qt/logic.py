@@ -90,7 +90,7 @@ GROUP_ORDER = ('light', 'perf', 'tex', 'exp')
 _GROUP_OF = {
     'BP03': 'light', 'BP04': 'light', 'BP05': 'light', 'BP11': 'light', 'BP12': 'light',
     'TLG_WQM': 'light', 'TLG_LDS_SMALL': 'light', 'TLG_LDS_MULTI': 'light',
-    'TLG_LDS_READLANE': 'light', 'TLG_LANE_DIVERGENCE': 'light',
+    'TLG_LDS_READLANE': 'light', 'TLG_LANE_DIVERGENCE': 'light', 'TLG_OCCLUSION_MODE': 'light',
     'BP01': 'perf', 'BP02': 'perf', 'BP07': 'perf', 'BP08': 'perf',
     'TLG_ASYNC_SHADERS': 'perf', 'TLG_DEFERRED_READBACK': 'perf', 'TLG_STALE_READBACK': 'perf',
     'TLG_BACKGROUND_WARMUP': 'perf',

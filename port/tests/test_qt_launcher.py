@@ -56,7 +56,7 @@ class TranslationTests(unittest.TestCase):
         for path in list(QT.rglob('*.qml')) + [QT / 'backend.py', QT / 'logic.py']:
             text = path.read_text(encoding='utf-8')
             used |= set(re.findall(r'(?:tr\(|t_\(|\bt\()["\'](\w+)["\']', text))
-        used |= {'nav_' + n for n in ('play', 'graphics', 'controls', 'fixes', 'support', 'updates')}
+        used |= {'nav_' + n for n in ('play', 'graphics', 'controls', 'fixes', 'saves', 'support', 'updates')}
         for key in (k for k in used if not k.endswith('_')):
             self.assertTrue(key in STRINGS or key in tk, key)
 
@@ -237,6 +237,16 @@ class BackendTests(unittest.TestCase):
             self.assertEqual('0' if item.default == '1' else None, saved[-1][item.id], item.id)
         backend.resetFixes('defaults')
         self.assertTrue(backend.profileIsRecommended)
+
+    def test_occlusion_selector_defaults_to_3_and_saves_through_the_fix_path(self):
+        backend, saved = self.make()
+        self.assertEqual(['0', '1', '2', '3'], [o['value'] for o in backend.occlusionOptions])
+        self.assertEqual(3, backend.occlusionIndex)
+        backend.setOcclusion('1')
+        self.assertEqual(1, backend.occlusionIndex)
+        self.assertEqual('1', saved[-1]['TLG_OCCLUSION_MODE'])
+        backend.setOcclusion('3')
+        self.assertEqual(3, backend.occlusionIndex)
 
     def test_language_switch_changes_texts_and_saves_setting(self):
         backend, _ = self.make()

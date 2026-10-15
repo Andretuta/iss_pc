@@ -386,6 +386,24 @@ class Backend(QObject):
     def anyShaderChange(self):
         return any(self.fix_states.get(i.id) is not None and i.shader for i in logic.fix_items())
 
+    def _occlusion_item(self):
+        return next(i for i in backports_table.ITEMS if i.key == 'occlusion_mode')
+
+    @Property('QVariantList', notify=profileChanged)
+    def occlusionOptions(self):
+        """The four values of the "Light glare (occlusion)" selector on the Home screen."""
+        item = self._occlusion_item()
+        value = backports_table.effective(item, self.fix_states)
+        return [{'value': v, 'label': self.t_.pair((en, pt)), 'on': v == value} for v, en, pt in item.choices]
+
+    @Property(int, notify=profileChanged)
+    def occlusionIndex(self):
+        return next((n for n, o in enumerate(self.occlusionOptions) if o['on']), 0)
+
+    @Slot(str)
+    def setOcclusion(self, value):
+        self.setFix(self._occlusion_item().id, value)
+
     @Slot(str, str)
     def setFix(self, item_id, value):
         item = next(i for i in backports_table.ITEMS if i.id == item_id)

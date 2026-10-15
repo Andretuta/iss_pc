@@ -42,7 +42,7 @@ QtObject {
     property string fontDisplay: Backend.fontDisplay
     property string fontText: Backend.fontText
     readonly property int railWidth: 236
-    readonly property int heroHeight: 392
+    readonly property int heroHeight: 320
     // line icons, 24x24 viewBox (circles written as arcs)
     readonly property var icons: ({
         play: "M7 4.5v15l12-7.5z",
