@@ -24,6 +24,10 @@ static vk::ImageUsageFlags ImageUsageFlags(const Vulkan::Instance& instance,
     vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eTransferSrc |
                                 vk::ImageUsageFlagBits::eTransferDst |
                                 vk::ImageUsageFlagBits::eSampled;
+    if (info.props.is_bc_decoded) {
+        // tlg: TLG_BC_TINY: a texture only ever filled by uploads and sampled.
+        return usage;
+    }
     if (!info.props.is_block) {
         if (info.props.is_depth) {
             usage |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
@@ -151,7 +155,7 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
             flags |= vk::ImageCreateFlagBits::e2DViewCompatibleEXT;
         }
     }
-    if (info.props.is_block && instance.IsBlockTexelViewSupported()) {
+    if (info.props.is_block && !info.props.is_bc_decoded && instance.IsBlockTexelViewSupported()) {
         flags |= vk::ImageCreateFlagBits::eBlockTexelViewCompatible;
     }
 

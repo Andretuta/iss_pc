@@ -8,6 +8,7 @@
 #include "common/assert.h"
 #include "common/bit_field.h"
 #include "video_core/amdgpu/pixel_format.h"
+#include "video_core/amdgpu/tlg_bc_tiny.h"
 #include "video_core/amdgpu/tlg_block1d.h"
 #include "video_core/amdgpu/tlg_msaa.h"
 #include "video_core/amdgpu/tiling.h"
@@ -327,9 +328,16 @@ struct Image {
     /// so these are 2D images of height 1 on the host, sampled at the middle row.
     bool IsBlock1D() const noexcept {
         // On for drivers that refuse BC 1D, except NVIDIA (tlg_block1d.h); TLG_BLOCK1D=0/1.
+        // TLG_BC_TINY decodes BC1-BC5 1D textures to plain 1D images instead (tlg_bc_tiny.h).
         const auto type = GetType();
+        const auto dfmt = GetDataFmt();
         return Block1DAs2D() && (type == ImageType::Color1D || type == ImageType::Color1DArray) &&
-               IsBlockCoded(GetDataFmt());
+               IsBlockCoded(dfmt) && !(BcTinyDecode() && IsBcTinyDecodable(dfmt));
+    }
+
+    /// tlg: BC formats the TLG_BC_TINY CPU decoder handles (texture_cache/tlg_bc_decode.h).
+    static constexpr bool IsBcTinyDecodable(DataFormat dfmt) noexcept {
+        return dfmt >= DataFormat::FormatBc1 && dfmt <= DataFormat::FormatBc5;
     }
 
     /// The view type of the host image: GetViewType, with block-compressed 1D as 2D.

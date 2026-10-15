@@ -2364,7 +2364,8 @@ bool Rasterizer::IsComputeImageCopy(const Pipeline* pipeline) {
     VideoCore::Image& image1 = texture_cache.GetImage(image1_id);
     if (image0.info.guest_size != image1.info.guest_size ||
         image0.info.pitch != image1.info.pitch || image0.info.guest_size != buf0.GetSize() ||
-        image0.info.num_bits != image1.info.num_bits) {
+        image0.info.num_bits != image1.info.num_bits ||
+        image0.info.props.is_bc_decoded || image1.info.props.is_bc_decoded) { // tlg: TLG_BC_TINY
         return false;
     }
 
@@ -2412,7 +2413,7 @@ bool Rasterizer::IsComputeImageClear(const Pipeline* pipeline) {
     // Image clear must be valid
     VideoCore::Image& image1 = texture_cache.GetImage(image1_id);
     if (image1.info.guest_size != buf1.GetSize() || image1.info.num_bits != buf1_bpp ||
-        image1.info.props.is_depth) {
+        image1.info.props.is_depth || image1.info.props.is_bc_decoded) {
         return false;
     }
 

@@ -400,6 +400,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .supports_shader_stencil_export = instance_.IsShaderStencilExportSupported(),
         .dref_broadcast = LightingTest::Current().dref,
         .block1d_as_2d = AmdGpu::Block1DAs2D(),
+        .bc_tiny_decode = AmdGpu::BcTinyDecode(),
     };
 
     auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
