@@ -9,6 +9,8 @@ from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, 
 
 from . import logic
 from .saves import Saves
+from .support import Support
+from .updates import Updates
 from .logic import backports_table, tlg_run
 
 URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g'}
@@ -129,6 +131,8 @@ class Backend(QObject):
         self.finished.connect(self._on_finished)
         self.refresh()
         self.saves = Saves(self, self.probes.get('saves'))
+        self.support = Support(self, self.probes.get('support'))
+        self.updates = Updates(self, self.probes.get('updates'))
 
     # -- fonts and motion (set by app.py) ------------------------------------------------------
     @Property(str, constant=True)
@@ -155,6 +159,9 @@ class Backend(QObject):
         """GPU/Vulkan detection and the search for saves run off the UI thread."""
         self.saves.scan()
         self.saves.start_timer()
+        self.support.collect()
+        if self.settings.get('check_updates_on_open'):   # off by default: the only network call at start
+            self.updates.check()
         def work():
             self.gpuFound.emit(self.probe('gpu', logic.detect_gpu))
         threading.Thread(target=work, daemon=True).start()
@@ -209,6 +216,9 @@ class Backend(QObject):
         self.refresh()
         if hasattr(self, 'saves'):
             self.saves.reload()   # its texts follow the language
+        if hasattr(self, 'support'):
+            self.support.reload()
+            self.updates.changed.emit()
 
     # -- home state -----------------------------------------------------------------------------
     @Property('QVariantList', notify=chipsChanged)

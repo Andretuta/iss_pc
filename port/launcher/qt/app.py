@@ -99,6 +99,8 @@ class App:
         self.engine.addImportPath(str(QML_ROOT))
         self.engine.rootContext().setContextProperty('Backend', self.backend)
         self.engine.rootContext().setContextProperty('Saves', self.backend.saves)
+        self.engine.rootContext().setContextProperty('Support', self.backend.support)
+        self.engine.rootContext().setContextProperty('Updates', self.backend.updates)
         self.engine.loadFromModule('Launcher', 'Window')
         if not self.engine.rootObjects():
             raise RuntimeError('the QML interface did not load (see the messages above)')
