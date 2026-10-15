@@ -210,9 +210,11 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         info.hw.gs.in_vertex_data_size = regs.vgt_esgs_ring_itemsize;
         info.hw.gs.out_vertex_data_size = regs.vgt_gs_vert_itemsize[0];
         info.hw.gs.mode = regs.vgt_gs_mode.mode;
-        const auto params_vc = AmdGpu::GetParams(regs.vs_program);
-        info.hw.gs.vs_copy = params_vc.code;
-        info.hw.gs.vs_copy_hash = params_vc.hash;
+        // tlg: RefreshGraphicsStages already skipped the draw when the copy shader has no
+        // binary info yet; this only guards against it changing in between (no fatal stop).
+        const auto params_vc = AmdGpu::TryGetParams(regs.vs_program);
+        info.hw.gs.vs_copy = params_vc ? params_vc->code : std::span<const u32>{};
+        info.hw.gs.vs_copy_hash = params_vc ? params_vc->hash : 0;
         DumpShader(info.hw.gs.vs_copy, info.hw.gs.vs_copy_hash, Shader::HwStage::Vertex, 0,
                    "copy.bin");
         break;
@@ -723,10 +725,11 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
         if (!pgm || !pgm->Address<u32*>()) {
             return nullptr;
         }
-        const auto params = AmdGpu::GetParams(*pgm);
-        if (params.hash != stage.hash) {
+        const auto found = AmdGpu::TryGetParams(*pgm);
+        if (!found || found->hash != stage.hash) {
             return nullptr;
         }
+        const auto& params = *found;
         auto& info = const_cast<Program*>(stage.program)->info;
         info.pgm_base = params.Base();
         info.user_data = params.user_data;
@@ -1063,7 +1066,17 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
             return false;
         }
 
-        const auto params = AmdGpu::GetParams(*pgm);
+        const auto found = AmdGpu::TryGetParams(*pgm);
+        // tlg: a geometry stage also needs its VS copy shader (BuildRuntimeInfo reads it).
+        const bool copy_missing = stage_in == HwStage::Geometry &&
+                                  (!regs.vs_program.Address<u32*>() ||
+                                   !AmdGpu::TryGetParams(regs.vs_program));
+        if (!found || copy_missing) {
+            key.stage_hashes[stage_out_idx] = 0;
+            sel.infos[stage_out_idx] = nullptr;
+            return false;
+        }
+        const auto& params = *found;
         std::optional<Shader::Gcn::FetchShaderData> fetch_shader_;
         std::tie(sel.infos[stage_out_idx], sel.modules[stage_out_idx], fetch_shader_,
                  key.stage_hashes[stage_out_idx]) =
@@ -1178,7 +1191,12 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
 bool PipelineCache::RefreshComputeKey() {
     Shader::Backend::Bindings binding{};
     const auto& cs_pgm = liverpool->GetCsRegs();
-    const auto cs_params = AmdGpu::GetParams(cs_pgm);
+    const auto cs_found = AmdGpu::TryGetParams(cs_pgm);
+    if (!cs_found) {
+        sel.infos[0] = nullptr;
+        return false;
+    }
+    const auto& cs_params = *cs_found;
     std::tie(sel.infos[0], sel.modules[0], sel.fetch_shader, compute_key.value) =
         GetProgram(sel, HwStage::Compute, SwStage::Compute, cs_params, binding);
     return sel.infos[0] != nullptr;
