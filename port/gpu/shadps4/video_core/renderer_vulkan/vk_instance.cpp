@@ -12,6 +12,7 @@
 #include "common/types.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
+#include "video_core/amdgpu/tlg_amd_1d.h"
 #include "video_core/amdgpu/tlg_bc_tiny.h"
 #include "video_core/amdgpu/tlg_block1d.h"
 #include "video_core/amdgpu/tlg_msaa.h"
@@ -873,6 +874,21 @@ void Instance::CollectDeviceParameters() {
     std::printf("GPU: tiny block-compressed textures (BC1-BC5 1D, or under 4 texels) %s\n",
                 bc_tiny ? "decoded on the CPU to plain images, 1D kept 1D (TLG_BC_TINY=0 keeps BC)"
                         : "kept block-compressed (TLG_BC_TINY=1 decodes them on the CPU)");
+
+    // tlg: see video_core/amdgpu/tlg_amd_1d.h. Set before any image exists.
+    auto env_flag = [](const char* name, bool fallback) {
+        const char* v = std::getenv(name);
+        return v && *v ? *v == '1' : fallback;
+    };
+    AmdGpu::img_trace.store(env_flag("TLG_IMG_TRACE", driver_id == vk::DriverId::eAmdProprietary));
+    AmdGpu::img_1d_no_storage.store(env_flag("TLG_1D_NO_STORAGE", false));
+    AmdGpu::img_1d_no_mutable.store(env_flag("TLG_1D_NO_MUTABLE", false));
+    if (AmdGpu::ImgTrace() || AmdGpu::img_1d_no_storage || AmdGpu::img_1d_no_mutable) {
+        std::printf("GPU: 1D image switches: trace %d, no storage %d, no mutable %d "
+                    "(TLG_IMG_TRACE, TLG_1D_NO_STORAGE, TLG_1D_NO_MUTABLE); driver %s\n",
+                    AmdGpu::ImgTrace(), AmdGpu::img_1d_no_storage.load(),
+                    AmdGpu::img_1d_no_mutable.load(), GetDriverVersionName().c_str());
+    }
 
     const std::string model_name{GetModelName()};
     const std::string driver_version = GetDriverVersionName();
