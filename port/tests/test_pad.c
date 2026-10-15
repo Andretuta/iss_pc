@@ -7,6 +7,9 @@
 #endif
 
 static int capture;
+/* The GPU library (not linked here): the mouse and the input settings. */
+void tlggpu_mouse_take(TlgGpuMouse *mouse) { memset(mouse,0,sizeof(*mouse)); }
+void tlggpu_input_settings(TlgGpuInputSettings *settings) { memset(settings,0,sizeof(*settings)); }
 int tlggpu_overlay_captures_input(void) { return capture; }
 /* The GPU library (not linked here): on-screen notices, the graffiti guide, the menu's aim speed. */
 void tlggpu_overlay_notice(const char *text, float seconds) { (void)text; (void)seconds; }
