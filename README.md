@@ -31,6 +31,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 ## Novidades
 
 - **Processadores sem F16C (Sandy Bridge, #51):** as 13 conversões de meia precisão do jogo (`VCVTPH2PS`/`VCVTPS2PH`) passam a ser emuladas na partida, com o mesmo resultado bit a bit do processador (arredondamento, denormais, Inf e NaN). Antes o jogo parava com "13 sites use encodings the rewrite cannot emulate".
+- **Mouse:** o mouse gira a câmera (analógico direito) e também faz o papel do **touchpad**. Esquerdo = R2, direito = L2, do meio = R3. **Segure Ctrl esquerdo (ou o botão lateral X1)** e o mouse vira um dedo no touchpad: esquerdo toca/clica (segurar = absorver poder), arrastar com o esquerdo desliza (porta "Open Door", scanner), direito = dois dedos (levantar o carro do Reggie). A janela prende o mouse; Esc solta e um clique prende de novo. Veja [Mouse](#mouse).
 - **Explicação do grafite na tela:** na primeira vez que o modo sensor liga, uma tela no meio mostra os passos (sacudir, pintar, mirar, sair) com os botões do seu controle; fecha com "Entendi". O menu Insert ganhou a aba **Controle**, que mostra essa tela de novo e ajusta a **velocidade da mira do grafite** (25–200%, também `ISS_SENSOR_AIM`).
 - **Grafite mais fácil (modo sensor):** o modo sensor agora é a lata de spray do grafite: ao ligar (L3+R3), o controle já fica de lado, como o jogo pede ("Hold Wireless Controller Sideways"); **X/A sacode**, **R2 pinta** e o **analógico esquerdo mira** o cursor para os lados e para cima/baixo (antes ele só subia e descia), mais devagar com o analógico pouco inclinado, para contornar o desenho. No teclado, enquanto T ou G seguram o controle de lado, as **setas** miram.
 - **Em teste: fumaça e partículas da GPU piscando (#7, #50).** Correções do tradutor de shaders, parte delas vinda do port nativo de [Shadow of the Colossus](https://github.com/AjncSystem/ShadowOfTheColossus-PC):
@@ -110,6 +111,54 @@ O passo a passo completo está em [`README-player.md`](port/packaging/README-pla
 
 **Correções experimentais:** o botão **Correções experimentais…** do launcher liga e desliga as 12 correções `TLG_BP01` a `TLG_BP12` (de outros ports de PS4 e do shadPS4), as chaves de diagnóstico (`TLG_WQM`, `TLG_LDS_*`, `TLG_BC_TINY`...) e as opções do menu Insert, com etiqueta de "no jogo" ou "reinicia o jogo". Sem mexer em nada valem os padrões. Lista completa: [`docs/EXPERIMENTAL_FIXES.md`](docs/EXPERIMENTAL_FIXES.md).
 
+## Mouse
+
+O mouse funciona com ou sem controle (os botões dele somam aos do controle). A janela do jogo prende o mouse enquanto tem o foco e o menu Insert está fechado; **Esc solta** (o cursor volta) e **um clique na janela prende de novo** (esse clique não vira botão do jogo).
+
+**Câmera e botões:**
+
+| Mouse | No jogo |
+|---|---|
+| Mover | gira a câmera (analógico direito) |
+| Botão esquerdo | R2 (usar o poder / atirar) |
+| Botão direito | L2 (mirar) |
+| Botão do meio | R3 |
+| Botões laterais X1 / X2 e rodinha | livres (veja `ISS_KEY_MAP`); X1 também é a tecla do modo touchpad |
+| Sensor ligado (modo sensor, T ou G) | o mouse aponta a lata de spray do grafite em vez de girar a câmera |
+
+**Modo touchpad:** segure **Ctrl esquerdo** ou o **botão lateral X1** do mouse. Enquanto o modo está ligado a câmera não gira: o movimento do mouse leva um dedo virtual pelo touchpad (um quadradinho no canto inferior esquerdo da tela mostra onde ele está) e os botões viram o dedo:
+
+| Gesto (mouse no modo touchpad) | O que o jogo vê | Onde usar |
+|---|---|---|
+| Só mover | dedo suspenso (nenhum toque): posiciona o dedo | antes de um gesto |
+| Esquerdo, tocar rápido | toque + clique do touchpad | interações "aperte o touchpad" |
+| Esquerdo, segurar parado | toque + clique mantidos | absorver/drenar poderes (fumaça, neon...) |
+| Esquerdo, arrastar mais de 80 unidades | o clique solta e o dedo desliza | porta "Open Door", scanner de mão |
+| Botão do meio (segurar e mover) | dedo sem clique | deslizar sem clicar, se um gesto não gostar do clique |
+| Direito | dois dedos nas duas pontas com o touchpad apertado | levantar o carro de cima do Reggie |
+
+O dedo começa no meio do touchpad e fica onde você o deixou. Os atalhos do teclado (Tab/Backspace, Tab + setas) continuam como antes.
+
+**Variáveis de ambiente** (`ISS_` e `TLG_` valem igual; `mouse_*` também podem ir no `tlg.ini`):
+
+| Variável | Padrão | O que faz |
+|---|---|---|
+| `ISS_MOUSE` | `1` | `0` desliga o mouse (a janela não prende mais) |
+| `ISS_MOUSE_SENS` | `1.0` | sensibilidade da câmera (0,05–10) |
+| `ISS_MOUSE_INVERT_Y` | `0` | `1` inverte o eixo Y |
+| `ISS_MOUSE_SMOOTHING` | `0.5` | suavização (0–0,95) |
+| `ISS_MOUSE_ACCEL` | `0` | aceleração (0–2) |
+| `ISS_MOUSE_DEADZONE` | `0.1` | anti-zona morta: movimentos pequenos pulam a zona morta do jogo (0–0,5) |
+| `ISS_MOUSE_PAD` | `1` | `0` desliga o modo touchpad do mouse |
+| `ISS_MOUSE_PAD_KEY` | `Left Ctrl\|Mouse X1` | tecla(s) do modo touchpad; nomes do SDL ou `Mouse Left/Middle/Right/X1/X2`, separados por `\|` |
+| `ISS_MOUSE_PAD_MODE` | `hold` | `toggle`: um toque na tecla liga, outro desliga |
+| `ISS_MOUSE_PAD_SENS` | `1.0` | velocidade do dedo (0,1–10) |
+| `ISS_MOUSE_PAD_DRAG` | `80` | unidades (touchpad de 1920 de largura) de arrasto até o clique virar deslize; `0` = nunca |
+| `ISS_KEY_MAP` | — | remapeia teclas e mouse: `"r2=Mouse Left\|F,l2=Mouse Right\|R,r1=Mouse X2,l1=Wheel Down"`; vários por botão com `\|`, `none` tira todos |
+| `ISS_MOUSE_LOG` | `0` | `1` mostra no log o que o jogo recebe do mouse |
+
+O menu Insert, aba **Controle**, tem os ajustes da câmera do mouse.
+
 ## Sensor de movimento e touchpad
 
 O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorver poderes (fumaça, neon...), abrir portas e outras interações. No **DualShock 4 e no DualSense** o giroscópio e o touchpad funcionam direto, sem ligar nada. Nos outros controles e no teclado, o port simula os dois.
@@ -129,13 +178,13 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 
 | Ação no jogo | DualShock 4 / DualSense | Xbox / outro controle | Teclado |
 |---|---|---|---|
-| Absorver/drenar um poder (fumaça, neon...) e interações de "segure o touchpad" | segurar o touchpad | segurar View/Select (sem mexer o analógico direito, senão vira deslize) | segurar Tab ou Backspace (sem as setas) |
+| Absorver/drenar um poder (fumaça, neon...) e interações de "segure o touchpad" | segurar o touchpad | segurar View/Select (sem mexer o analógico direito, senão vira deslize) | segurar Tab ou Backspace (sem as setas); no mouse: Ctrl esquerdo (ou X1) + segurar o esquerdo parado |
 | Interação de "toque no touchpad" | clicar o touchpad | toque em View/Select | Tab ou Backspace |
 | Grafite: virar o controle de lado | virar o controle | L3+R3 (modo sensor): já fica de lado | segurar T ou G |
 | Grafite: sacudir a lata | sacudir o controle | X/A no modo sensor | Y |
 | Grafite: pintar | R2, mirando com o controle | R2, mirando com o analógico esquerdo no modo sensor | F (R2), mirando com as setas enquanto segura T ou G |
-| Apertar as duas pontas do touchpad (levantar o carro de cima do Reggie) | dois dedos, um em cada ponta | segurar View/Select + R1 | segurar Tab + Backspace |
-| Deslizar no touchpad (porta "Open Door", scanner de mão) | deslizar o dedo | segurar View/Select + analógico direito na direção pedida | segurar Tab + setas |
+| Apertar as duas pontas do touchpad (levantar o carro de cima do Reggie) | dois dedos, um em cada ponta | segurar View/Select + R1 | segurar Tab + Backspace; no mouse: Ctrl esquerdo (ou X1) + botão direito |
+| Deslizar no touchpad (porta "Open Door", scanner de mão) | deslizar o dedo | segurar View/Select + analógico direito na direção pedida | segurar Tab + setas; no mouse: segurar Ctrl esquerdo (ou X1), esquerdo e arrastar |
 | Voltar ao normal depois do grafite | — | L3+R3 de novo ("Modo sensor desligado") | — |
 
 **Launcher:** o quadro **Controle** tem a **Zona morta dos analógicos** (0–40%, padrão 10%). Aumente se o personagem, a câmera ou a inclinação do modo sensor se mexerem sozinhos (drift).
@@ -197,6 +246,7 @@ The screenshots are at the top of this page.
 ## What's new
 
 - **CPUs without F16C (Sandy Bridge, #51):** the game's 13 half-precision conversions (`VCVTPH2PS`/`VCVTPS2PH`) are now emulated at start, bit-exact with the CPU (rounding, denormals, Inf and NaN). The game used to stop with "13 sites use encodings the rewrite cannot emulate".
+- **Mouse:** the mouse turns the camera (right stick) and also plays the **touchpad**. Left = R2, right = L2, middle = R3. **Hold Left Ctrl (or the X1 side button)** and the mouse becomes a finger on the touchpad: left touches/clicks (hold = absorb a power), dragging with the left slides (the "Open Door" swipe, the scanner), right = two fingers (lift the car off Reggie). The window captures the mouse; Esc releases it and a click captures it again. See [Mouse](#mouse-1).
 - **Graffiti steps on screen:** the first time sensor mode turns on, a screen in the middle shows the steps (shake, spray, aim, leave) with your controller's buttons; "Got it" closes it. The Insert menu has a new **Controls** tab that shows it again and sets the **graffiti aiming speed** (25–200%, also `ISS_SENSOR_AIM`).
 - **Easier graffiti (sensor mode):** sensor mode is now the graffiti's spray can: turning it on (L3+R3) holds the controller on its side, as the game asks ("Hold Wireless Controller Sideways"); **cross/A shakes**, **R2 sprays** and the **left stick aims** the cursor left/right and up/down (it used to move only up and down), slower with a small push, for tracing the stencil. On the keyboard, while T or G hold the controller sideways, the **arrow keys** aim.
 - **Being tested: flickering GPU smoke and particles (#7, #50).** Shader recompiler fixes, partly from the native [Shadow of the Colossus](https://github.com/AjncSystem/ShadowOfTheColossus-PC) port:
@@ -276,6 +326,54 @@ The full guide is in [`README-player.md`](port/packaging/README-player.md), whic
 
 **Experimental fixes:** the launcher's **Experimental fixes…** button turns the 12 fixes `TLG_BP01` to `TLG_BP12` (from other PS4 ports and shadPS4), the diagnostic switches (`TLG_WQM`, `TLG_LDS_*`, `TLG_BC_TINY`...) and the Insert menu options on and off, tagged "in game" or "restarts the game". Untouched, the defaults hold. Full list: [`docs/EXPERIMENTAL_FIXES.md`](docs/EXPERIMENTAL_FIXES.md).
 
+## Mouse
+
+The mouse works with or without a controller (its buttons add to the controller's). The game window captures the mouse while it has focus and the Insert menu is closed; **Esc releases it** (the cursor comes back) and **a click in the window captures it again** (that click is not a game button).
+
+**Camera and buttons:**
+
+| Mouse | In the game |
+|---|---|
+| Move | turns the camera (right stick) |
+| Left button | R2 (use the power / shoot) |
+| Right button | L2 (aim) |
+| Middle button | R3 |
+| Side buttons X1 / X2 and the wheel | free (see `ISS_KEY_MAP`); X1 is also a touchpad-mode key |
+| Sensor on (sensor mode, T or G) | the mouse points the graffiti spray can instead of turning the camera |
+
+**Touchpad mode:** hold **Left Ctrl** or the mouse's **X1 side button**. While the mode is on the camera does not turn: mouse motion moves a virtual finger over the touchpad (a small pad in the bottom-left corner of the screen shows where it is) and the buttons become the finger:
+
+| Gesture (mouse in touchpad mode) | What the game sees | Where to use it |
+|---|---|---|
+| Just move | hovering finger (no touch): places the finger | before a gesture |
+| Left, quick tap | touch + touchpad click | "press the touchpad" interactions |
+| Left, hold still | touch + click held | absorbing/draining powers (smoke, neon...) |
+| Left, drag more than 80 units | the click is released and the finger slides | "Open Door", hand scanner |
+| Middle button (hold and move) | finger with no click | sliding without a click, if a gesture dislikes the click |
+| Right | two fingers on both ends with the touchpad pressed | lifting the car off Reggie |
+
+The finger starts in the middle of the touchpad and stays where you leave it. The keyboard shortcuts (Tab/Backspace, Tab + arrow keys) work as before.
+
+**Environment variables** (`ISS_` and `TLG_` work the same; the `mouse_*` ones can also go in `tlg.ini`):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ISS_MOUSE` | `1` | `0` turns the mouse off (the window no longer captures it) |
+| `ISS_MOUSE_SENS` | `1.0` | camera sensitivity (0.05-10) |
+| `ISS_MOUSE_INVERT_Y` | `0` | `1` inverts the Y axis |
+| `ISS_MOUSE_SMOOTHING` | `0.5` | smoothing (0-0.95) |
+| `ISS_MOUSE_ACCEL` | `0` | acceleration (0-2) |
+| `ISS_MOUSE_DEADZONE` | `0.1` | anti-dead zone: small movements skip the game's dead zone (0-0.5) |
+| `ISS_MOUSE_PAD` | `1` | `0` turns the mouse touchpad mode off |
+| `ISS_MOUSE_PAD_KEY` | `Left Ctrl\|Mouse X1` | touchpad-mode key(s); SDL key names or `Mouse Left/Middle/Right/X1/X2`, separated by `\|` |
+| `ISS_MOUSE_PAD_MODE` | `hold` | `toggle`: one press turns it on, another turns it off |
+| `ISS_MOUSE_PAD_SENS` | `1.0` | finger speed (0.1-10) |
+| `ISS_MOUSE_PAD_DRAG` | `80` | units (the touchpad is 1920 wide) of drag before the click becomes a swipe; `0` = never |
+| `ISS_KEY_MAP` | — | remaps keys and mouse: `"r2=Mouse Left\|F,l2=Mouse Right\|R,r1=Mouse X2,l1=Wheel Down"`; several per button with `\|`, `none` removes all |
+| `ISS_MOUSE_LOG` | `0` | `1` logs what the game gets from the mouse |
+
+The Insert menu's **Controls** tab has the mouse camera settings.
+
 ## Motion sensor and touchpad
 
 The game asks for the motion sensor and the touchpad in many scenes: graffiti, absorbing powers (smoke, neon...), opening doors and other interactions. On a **DualShock 4 or DualSense** the gyro and the touchpad work as is, with nothing to turn on. On other controllers and on the keyboard, the port simulates both.
@@ -295,13 +393,13 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 
 | In-game action | DualShock 4 / DualSense | Xbox / other controller | Keyboard |
 |---|---|---|---|
-| Absorb/drain a power (smoke, neon...) and "hold the touchpad" interactions | hold the touchpad | hold View/Select (leave the right stick alone, or it becomes a swipe) | hold Tab or Backspace (no arrow keys) |
+| Absorb/drain a power (smoke, neon...) and "hold the touchpad" interactions | hold the touchpad | hold View/Select (leave the right stick alone, or it becomes a swipe) | hold Tab or Backspace (no arrow keys); mouse: Left Ctrl (or X1) + hold the left button still |
 | "Press the touchpad" interactions | click the touchpad | tap View/Select | Tab or Backspace |
 | Graffiti: turn the controller sideways | turn the controller | L3+R3 (sensor mode): it is on its side at once | hold T or G |
 | Graffiti: shake the can | shake the controller | cross/A in sensor mode | Y |
 | Graffiti: spray | R2, aiming with the controller | R2, aiming with the left stick in sensor mode | F (R2), aiming with the arrow keys while holding T or G |
-| Press both ends of the touchpad (lifting the car off Reggie) | two fingers, one on each end | hold View/Select + R1 | hold Tab + Backspace |
-| Touchpad swipe ("Open Door", hand scanner) | swipe a finger | hold View/Select + right stick in the asked direction | hold Tab + arrow keys |
+| Press both ends of the touchpad (lifting the car off Reggie) | two fingers, one on each end | hold View/Select + R1 | hold Tab + Backspace; mouse: Left Ctrl (or X1) + right button |
+| Touchpad swipe ("Open Door", hand scanner) | swipe a finger | hold View/Select + right stick in the asked direction | hold Tab + arrow keys; mouse: hold Left Ctrl (or X1), left button and drag |
 | Back to normal after the graffiti | — | L3+R3 again ("Sensor mode off") | — |
 
 **Launcher:** the **Controller** box has the **Stick dead zone** (0–40%, default 10%). Raise it if the character, the camera or the sensor-mode tilt moves on its own (stick drift).
