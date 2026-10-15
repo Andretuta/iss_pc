@@ -21,6 +21,7 @@
 #include "shader_recompiler/backend/spirv/emit_spirv.h"
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/recompiler.h"
+#include "shader_recompiler/recompiler_toggles.h"
 #include "shader_recompiler/runtime_info.h"
 #include "tlg_settings.h"
 #include "video_core/amdgpu/liverpool.h"
@@ -404,6 +405,12 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .block1d_as_2d = AmdGpu::Block1DAs2D(),
         .bc_tiny_decode = AmdGpu::BcTinyDecode(),
     };
+    // tlg: the recompiler switches (ISS_ names arrive as TLG_), one line each, for A/B reports.
+    Shader::Toggles::LogStates([](const char* name, bool on, const char* what) {
+        LOG_INFO(Render_Vulkan, "tlg: shader switch {}={} ({})", name, on ? 1 : 0, what);
+    });
+    LOG_INFO(Render_Vulkan, "tlg: host subgroup size {}, LDS barriers {}", profile.subgroup_size,
+             profile.needs_lds_barriers ? "on" : "off");
 
     auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
     ASSERT_MSG(cache_result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",

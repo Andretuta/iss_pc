@@ -35,8 +35,8 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 8u; // tlg: SotC LDS barriers and S_WQM_B64
-static constexpr u32 ShaderMetaVersion = 8u; // tlg: SotC LDS barriers and S_WQM_B64
+static constexpr u32 ShaderBinaryVersion = 9u; // tlg: LDS barrier scope per guest wave
+static constexpr u32 ShaderMetaVersion = 9u; // tlg: LDS barrier scope per guest wave
 static constexpr u32 PipelineKeyVersion = 5u; // tlg: Info layout (ImageResource::needs_native)
 } // namespace Serialization
 
@@ -45,7 +45,8 @@ namespace Vulkan {
 namespace {
 // tlg: the test knobs that change recompiled SPIR-V (TLG_LIGHTING_TEST=dref,
 // TLG_AMD_PATHS_OFF=shaderext) get their own shader binary cache version, and so do the
-// recompiler switches of recompiler_toggles.h (TLG_LDS_SMALL/MULTI/READLANE, TLG_WQM): the
+// recompiler switches of recompiler_toggles.h (TLG_LDS_SMALL/MULTI/READLANE, TLG_WQM,
+// TLG_LANE_DIVERGENCE, TLG_RFL_ALL): the
 // base and the lighting salt stay below 64.
 u32 CurrentShaderBinaryVersion() {
     return LightingTest::ShaderBinaryVersion(
