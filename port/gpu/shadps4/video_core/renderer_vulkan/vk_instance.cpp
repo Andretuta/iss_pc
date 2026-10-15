@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <boost/container/static_vector.hpp>
@@ -8,6 +9,7 @@
 #include <fmt/ranges.h>
 
 #include "common/assert.h"
+#include "common/backports.h"
 #include "common/debug.h"
 #include "common/types.h"
 #include "imgui/renderer/imgui_core.h"
@@ -425,6 +427,24 @@ bool Instance::CreateDevice() {
                  image_2d_view_of_3d_features.sampler2DViewOf3D);
     }
     image_view_min_lod = add_extension(VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME);
+    // tlg: BP06 (SotC 8d84cf7). Detected at run time: the extension is listed and the feature
+    // reports true; only then is it enabled. Off by default, so the device is created exactly as
+    // before unless TLG_BP06=1.
+    maximal_reconvergence = false;
+    if (Common::Backports::On(Common::Backports::Id::MaximalReconvergence) &&
+        std::ranges::find(available_extensions, std::string{VK_KHR_SHADER_MAXIMAL_RECONVERGENCE_EXTENSION_NAME}) !=
+            available_extensions.end()) {
+        const auto reconvergence_features =
+            physical_device
+                .getFeatures2<vk::PhysicalDeviceFeatures2,
+                              vk::PhysicalDeviceShaderMaximalReconvergenceFeaturesKHR>()
+                .get<vk::PhysicalDeviceShaderMaximalReconvergenceFeaturesKHR>();
+        if (reconvergence_features.shaderMaximalReconvergence) {
+            maximal_reconvergence = add_extension(VK_KHR_SHADER_MAXIMAL_RECONVERGENCE_EXTENSION_NAME);
+        } else {
+            LOG_WARNING(Render_Vulkan, "BP06: shaderMaximalReconvergence feature not supported");
+        }
+    }
     supports_memory_budget = add_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
     // tlg: from shadPS4-Infamous-FixBuild e35e04dc. Lets the driver move device memory out to
     // system memory instead of failing an allocation when the card is full.
@@ -663,6 +683,9 @@ bool Instance::CreateDevice() {
         vk::PhysicalDeviceImageViewMinLodFeaturesEXT{
             .minLod = true,
         },
+        vk::PhysicalDeviceShaderMaximalReconvergenceFeaturesKHR{
+            .shaderMaximalReconvergence = true,
+        },
         vk::PhysicalDeviceShaderClockFeaturesKHR{
             .shaderSubgroupClock = shader_clock_features.shaderSubgroupClock,
         },
@@ -737,6 +760,9 @@ bool Instance::CreateDevice() {
     }
     if (!image_view_min_lod) {
         device_chain.unlink<vk::PhysicalDeviceImageViewMinLodFeaturesEXT>();
+    }
+    if (!maximal_reconvergence) {
+        device_chain.unlink<vk::PhysicalDeviceShaderMaximalReconvergenceFeaturesKHR>();
     }
     if (!shader_clock) {
         device_chain.unlink<vk::PhysicalDeviceShaderClockFeaturesKHR>();
@@ -863,6 +889,14 @@ void Instance::CollectDeviceParameters() {
         std::printf("GPU: block-compressed 1D textures %s\n",
                     block1d_as_2d ? "as 2D images (the driver refuses BC 1D; TLG_BLOCK1D=0 keeps 1D)"
                                   : "kept 1D although the driver refuses them (TLG_BLOCK1D=1 makes them 2D)");
+    }
+
+    // tlg: BP09 (CTR d26bcb2): every 1D image as 2D of height 1; read once, before any image or
+    // shader exists, so the shaders and the images of a session agree.
+    const bool all_1d_as_2d = Common::Backports::On(Common::Backports::Id::Image1DAs2D);
+    AmdGpu::all_1d_as_2d.store(all_1d_as_2d, std::memory_order_relaxed);
+    if (all_1d_as_2d) {
+        std::printf("GPU: every 1D texture as a 2D image of height 1 (TLG_BP09=1)\n");
     }
 
     // tlg: see video_core/amdgpu/tlg_bc_tiny.h. Set before any image or shader exists.

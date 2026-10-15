@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 
+import backports_table
 import shader_cache
 
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
@@ -443,6 +444,25 @@ def pad_glyphs():
     return None
 
 
+def read_ini(path):
+    """The keys of tlg.ini (name -> text); {} when it does not exist."""
+    values = {}
+    try:
+        lines = Path(path).read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        if '=' in line and not line.lstrip().startswith('#'):
+            key, value = line.split('=', 1)
+            values[key.strip()] = value.strip()
+    return values
+
+
+def experimental_states(settings):
+    """The player's choices of the launcher's "Experimental fixes" window (tlg.ini + settings)."""
+    return backports_table.read_states(read_ini(USER_DIR / 'tlg.ini'), settings)
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
@@ -478,6 +498,9 @@ def build_env(settings, extra=None):
     # Shaders and pipelines beside the saves (the GPU reads it when it starts; before, Linux used
     # shadPS4's ~/.local/share/shadPS4 and Windows <saves>/user).
     env['TLG_GPU_USER_DIR'] = str(gpu_user_dir())
+    # Experimental fixes (BPnn) and A/B switches the player changed: ISS_<name>=0/1 (the probe
+    # copies them to TLG_). Untouched ones add nothing; ISS_/TLG_ set outside the launcher win.
+    env.update(backports_table.environment(experimental_states(settings), os.environ))
     if extra:
         env.update(extra)
     return env

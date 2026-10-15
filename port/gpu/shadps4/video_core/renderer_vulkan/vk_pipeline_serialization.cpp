@@ -16,6 +16,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#include "common/backports.h"
 #include "common/serdes.h"
 #include "common/scope_exit.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
@@ -53,7 +54,8 @@ u32 CurrentShaderBinaryVersion() {
                Serialization::ShaderBinaryVersion,
                LightingTest::ShaderBinarySalt(LightingTest::Current().dref,
                                               AmdPathsOff::Current().shaderext)) +
-           64u * Shader::Toggles::ShaderBinarySalt();
+           64u * Shader::Toggles::ShaderBinarySalt() +
+           4096u * Common::Backports::ShaderSalt();
 }
 } // namespace
 

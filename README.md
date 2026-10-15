@@ -108,6 +108,8 @@ A lista completa e o passo a passo, que também vão nas notas de cada Release, 
 
 O passo a passo completo está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
 
+**Correções experimentais:** o botão **Correções experimentais…** do launcher liga e desliga as 12 correções `TLG_BP01` a `TLG_BP12` (de outros ports de PS4 e do shadPS4), as chaves de diagnóstico (`TLG_WQM`, `TLG_LDS_*`, `TLG_BC_TINY`...) e as opções do menu Insert, com etiqueta de "no jogo" ou "reinicia o jogo". Sem mexer em nada valem os padrões. Lista completa: [`docs/EXPERIMENTAL_FIXES.md`](docs/EXPERIMENTAL_FIXES.md).
+
 ## Sensor de movimento e touchpad
 
 O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorver poderes (fumaça, neon...), abrir portas e outras interações. No **DualShock 4 e no DualSense** o giroscópio e o touchpad funcionam direto, sem ligar nada. Nos outros controles e no teclado, o port simula os dois.
@@ -271,6 +273,8 @@ The full list and the step-by-step guide, which also go in the notes of every Re
 4. When the game asks you to turn or shake the controller and yours has no sensor: tap L3+R3 (or Share on an Xbox Series). The controller is then on its side; cross/A shakes, R2 sprays and the left stick aims. Tap again to leave. On the keyboard: T/G (with the arrow keys to aim) and Y. See [Motion sensor and touchpad](#motion-sensor-and-touchpad).
 
 The full guide is in [`README-player.md`](port/packaging/README-player.md), which also ships inside the package.
+
+**Experimental fixes:** the launcher's **Experimental fixes…** button turns the 12 fixes `TLG_BP01` to `TLG_BP12` (from other PS4 ports and shadPS4), the diagnostic switches (`TLG_WQM`, `TLG_LDS_*`, `TLG_BC_TINY`...) and the Insert menu options on and off, tagged "in game" or "restarts the game". Untouched, the defaults hold. Full list: [`docs/EXPERIMENTAL_FIXES.md`](docs/EXPERIMENTAL_FIXES.md).
 
 ## Motion sensor and touchpad
 

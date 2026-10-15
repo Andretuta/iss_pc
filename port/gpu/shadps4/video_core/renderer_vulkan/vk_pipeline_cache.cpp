@@ -10,8 +10,14 @@
 #include <ranges>
 #include <string>
 #include <unordered_set>
+#include <condition_variable>
+#include <filesystem>
+#include <thread>
+#include <xxhash.h>
+#include "common/backports.h"
 #include "tlg_threads.h"
 
+#include "common/elf_info.h"
 #include "common/hash.h"
 #include "common/thread.h"
 #include "common/io_file.h"
@@ -24,6 +30,7 @@
 #include "shader_recompiler/recompiler_toggles.h"
 #include "shader_recompiler/runtime_info.h"
 #include "tlg_settings.h"
+#include "tlg_toggles.h"
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -237,6 +244,10 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         info.hw.fs.addr_flags = regs.ps_input_addr;
         info.hw.fs.num_inputs = regs.num_interp;
         info.hw.fs.front_face_all_bits = regs.barycentric_control.front_face_all_bits;
+        // tlg: BP12 read once when the pipeline is built (the shader cache key has its salt).
+        info.hw.fs.depth_before_shader =
+            Common::Backports::On(Common::Backports::Id::ShadPS4Pr5264) &&
+            regs.depth_shader_control.depth_before_shader;
         info.hw.fs.num_samples =
             regs.ps_input_addr.sample_coverage_ena && regs.ps_input_ena.sample_coverage_ena
                 ? regs.aa_config.NumSamples()
@@ -311,6 +322,9 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         info.sw.vs.step_rate_1 = regs.vgt_instance_step_rate_1;
         info.sw.vs.vertex_sgpr_offset = sel.draw_indirect_params.vertex_sgpr_offset;
         info.sw.vs.instance_sgpr_offset = sel.draw_indirect_params.instance_sgpr_offset;
+        // tlg: BP11 (shadPS4 #5348)
+        info.sw.vs.is_indirect = Common::Backports::On(Common::Backports::Id::FirstInstanceDouble) &&
+                                 sel.draw_indirect_params.is_indirect;
         info.sw.vs.tess_emulated_primitive =
             regs.primitive_type == AmdGpu::PrimitiveType::RectList ||
             regs.primitive_type == AmdGpu::PrimitiveType::QuadList;
@@ -332,6 +346,179 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         break;
     }
     return info;
+}
+
+// tlg: BP08 (Mrsuss b972798, 0xCydral bdb9769). The driver's own pipeline cache (the compiled
+// ISA behind every vkCreateGraphicsPipelines) is kept between sessions in
+// <cache>/driver-<serial>/vk_pipeline_cache_<vendor>_<device>_<pipelineCacheUUID>.vkc. The key
+// is in the file name, so a GPU or driver change finds no file and leaves the others alone:
+// nothing is ever deleted (the next save of the same key replaces the file). The file is a
+// header (magic, version, size, XXH3 of the blob) and the blob; it is written to a temporary
+// name and renamed, so a crash leaves the old file or none. Independent of the shader cache
+// folder, which is pruned when the recompiler changes; the driver checks the blob again.
+namespace {
+constexpr u32 DriverCacheMagic = 0x4B435649; // "IVCK"
+constexpr u32 DriverCacheVersion = 1;
+struct DriverCacheHeader {
+    u32 magic;
+    u32 version;
+    u64 payload_size;
+    u64 payload_hash;
+};
+static_assert(sizeof(DriverCacheHeader) == 24);
+
+std::filesystem::path DriverCacheFile(const Instance& instance) {
+    const std::string serial{Common::ElfInfo::Instance().GameSerial()};
+    std::string uuid;
+    for (const u8 byte : instance.GetPipelineCacheUUID()) {
+        uuid += fmt::format("{:02x}", byte);
+    }
+    return Common::FS::GetUserPath(Common::FS::PathType::CacheDir) /
+           ("driver-" + (serial.empty() ? std::string{"unknown"} : serial)) /
+           fmt::format("vk_pipeline_cache_{:04x}_{:04x}_{}.vkc", instance.GetVendorID(),
+                       instance.GetDeviceID(), uuid);
+}
+
+/// The saved blob for this GPU and driver, empty when there is none or the file is damaged.
+std::vector<u8> LoadDriverCacheBlob(const Instance& instance) {
+    const auto path = DriverCacheFile(instance);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) {
+        std::printf("GPU: driver pipeline cache: none saved for this GPU/driver\n");
+        return {};
+    }
+    std::vector<u8> file(std::filesystem::file_size(path, ec));
+    if (ec || file.size() < sizeof(DriverCacheHeader) + sizeof(VkPipelineCacheHeaderVersionOne)) {
+        return {};
+    }
+    {
+        const Common::FS::IOFile io{path, Common::FS::FileAccessMode::Read};
+        if (!io.IsOpen() || io.Read(file) != file.size()) {
+            return {};
+        }
+    }
+    DriverCacheHeader header;
+    std::memcpy(&header, file.data(), sizeof(header));
+    const u8* payload = file.data() + sizeof(header);
+    if (header.magic != DriverCacheMagic || header.version != DriverCacheVersion ||
+        header.payload_size != file.size() - sizeof(header) ||
+        XXH3_64bits(payload, header.payload_size) != header.payload_hash) {
+        std::printf("GPU: driver pipeline cache ignored (damaged file, kept)\n");
+        return {};
+    }
+    VkPipelineCacheHeaderVersionOne driver;
+    std::memcpy(&driver, payload, sizeof(driver));
+    const auto uuid = instance.GetPipelineCacheUUID();
+    if (driver.headerVersion != VK_PIPELINE_CACHE_HEADER_VERSION_ONE ||
+        driver.vendorID != instance.GetVendorID() || driver.deviceID != instance.GetDeviceID() ||
+        std::memcmp(driver.pipelineCacheUUID, uuid.data(), VK_UUID_SIZE) != 0) {
+        std::printf("GPU: driver pipeline cache ignored (other GPU or driver, kept)\n");
+        return {};
+    }
+    std::printf("GPU: driver pipeline cache loaded (%zu bytes)\n", size_t(header.payload_size));
+    return {payload, payload + header.payload_size};
+}
+} // namespace
+
+struct PipelineCache::DriverCacheSaver {
+    std::thread thread;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool stop = false;
+    u64 saved_hash = 0; ///< XXH3 of the last blob written (or loaded): unchanged data is not rewritten
+};
+
+bool PipelineCache::SaveDriverCache() {
+    // The save is optional (0xCydral 4f16e00): an allocation failure on the saver thread must not
+    // end the game; it is skipped and tried again later.
+    try {
+        return SaveDriverCacheUnchecked();
+    } catch (const std::exception& e) {
+        LOG_WARNING(Render_Vulkan, "tlg: driver pipeline cache save skipped: {}", e.what());
+        return false;
+    }
+}
+
+bool PipelineCache::SaveDriverCacheUnchecked() {
+    // Pipelines the compiler workers built are only merged into pipeline_cache when they finish
+    // (FinishCompilations): merge copies of all of them into a scratch cache for the blob.
+    const auto device = instance.GetDevice();
+    auto [scratch_result, scratch] = device.createPipelineCacheUnique({});
+    if (scratch_result != vk::Result::eSuccess) {
+        return false;
+    }
+    std::vector<vk::PipelineCache> sources{*pipeline_cache};
+    for (const auto& cache : worker_pipeline_caches) {
+        sources.push_back(*cache);
+    }
+    if (device.mergePipelineCaches(*scratch, sources) != vk::Result::eSuccess) {
+        return false;
+    }
+    auto [result, blob] = device.getPipelineCacheData(*scratch);
+    if (result != vk::Result::eSuccess || blob.size() < sizeof(VkPipelineCacheHeaderVersionOne)) {
+        return false;
+    }
+    const u64 hash = XXH3_64bits(blob.data(), blob.size());
+    if (driver_saver && hash == driver_saver->saved_hash) {
+        return true;
+    }
+    const auto path = DriverCacheFile(instance);
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    auto temp = path;
+    temp += ".tmp";
+    const DriverCacheHeader header{DriverCacheMagic, DriverCacheVersion, blob.size(), hash};
+    bool written = false;
+    {
+        const Common::FS::IOFile io{temp, Common::FS::FileAccessMode::Create};
+        written = io.IsOpen() && io.WriteRaw<u8>(&header, sizeof(header)) == sizeof(header) &&
+                  io.Write(blob) == blob.size();
+    }
+    if (written) {
+        std::filesystem::rename(temp, path, ec);
+    }
+    if (!written || ec) {
+        std::filesystem::remove(temp, ec);
+        LOG_ERROR(Render_Vulkan, "tlg: driver pipeline cache not written to {}", path.string());
+        return false;
+    }
+    if (driver_saver) {
+        driver_saver->saved_hash = hash;
+    }
+    LOG_INFO(Render_Vulkan, "tlg: driver pipeline cache saved ({} bytes)", blob.size());
+    return true;
+}
+
+void PipelineCache::StartDriverCacheSaver() {
+    // The process may end without destructors: the cache is also saved while the game runs.
+    driver_saver = new DriverCacheSaver;
+    driver_saver->thread = std::thread([this] {
+        Common::SetCurrentThreadName("tlg:DriverCacheSave");
+        auto* saver = driver_saver;
+        std::unique_lock lock{saver->mutex};
+        while (!saver->stop) {
+            if (saver->cv.wait_for(lock, std::chrono::seconds(180), [&] { return saver->stop; })) {
+                break;
+            }
+            lock.unlock();
+            SaveDriverCache();
+            lock.lock();
+        }
+    });
+}
+
+void PipelineCache::StopDriverCacheSaver() {
+    if (!driver_saver) {
+        return;
+    }
+    {
+        std::scoped_lock lock{driver_saver->mutex};
+        driver_saver->stop = true;
+    }
+    driver_saver->cv.notify_all();
+    if (driver_saver->thread.joinable()) {
+        driver_saver->thread.join();
+    }
 }
 
 PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
@@ -372,6 +559,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .support_fp64_signed_zero_inf_nan_preserve =
             bool(vk12_props.shaderSignedZeroInfNanPreserveFloat64),
         .supports_image_load_store_lod = instance_.IsImageLoadStoreLodSupported(),
+        .supports_maximal_reconvergence = instance_.IsMaximalReconvergenceSupported(),
         .supports_native_cube_calc = instance_.IsAmdGcnShaderSupported(),
         .supports_trinary_minmax = instance_.IsAmdShaderTrinaryMinMaxSupported(),
         .supports_buffer_fp32_atomic_min_max =
@@ -410,13 +598,36 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
     Shader::Toggles::LogStates([](const char* name, bool on, const char* what) {
         std::printf("GPU: shader switch %s=%d (%s)\n", name, on ? 1 : 0, what);
     });
+    Common::Backports::LogStates();
     std::printf("GPU: host subgroup size %u, LDS barriers %s\n", profile.subgroup_size,
                 profile.needs_lds_barriers ? "on" : "off");
 
-    auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
+    // tlg: BP08, start from the driver blob saved by an earlier session (same GPU and driver).
+    std::vector<u8> driver_blob;
+    if (Common::Backports::On(Common::Backports::Id::PipelineCacheBlob)) {
+        driver_blob = LoadDriverCacheBlob(instance);
+    }
+    auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique(
+        {.initialDataSize = driver_blob.size(),
+         .pInitialData = driver_blob.empty() ? nullptr : driver_blob.data()});
+    if (cache_result != vk::Result::eSuccess && !driver_blob.empty()) {
+        std::printf("GPU: driver rejected the saved pipeline cache (%s), starting empty (file kept)\n",
+                    vk::to_string(cache_result).c_str());
+        driver_blob.clear();
+        auto retry = instance.GetDevice().createPipelineCacheUnique({});
+        cache_result = retry.result;
+        cache = std::move(retry.value);
+    }
     ASSERT_MSG(cache_result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",
                vk::to_string(cache_result));
     pipeline_cache = std::move(cache);
+    if (Common::Backports::On(Common::Backports::Id::PipelineCacheBlob)) {
+        StartDriverCacheSaver();
+        if (!driver_blob.empty()) {
+            driver_saver->saved_hash = XXH3_64bits(driver_blob.data(), driver_blob.size());
+            Common::Backports::Hit(Common::Backports::Id::PipelineCacheBlob);
+        }
+    }
     // tlg: the compiler threads always exist; the in-game menu switches async compilation live
     // (TlgSettings::async_shaders, TLG_ASYNC_SHADERS at start).
     {
@@ -442,7 +653,13 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
 
 PipelineCache::~PipelineCache() {
     StopWarmUp();
+    StopDriverCacheSaver();
     FinishCompilations();
+    if (driver_saver) {
+        SaveDriverCache();
+        delete driver_saver;
+        driver_saver = nullptr;
+    }
 }
 
 // tlg: shader/pipeline compile time on the GPU thread, reported by TLG_FRAME_STATS.
@@ -752,6 +969,117 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
     return it != graphics_pipelines.end() ? it->second.get() : nullptr;
 }
 
+
+// tlg: BP07 (bbport 10baf9d). The async path above skips every draw whose pipeline or shader is
+// still being compiled. With TLG_BP07=1 only draws of a pass drawn every frame in a busy frame,
+// with geometry of a few triangles or more and direct, may go without; the rest (small and
+// full-screen passes, indirect draws, frames with fewer than 300 draws, targets drawn to for
+// fewer than 8 frames in a row) compile now, shaders included, on the GPU thread.
+namespace {
+enum class Bp07Reason : u32 { Skippable, Small, Indirect, LightFrame, NoStreak, Count };
+
+struct Bp07State {
+    struct TargetStreak {
+        u64 last_frame = ~0ull;
+        u32 frames = 0;
+    };
+    std::unordered_map<u64, TargetStreak> streaks;
+    u64 frame_seen = ~0ull;
+    u64 draws_this_frame = 0, last_frame_draws = 0;
+    u64 last_target = 0, last_target_frame = ~0ull;
+    // Per reason: draws that compiled now / draws that went without (the async path skipped).
+    std::array<u64, size_t(Bp07Reason::Count)> sync{}, skipped{};
+    // The last pass of each kind, for the log: target address, indices.
+    std::array<u64, size_t(Bp07Reason::Count)> last_target_of{};
+    std::array<u32, size_t(Bp07Reason::Count)> last_indices_of{};
+    std::chrono::steady_clock::time_point last_log = std::chrono::steady_clock::now();
+    Bp07Reason current = Bp07Reason::Skippable;
+};
+Bp07State bp07; // GPU thread only (pipeline selection)
+
+u64 Bp07DrawTarget(const AmdGpu::Regs& regs) {
+    if (regs.color_control.mode != AmdGpu::ColorControl::OperationMode::Disable) {
+        for (u32 cb = 0; cb < AmdGpu::NUM_COLOR_BUFFERS; ++cb) {
+            if (regs.color_buffers[cb] && regs.color_target_mask.GetMask(cb)) {
+                return regs.color_buffers[cb].Address();
+            }
+        }
+    }
+    return regs.depth_buffer.DepthValid() ? regs.depth_buffer.DepthAddress() : 0;
+}
+
+/// Counts the draw and classifies it; the result stays in bp07.current.
+Bp07Reason Bp07Classify(const AmdGpu::Regs& regs, bool indirect) {
+    auto& st = bp07;
+    const u64 frame = TlgStats::gpu_frames.load(std::memory_order_relaxed);
+    if (frame != st.frame_seen) {
+        st.last_frame_draws = st.draws_this_frame;
+        st.draws_this_frame = 0;
+        st.frame_seen = frame;
+    }
+    ++st.draws_this_frame;
+    const u64 target = Bp07DrawTarget(regs);
+    if (target != 0 && !(target == st.last_target && frame == st.last_target_frame)) {
+        st.last_target = target;
+        st.last_target_frame = frame;
+        auto& streak = st.streaks[target];
+        if (streak.last_frame != frame) {
+            streak.frames = streak.last_frame + 1 == frame ? streak.frames + 1 : 1;
+            streak.last_frame = frame;
+        }
+    }
+    constexpr u64 BusyFrameDraws = 300;
+    constexpr u32 FullScreenIndices = 12;
+    constexpr u32 PerFrameStreak = 8;
+    Bp07Reason reason = Bp07Reason::Skippable;
+    if (st.last_frame_draws < BusyFrameDraws) {
+        reason = Bp07Reason::LightFrame;
+    } else if (indirect) {
+        reason = Bp07Reason::Indirect;
+    } else if (regs.num_indices <= FullScreenIndices) {
+        reason = Bp07Reason::Small;
+    } else {
+        const auto streak = st.streaks.find(target);
+        if (target == 0 || streak == st.streaks.end() || streak->second.frames < PerFrameStreak) {
+            reason = Bp07Reason::NoStreak;
+        }
+    }
+    const size_t i = size_t(reason);
+    st.last_target_of[i] = target;
+    st.last_indices_of[i] = indirect ? 0u : regs.num_indices;
+    st.current = reason;
+    return reason;
+}
+
+void Bp07Tally(bool compiled_now) {
+    auto& st = bp07;
+    const size_t i = size_t(st.current);
+    ++(compiled_now ? st.sync : st.skipped)[i];
+    if (compiled_now) {
+        Common::Backports::Hit(Common::Backports::Id::AsyncSkippable);
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now - st.last_log < std::chrono::seconds(5)) {
+        return;
+    }
+    st.last_log = now;
+    static constexpr const char* names[] = {"skippable", "small", "indirect", "light-frame",
+                                            "no-streak"};
+    std::string line;
+    for (size_t r = 0; r < size_t(Bp07Reason::Count); ++r) {
+        if (st.sync[r] == 0 && st.skipped[r] == 0) {
+            continue;
+        }
+        line += fmt::format(" {}: {} compiled now, {} went without (last target {:#x}, {} indices);",
+                            names[r], st.sync[r], st.skipped[r], st.last_target_of[r],
+                            st.last_indices_of[r]);
+    }
+    if (!line.empty()) {
+        LOG_INFO(Render_Vulkan, "BP07 async draws (total):{}", line);
+    }
+}
+} // namespace
+
 const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectParams params,
                                                            const PreparedDraw* prepared) {
     SeedWorkerCaches();
@@ -759,6 +1087,12 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     PublishGraphics();
     PumpWarmUp();
     used_prepared = nullptr;
+    // tlg: BP07, classified per draw (also those a prepared pipeline serves, for the frame's draws).
+    const bool bp07 = Common::Backports::On(Common::Backports::Id::AsyncSkippable);
+    sel.sync_compile = false;
+    if (bp07) {
+        sel.sync_compile = Bp07Classify(liverpool->regs, params.is_indirect) != Bp07Reason::Skippable;
+    }
     if (prepared) {
         if (const auto* pipeline = TryPreparedPipeline(*prepared)) {
             used_prepared = prepared;
@@ -769,6 +1103,9 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     if (!RefreshGraphicsKey(sel)) {
         if (sel.compilation_pending) {
             ++g_tlg_pending_draws;
+            if (bp07 && !sel.sync_compile) {
+                Bp07Tally(false); // a draw classified skippable
+            }
         }
         return nullptr;
     }
@@ -776,6 +1113,23 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
         const auto found = graphics_pipelines.find(sel.graphics_key);
         if (found != graphics_pipelines.end()) {
             return found->second.get();
+        }
+        if (sel.sync_compile) {
+            // tlg: BP07: this draw does not go without. Wait for the worker building the
+            // pipeline, else fall through to the compile below on this thread.
+            Bp07Tally(true);
+            if (const auto pending = pending_graphics.find(sel.graphics_key);
+                pending != pending_graphics.end()) {
+                PhaseTimer waiting{g_tlg_compile_wait_ns};
+                pending.value()->job.Wait();
+                waiting.Stop();
+                PublishGraphics();
+                const auto ready = graphics_pipelines.find(sel.graphics_key);
+                if (ready != graphics_pipelines.end()) {
+                    return ready->second.get();
+                }
+            }
+            goto compile_now;
         }
         if (!pending_graphics.contains(sel.graphics_key) && compiler->HasCapacity()) {
             PhaseTimer capture{g_tlg_snapshot_ns};
@@ -808,8 +1162,12 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
             }
         }
         ++g_tlg_pending_draws;
+        if (bp07) {
+            Bp07Tally(false);
+        }
         return nullptr;
     }
+compile_now:
     const auto [it, is_new] = graphics_pipelines.try_emplace(sel.graphics_key);
     if (is_new) {
         const auto pipeline_hash = std::hash<GraphicsPipelineKey>{}(sel.graphics_key);
@@ -1350,7 +1708,8 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
     auto it_pgm = program_cache.find(params.hash); // this thread is the only writer
     const bool compile_async = AsyncCompilation() && hw_stage != HwStage::Compute &&
                                !sel.regs->stage_enable.hs_en &&
-                               !EmulatorSettings.IsShaderCollect();
+                               !EmulatorSettings.IsShaderCollect() &&
+                               !sel.sync_compile; // tlg: BP07 draws compile their shaders now
     if (!compile_async && it_pgm != program_cache.end() && it_pgm->second->pending) {
         {
             PhaseTimer waiting{g_tlg_compile_wait_ns};
