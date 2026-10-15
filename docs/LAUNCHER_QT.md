@@ -16,6 +16,10 @@ No Windows: `py -m venv .venv-qt`, `.venv-qt\Scripts\pip install -r port\launche
 
 Sem PySide6 o ponto de entrada imprime como instalar e sai. As fontes (Big Shoulders Stencil Display e Barlow, licença OFL, arquivos `OFL-*.txt`) ficam em `port/launcher/qt/fonts/` e são carregadas na execução; sem elas, cai a fonte do sistema.
 
+## Idioma do jogo (Início)
+
+Seletor "Idioma do jogo / Game language" no canto do herói, sob **Escolher a pasta do jogo**, com as 6 línguas de `infamous_run.GAME_LANGUAGES` (English, Português (Brasil), Español (Latinoamérica), Français (Canada), Türkçe, Русский) e a atual marcada (padrão `pt_BR`). Escolher grava `settings['game_language']` por `save_settings`, o mesmo caminho do launcher Tk, e `build_env` o converte em `ISS_LANGUAGE` (en=1, pt_BR=17, es_LA=20, fr_CA=22, tr=19, ru=8) na próxima partida. A linha de ajuda diz isso e que só funciona se os arquivos do jogo tiverem o idioma. É separado da língua da interface (botões PT-BR / EN-US). Código: `Backend.gameLanguageOptions/gameLanguageIndex/setGameLanguage`.
+
 ## O que a tela Início lê
 
 | Item | De onde |
