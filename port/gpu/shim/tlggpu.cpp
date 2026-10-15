@@ -3,6 +3,9 @@
 #include "tlg_overlay.h"
 #include "tlg_png.h"
 #include "tlg_settings.h"
+#include <cstdlib>
+#include <cstdio>
+#include <fstream>
 #include "tlg_copy.h"
 #ifndef _WIN32
 #include <sys/resource.h>
@@ -216,6 +219,44 @@ static void StartProfileWriter() {
 }
 #endif
 
+// tlg: what is switched on for this player, written at the top of every log: the tlg.ini keys (the
+// launcher's choices and the in-game menu's) and the TLG_/ISS_ variables set in the environment
+// (paths are left out: logs are posted in public issues).
+static void LogPlayerConfig() {
+    std::printf("Config: ---- player configuration ----\n");
+    const char* cfg = std::getenv("TLG_CONFIG");
+    std::ifstream ini(cfg && *cfg ? cfg : "tlg.ini");
+    std::string line;
+    int n = 0;
+    while (ini && std::getline(ini, line) && n < 300) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty() || line[0] == '#' || line.find('=') == std::string::npos) continue;
+        std::printf("Config ini: %s\n", line.c_str());
+        ++n;
+    }
+    if (n == 0) std::printf("Config ini: (empty or missing: every setting at its default)\n");
+    std::vector<std::string> vars;
+#ifdef _WIN32
+    char** envp = _environ;
+#else
+    extern char** environ;
+    char** envp = environ;
+#endif
+    for (char** e = envp; e && *e; ++e) {
+        const std::string entry = *e;
+        if (entry.rfind("TLG_", 0) != 0 && entry.rfind("ISS_", 0) != 0) continue;
+        const auto eq = entry.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string value = entry.substr(eq + 1);
+        if (value.find('/') != std::string::npos || value.find('\\') != std::string::npos || value.size() > 40) continue;
+        vars.push_back(entry);
+    }
+    std::sort(vars.begin(), vars.end());
+    for (const auto& v : vars) std::printf("Config env: %s\n", v.c_str());
+    if (vars.empty()) std::printf("Config env: (no TLG_/ISS_ variable set)\n");
+    std::printf("Config: ----\n");
+}
+
 extern "C" int tlggpu_init(const TlgGpuConfig* config) {
     TlgSettings::Load();
     // tlg: the fixes chosen in the launcher or the in-game menu (bpNN in tlg.ini); an environment
@@ -229,6 +270,7 @@ extern "C" int tlggpu_init(const TlgGpuConfig* config) {
             }
         }
     }
+    LogPlayerConfig();
 #ifdef TLG_PGO_GENERATE
     StartProfileWriter();
 #endif

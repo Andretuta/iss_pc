@@ -130,6 +130,16 @@ inline std::array<std::atomic<std::int8_t>, kEntries.size()>& States() {
 }
 } // namespace Detail
 
+/// TLG_OCCLUSION_MODE (ISS_ alias): how the ZPASS_DONE occlusion counter is answered. 0 = the old fake,
+/// ever-growing counter, 1 = both values equal, 2 = end far above begin, 3 = zero counts (default).
+inline int OcclusionMode() {
+    static const int mode = [] {
+        const char* v = std::getenv("TLG_OCCLUSION_MODE");
+        return v && *v ? std::atoi(v) : 3;
+    }();
+    return mode;
+}
+
 /// State of one backport.
 inline bool On(Id id) {
     return Detail::States()[static_cast<std::size_t>(id)].load(std::memory_order_relaxed) != 0;
@@ -191,6 +201,8 @@ inline std::uint32_t ShaderSalt() {
 
 /// One line per backport, once at start-up (the run log keeps stdout).
 inline void LogStates() {
+    std::printf("Backports: occlusion mode %d (TLG_OCCLUSION_MODE; 0 = old fake counter, 3 = default)\n",
+                OcclusionMode());
     for (std::size_t i = 0; i < kEntries.size(); ++i) {
         const Entry& e = kEntries[i];
         std::printf("Backports: %s %s=%d (%s; %s)\n", e.id, e.env,

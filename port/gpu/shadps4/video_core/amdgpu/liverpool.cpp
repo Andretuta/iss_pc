@@ -1141,22 +1141,12 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                         // tlg: occlusion probe (TLG_OCCLUSION_LOG=1 logs the events; TLG_OCCLUSION_MODE
                         // 0 = fake counter as before, 1 = both slots equal (nothing visible), 2 = end far
                         // above begin (everything visible), 3 = zero counts: the default).
-                        static const int occ_mode = [] {
-                            const char* v = std::getenv("TLG_OCCLUSION_MODE");
-                            return v && *v ? std::atoi(v) : 3;
-                        }();
+                        const int occ_mode = Common::Backports::OcclusionMode();
                         static const bool occ_log = [] {
                             const char* v = std::getenv("TLG_OCCLUSION_LOG");
                             return v && *v && std::atoi(v) != 0;
                         }();
                         static std::atomic<u64> occ_events{0};
-                        static const bool occ_announced = [] {
-                            if (occ_mode != 0) {
-                                std::printf("Occlusion: mode %d (TLG_OCCLUSION_MODE; 0 = old fake counter, default 3)\n", occ_mode);
-                            }
-                            return true;
-                        }();
-                        (void)occ_announced;
                         const u64 occ_n = occ_events.fetch_add(1, std::memory_order_relaxed);
                         if (occ_log && (occ_n < 48 || occ_n % 2000 == 0)) {
                             std::printf("Occlusion: event %llu addr %p pairs %d before: %016llx %016llx %016llx %016llx\n",
