@@ -51,6 +51,42 @@ KEEP_LOGS = 30
 # really ships voice/text for is still to be checked against the dump.
 GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22, 'tr': 19, 'ru': 8}
 
+_LANGUAGE_PREFIX = {'pt': 'pt_BR', 'es': 'es_LA', 'fr': 'fr_CA', 'tr': 'tr', 'ru': 'ru'}
+
+
+def system_game_language(environ=None):
+    """The game language that follows the system one: LC_ALL, LC_MESSAGES, LANG, then the Python
+    locale and, on Windows, the user's default locale name. pt (also pt_PT) is pt_BR, es is es_LA,
+    fr is fr_CA, tr and ru stay, anything else is English."""
+    environ = os.environ if environ is None else environ
+    code = ''
+    for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
+        if environ.get(name):
+            code = environ[name]
+            break
+    if not code:
+        try:
+            import locale
+            code = locale.getlocale()[0] or ''
+        except Exception:
+            code = ''
+    if not code and os.name == 'nt':
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(85)
+            if ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85):
+                code = buf.value
+        except Exception:
+            code = ''
+    return _LANGUAGE_PREFIX.get(re.split(r'[_\-.@]', code.strip().lower())[0], 'en')
+
+
+def resolve_game_language(settings, environ=None):
+    """settings['game_language'] when it is one of GAME_LANGUAGES; 'auto' (or anything unknown) follows the system."""
+    choice = settings.get('game_language', 'auto')
+    return choice if choice in GAME_LANGUAGES else system_game_language(environ)
+
+
 # TLG core defaults (the reasons are in each comment; still to be validated on this game).
 DEFAULT_ENV = {
     'ISS_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
@@ -67,7 +103,7 @@ MODULES = ['libc.prx', 'libSceFios2.prx']
 DEFAULT_SETTINGS = {
     # Source tree: the merged game view (base 1.00 + update 1.07). Package: the player picks it.
     'game_dir': '' if FROZEN else str(REPO_DIR / 'game' / 'CUSA00223'),
-    'game_language': 'pt_BR',
+    'game_language': 'auto',       # auto (system language) | a key of GAME_LANGUAGES
     'ui_language': 'auto',         # auto | pt_BR | en_US
     'show_fps': False,
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
@@ -504,7 +540,7 @@ def build_env(settings, extra=None):
     env['ISS_STICK_DEADZONE'] = os.environ.get('ISS_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
     for name, value in padsettings.environment(settings).items():   # mouse touchpad mode, TLG_KEY_MAP
         env.setdefault(name, value)
-    env['ISS_LANGUAGE'] = os.environ.get('ISS_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
+    env['ISS_LANGUAGE'] = os.environ.get('ISS_LANGUAGE', str(GAME_LANGUAGES[resolve_game_language(settings)]))
     if settings.get('ui_language', 'auto') != 'auto':
         env['ISS_UI_LANG'] = settings['ui_language']
     env['ISS_CONFIG'] = str(user_dir() / 'tlg.ini')

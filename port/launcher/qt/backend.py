@@ -113,6 +113,7 @@ class Backend(QObject):
     def __init__(self, settings=None, translator=None, probes=None):
         """probes: optional dict of callables replacing the slow/hardware ones (tests, screenshots)."""
         super().__init__()
+        self.langChanged.connect(self.gameLanguageChanged)   # 'Automatic: <name>' follows the interface language
         self.settings = tlg_run.load_settings() if settings is None else settings
         self.t_ = translator or logic.Translator(self.settings)
         self.probes = probes or {}
@@ -421,18 +422,27 @@ class Backend(QObject):
         self.setFix(self._occlusion_item().id, value)
 
     # -- game language (voice and text; the interface language above is separate) ---------------
-    @Property('QVariantList', constant=True)
+    @Property('QVariantList', notify=langChanged)
     def gameLanguageOptions(self):
-        """The six languages of the game, in the order of infamous_run.GAME_LANGUAGES."""
-        return [{'value': k, 'label': logic.GAME_LANGUAGE_NAMES.get(k, k)} for k in tlg_run.GAME_LANGUAGES]
+        """'Automatic' first, then the six languages in the order of infamous_run.GAME_LANGUAGES."""
+        return [{'value': 'auto', 'label': self.t_('game_language_auto')}] + [
+            {'value': k, 'label': logic.GAME_LANGUAGE_NAMES.get(k, k)} for k in tlg_run.GAME_LANGUAGES]
 
     @Property(int, notify=gameLanguageChanged)
     def gameLanguageIndex(self):
-        return next((n for n, k in enumerate(tlg_run.GAME_LANGUAGES) if k == self.settings.get('game_language')), 0)
+        keys = ['auto'] + list(tlg_run.GAME_LANGUAGES)
+        return keys.index(self.settings.get('game_language')) if self.settings.get('game_language') in keys else 0
+
+    @Property(str, notify=gameLanguageChanged)
+    def gameLanguageNow(self):
+        """'Automatic: Português (Brasil)' while 'auto' is active, else empty."""
+        if self.settings.get('game_language', 'auto') in tlg_run.GAME_LANGUAGES:
+            return ''
+        return self.t_('game_language_now', name=logic.GAME_LANGUAGE_NAMES[tlg_run.resolve_game_language(self.settings)])
 
     @Slot(str)
     def setGameLanguage(self, key):
-        if key not in tlg_run.GAME_LANGUAGES:
+        if key != 'auto' and key not in tlg_run.GAME_LANGUAGES:
             return
         self.settings['game_language'] = key   # build_env reads it at the next start (ISS_LANGUAGE)
         tlg_run.save_settings(self.settings)

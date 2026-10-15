@@ -249,26 +249,37 @@ class BackendTests(unittest.TestCase):
         backend.setOcclusion('3')
         self.assertEqual(3, backend.occlusionIndex)
 
-    def test_game_language_list_comes_from_game_languages_in_order(self):
+    def test_game_language_list_is_auto_then_game_languages_in_order(self):
         backend, _ = self.make()
-        self.assertEqual(list(logic.tlg_run.GAME_LANGUAGES), [o['value'] for o in backend.gameLanguageOptions])
-        self.assertEqual(6, len(backend.gameLanguageOptions))
+        self.assertEqual(['auto'] + list(logic.tlg_run.GAME_LANGUAGES), [o['value'] for o in backend.gameLanguageOptions])
+        self.assertEqual(7, len(backend.gameLanguageOptions))
+        self.assertEqual('Automático (idioma do sistema)', backend.gameLanguageOptions[0]['label'])
         self.assertEqual(['English', 'Português (Brasil)', 'Español (Latinoamérica)', 'Français (Canada)',
-                          'Türkçe', 'Русский'], [o['label'] for o in backend.gameLanguageOptions])
+                          'Türkçe', 'Русский'], [o['label'] for o in backend.gameLanguageOptions[1:]])
         tk = (ROOT / 'launcher' / 'infamous_launcher.py').read_text(encoding='utf-8')
         for key, name in logic.GAME_LANGUAGE_NAMES.items():
             self.assertIn(f"'{key}': '{name}'", tk)
 
-    def test_game_language_shows_the_current_one_and_saves_the_key(self):
+    def test_game_language_default_is_auto_and_shows_what_applies(self):
+        self.assertEqual('auto', logic.tlg_run.DEFAULT_SETTINGS['game_language'])
+        backend, _ = self.make(game_language='auto')
+        self.assertEqual(0, backend.gameLanguageIndex)
+        with mock.patch.dict('os.environ', {'LC_ALL': 'fr_FR.UTF-8'}):
+            self.assertEqual('Automático: Français (Canada)', backend.gameLanguageNow)
+        backend, _ = self.make(game_language='ru')
+        self.assertEqual('', backend.gameLanguageNow)
+
+    def test_game_language_saves_the_key_and_auto(self):
         backend, _ = self.make()
-        self.assertEqual(1, backend.gameLanguageIndex)          # default pt_BR stays visible
         with mock.patch.object(logic.tlg_run, 'save_settings') as save:
             backend.setGameLanguage('ru')
             self.assertEqual('ru', save.call_args[0][0]['game_language'])
-            self.assertEqual(5, backend.gameLanguageIndex)
+            self.assertEqual(6, backend.gameLanguageIndex)
             backend.setGameLanguage('xx')                        # unknown keys are ignored
             self.assertEqual(1, save.call_count)
-        self.assertEqual('ru', backend.settings['game_language'])
+            backend.setGameLanguage('auto')
+            self.assertEqual('auto', save.call_args[0][0]['game_language'])
+            self.assertEqual(0, backend.gameLanguageIndex)
 
     def test_build_env_passes_the_chosen_game_language(self):
         for key, number in (('en', '1'), ('pt_BR', '17'), ('es_LA', '20'), ('fr_CA', '22'), ('tr', '19'), ('ru', '8')):

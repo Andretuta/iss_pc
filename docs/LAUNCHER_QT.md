@@ -18,7 +18,11 @@ Sem PySide6 o ponto de entrada imprime como instalar e sai. As fontes (Big Shoul
 
 ## Idioma do jogo (Início)
 
-Seletor "Idioma do jogo / Game language" no canto do herói, sob **Escolher a pasta do jogo**, com as 6 línguas de `infamous_run.GAME_LANGUAGES` (English, Português (Brasil), Español (Latinoamérica), Français (Canada), Türkçe, Русский) e a atual marcada (padrão `pt_BR`). Escolher grava `settings['game_language']` por `save_settings`, o mesmo caminho do launcher Tk, e `build_env` o converte em `ISS_LANGUAGE` (en=1, pt_BR=17, es_LA=20, fr_CA=22, tr=19, ru=8) na próxima partida. A linha de ajuda diz isso e que só funciona se os arquivos do jogo tiverem o idioma. É separado da língua da interface (botões PT-BR / EN-US). Código: `Backend.gameLanguageOptions/gameLanguageIndex/setGameLanguage`.
+Seletor "Idioma do jogo / Game language" no canto do herói, sob **Escolher a pasta do jogo**. A primeira opção é **Automático (idioma do sistema)**, o novo padrão (`settings['game_language'] = 'auto'`); depois vêm as 6 línguas de `infamous_run.GAME_LANGUAGES` (English, Português (Brasil), Español (Latinoamérica), Français (Canada), Türkçe, Русский). Com "auto" ativo aparece embaixo "Automático: <idioma que vale>".
+
+`infamous_run.system_game_language()` lê `LC_ALL`, `LC_MESSAGES`, `LANG`, depois `locale.getlocale()` e, no Windows, `GetUserDefaultLocaleName`; pelo prefixo: pt (inclui pt_PT) vira `pt_BR`, es `es_LA`, fr `fr_CA`, tr `tr`, ru `ru`, o resto `en`. `resolve_game_language()` devolve a escolha explícita, ou o idioma do sistema para `auto` e valores inválidos. `build_env` usa essa função (`ISS_LANGUAGE` do ambiente continua ganhando): en=1, pt_BR=17, es_LA=20, fr_CA=22, tr=19, ru=8. Quem já tinha `pt_BR` (ou outro) gravado mantém. O launcher Tk usa a mesma caixa e a mesma função.
+
+Escolher grava a chave por `save_settings` e vale na próxima partida; a ajuda diz isso e que só funciona se os arquivos do jogo tiverem o idioma. É separado da língua da interface (PT-BR / EN-US). Código: `Backend.gameLanguageOptions/gameLanguageIndex/gameLanguageNow/setGameLanguage`.
 
 ## O que a tela Início lê
 
