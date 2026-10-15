@@ -384,5 +384,20 @@
   "err_zip_invalid": {"en": "That file is not a valid .zip ({detail}).", "pt": "Esse arquivo não é um .zip válido ({detail})."},
   "err_zip_unsafe": {"en": "The .zip has an unsafe path (\"{detail}\") and was refused entirely.", "pt": "O .zip tem um caminho perigoso (\"{detail}\") e foi recusado por inteiro."},
   "err_zip_too_big": {"en": "The .zip is too big to be a saves package ({detail}).", "pt": "O .zip é grande demais para ser um pacote de saves ({detail})."},
-  "err_zip_empty": {"en": "There are no inFAMOUS saves in {detail} (expected: savedata/<user>/CUSA00223/…).", "pt": "Não há saves do inFAMOUS dentro de {detail} (esperado: savedata/<usuário>/CUSA00223/…)."}
+  "err_zip_empty": {"en": "There are no inFAMOUS saves in {detail} (expected: savedata/<user>/CUSA00223/…).", "pt": "Não há saves do inFAMOUS dentro de {detail} (esperado: savedata/<usuário>/CUSA00223/…)."},
+  "nav_guides": {"en": "Controller guides", "pt": "Guias de controle"},
+  "guides_title": {"en": "Controller guides", "pt": "Guias de controle"},
+  "guides_intro": {"en": "Your controller has no gyroscope or touchpad: the port simulates both with buttons. Pick your controller to see which button does what.", "pt": "Seu controle não tem giroscópio nem touchpad: o port simula os dois com botões. Escolha o seu controle para ver quais botões fazem o quê."},
+  "guides_kb": {"en": "Keyboard and mouse: see the \"Motion sensor and touchpad\" section of the README.", "pt": "Teclado e mouse: veja a seção \"Sensor de movimento e touchpad\" do README."},
+  "guides_kb_open": {"en": "Open the README", "pt": "Abrir o README"},
+  "guides_detected": {"en": "Detected controller: {name}", "pt": "Controle detectado: {name}"},
+  "guides_save": {"en": "Save image…", "pt": "Salvar imagem…"},
+  "guides_copy": {"en": "Copy image", "pt": "Copiar imagem"},
+  "guides_open": {"en": "Open the images folder", "pt": "Abrir pasta das imagens"},
+  "guides_fit": {"en": "Fit to window", "pt": "Ajustar à janela"},
+  "guides_missing": {"en": "Images not included in this package.", "pt": "Imagens não incluídas neste pacote."},
+  "guides_copied": {"en": "Image copied: just paste it into Discord.", "pt": "Imagem copiada: é só colar no Discord."},
+  "guides_saved": {"en": "Image saved to {path}.", "pt": "Imagem salva em {path}."},
+  "guides_failed": {"en": "Could not save/copy the image ({detail}).", "pt": "Não foi possível salvar/copiar a imagem ({detail})."},
+  "guides_save_title": {"en": "Save the guide image", "pt": "Salvar imagem do guia"}
 }

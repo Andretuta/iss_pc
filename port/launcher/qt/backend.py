@@ -106,6 +106,7 @@ class Backend(QObject):
     lineReceived = Signal(str)
     finished = Signal(int)
     message = Signal(str)
+    guideChanged = Signal()
     scrollRequested = Signal(int)   # used by the screenshot tool
 
     def __init__(self, settings=None, translator=None, probes=None):
@@ -124,6 +125,7 @@ class Backend(QObject):
         self._news = []
         self._save = None
         self._message = ''
+        self._guide_kind, self._guide_message = None, ''
         self.process = None
         self.fixes = FixesModel(self)
         self.gpuFound.connect(self._on_gpu)
@@ -212,6 +214,7 @@ class Backend(QObject):
         self.settings['ui_language'] = lang
         tlg_run.save_settings(self.settings)
         self.langChanged.emit()
+        self.guideChanged.emit()
         self.fixes.refresh_all()
         self.refresh()
         if hasattr(self, 'saves'):
@@ -415,6 +418,83 @@ class Backend(QObject):
     @Slot(str)
     def setOcclusion(self, value):
         self.setFix(self._occlusion_item().id, value)
+
+    # -- controller guides ----------------------------------------------------------------------
+    @Property('QVariantList', constant=True)
+    def guideKinds(self):
+        return [{'key': k, 'label': label} for k, label in logic.GUIDE_KINDS]
+
+    @Property(str, notify=guideChanged)
+    def guideKind(self):
+        if self._guide_kind is None:   # preselect the detected controller; Xbox when unknown
+            self._guide_kind = logic.guide_kind(self._pad)
+        return self._guide_kind
+
+    @Property(str, notify=guideChanged)
+    def guideDetected(self):
+        return self.t_('guides_detected', name=self._pad) if self._pad else ''
+
+    def _guide_file(self):
+        return logic.guide_path(self.guideKind, self.t_.pt(), self.probes.get('guide_dir'))
+
+    @Property(str, notify=guideChanged)
+    def guideSource(self):
+        path = self._guide_file()
+        return QUrl.fromLocalFile(str(path)).toString() if path else ''
+
+    @Property(str, notify=guideChanged)
+    def guideMessage(self):
+        return self._guide_message
+
+    @Slot(str)
+    def setGuideKind(self, kind):
+        self._guide_kind, self._guide_message = kind, ''
+        self.guideChanged.emit()
+
+    def _guide_say(self, text):
+        self._guide_message = text
+        self.guideChanged.emit()
+
+    @Slot(str)
+    def saveGuide(self, url):
+        path, target = self._guide_file(), QUrl(url).toLocalFile() if url.startswith('file:') else url
+        if not path or not target:
+            return
+        if not target.lower().endswith('.png'):
+            target += '.png'
+        try:
+            import shutil
+            shutil.copyfile(path, target)
+        except OSError as error:
+            self._guide_say(self.t_('guides_failed', detail=str(error)))
+            return
+        self._guide_say(self.t_('guides_saved', path=target))
+
+    @Slot()
+    def copyGuide(self):
+        path = self._guide_file()
+        if not path:
+            return
+        from PySide6.QtGui import QGuiApplication, QImage
+        image = QImage(str(path))
+        app = QGuiApplication.instance()
+        if image.isNull() or app is None:
+            self._guide_say(self.t_('guides_failed', detail=str(path)))
+            return
+        app.clipboard().setImage(image)
+        self._guide_say(self.t_('guides_copied'))
+
+    @Slot()
+    def openGuidesFolder(self):
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.probes.get('guide_dir') or logic.GUIDE_DIR)))
+
+    @Slot()
+    def openReadme(self):
+        from PySide6.QtGui import QDesktopServices
+        readme = tlg_run.REPO_DIR / 'README.md'
+        if readme.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(readme)))
 
     @Slot(str, str)
     def setFix(self, item_id, value):

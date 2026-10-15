@@ -159,7 +159,7 @@ def detect_gpu(timeout=6):
 
 
 _PAD_WORDS = (('DualSense', 'DualSense'), ('Wireless Controller', 'DualShock 4'), ('Xbox', 'Xbox'),
-              ('Pro Controller', 'Switch Pro'), ('Controller', None), ('Gamepad', None))
+              ('Pro Controller', 'Switch Pro'), ('8BitDo', '8BitDo'), ('Controller', None), ('Gamepad', None))
 
 
 def detect_pad(devices_text=None):
@@ -315,3 +315,25 @@ def last_save_title(savedata_dir, limit=200):
     if newest is None:
         return None
     return savemanager.display_title(savemanager.read_param(newest.read_bytes())) or None
+
+
+# -------------------------------------------------------------------------- controller guides
+GUIDE_DIR = HERE / 'assets' / 'controller_guides'
+GUIDE_KINDS = (('xbox', 'Xbox'), ('switch', 'Nintendo Switch Pro'), ('8bitdo', '8BitDo'))
+
+
+def guide_kind(pad_name):
+    """Which guide fits a detected controller name ('xbox' when unknown)."""
+    low = (pad_name or '').lower()
+    if '8bitdo' in low:
+        return '8bitdo'
+    if 'switch' in low or 'nintendo' in low or 'pro controller' in low:
+        return 'switch'
+    return 'xbox'
+
+
+def guide_path(kind, portuguese, folder=None):
+    """The guide image of a controller in the launcher's language; None when the file is absent
+    (the screen then says the images are not included; they can be swapped for other files)."""
+    path = Path(folder or GUIDE_DIR) / f"inFAMOUS-controle-{kind}-{'pt-BR' if portuguese else 'en-US'}.png"
+    return path if path.is_file() else None

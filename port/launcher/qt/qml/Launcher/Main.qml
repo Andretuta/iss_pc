@@ -8,7 +8,7 @@ Rectangle {
     implicitWidth: 1120
     implicitHeight: 700
     property int current: 0
-    readonly property var pages: ["play", "graphics", "controls", "fixes", "saves", "support", "updates"]
+    readonly property var pages: ["play", "graphics", "controls", "fixes", "saves", "guides", "support", "updates"]
     property bool animate: true
 
     Rail {
@@ -34,7 +34,10 @@ Rectangle {
                 Behavior on y { enabled: root.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 Loader {
                     anchors.fill: parent
-                    sourceComponent: index === 0 ? home : index === 1 ? graphics : index === 2 ? controls : index === 3 ? fixes : index === 4 ? saves : index === 5 ? support : index === 6 ? updates : soon
+                    sourceComponent: { var k = root.pages[index]
+                        return k === "play" ? home : k === "graphics" ? graphics : k === "controls" ? controls
+                             : k === "fixes" ? fixes : k === "saves" ? saves : k === "guides" ? guides
+                             : k === "support" ? support : k === "updates" ? updates : soon }
                     onLoaded: if (item.key !== undefined) item.key = root.pages[index]
                 }
             }
@@ -49,5 +52,6 @@ Rectangle {
     Component { id: saves; SavesPage { } }
     Component { id: support; SupportPage { } }
     Component { id: updates; UpdatesPage { } }
+    Component { id: guides; GuidesPage { } }
     Component { id: soon; SoonPage { } }
 }

@@ -240,7 +240,7 @@ def support_shots(app, backend, out):
         support.setStep(0)
         support.selectLog(0)
         wait()
-        app.go(5)
+        app.go(6)
         app.grab(out / f'suporte-{lang}.png')
         support.scrollRequested.emit(900)
         app.grab(out / f'suporte-{lang}-passo1.png')
@@ -256,14 +256,14 @@ def support_shots(app, backend, out):
         support.dismissMessage()
         support.setStep(0)
         support.setDescription('')
-        app.go(6)
+        app.go(7)
         app.grab(out / f'atualizacoes-{lang}-antes.png')
         updates.check()
         wait()
         app.grab(out / f'atualizacoes-{lang}-nova.png')
         app.go(0)
         app.grab(out / f'inicio-{lang}-ponto.png')
-        app.go(6)
+        app.go(7)
     updates.probes['version'] = lambda: 'v2026.10.15-61e8942'
     updates.changed.emit()
     app.grab(out / 'atualizacoes-en-atual.png')
@@ -282,7 +282,7 @@ def main(out):
     out.mkdir(parents=True, exist_ok=True)
     backend = demo_backend(with_art='--art' in sys.argv)
     app = App(backend=backend)
-    names = ['inicio', 'graficos', 'controles', 'correcoes', 'saves', 'suporte', 'atualizacoes']
+    names = ['inicio', 'graficos', 'controles', 'correcoes', 'saves', 'guias', 'suporte', 'atualizacoes']
     app.window.setProperty('animate', False)
     prefix = 'art-' if '--art' in sys.argv else ''
     for index, name in enumerate(names):
@@ -304,6 +304,16 @@ def main(out):
         screens_a_shots(app, backend, out)
         saves_shots(app, backend, out)
         support_shots(app, backend, out)
+        for lang, code in (('pt', 'pt_BR'), ('en', 'en_US')):
+            backend.setLang(code)
+            for kind in ('xbox', 'switch'):
+                backend.setGuideKind(kind)
+                app.go(5)
+                app.grab(out / f'guias-{kind}-{lang}.png')
+        backend.setGuideKind('8bitdo')
+        backend.probes['guide_dir'] = sandbox / 'no-images'
+        backend.guideChanged.emit()
+        app.grab(out / 'guias-sem-imagens.png')
     print('ok', out)
 
 
