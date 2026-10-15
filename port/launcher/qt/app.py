@@ -12,6 +12,8 @@ from PySide6.QtQuick import QQuickImageProvider
 
 from . import logic
 from .backend import Backend
+from .controls import Controls
+from .graphics import Graphics
 
 HERE = Path(__file__).resolve().parent
 QML_ROOT = HERE / 'qml'
@@ -94,11 +96,15 @@ class App:
         icon = HERE.parent / 'infamous.png'
         if icon.is_file():
             self.qt.setWindowIcon(QIcon(str(icon)))
+        self.graphics = Graphics(self.backend, self.backend.probes.get('graphics'))
+        self.controls = Controls(self.backend)
         self.engine = QQmlApplicationEngine()
         self.engine.addImageProvider('hero', HeroProvider())
         self.engine.addImportPath(str(QML_ROOT))
         self.engine.rootContext().setContextProperty('Backend', self.backend)
         self.engine.rootContext().setContextProperty('Saves', self.backend.saves)
+        self.engine.rootContext().setContextProperty('Graphics', self.graphics)
+        self.engine.rootContext().setContextProperty('PadControls', self.controls)
         self.engine.loadFromModule('Launcher', 'Window')
         if not self.engine.rootObjects():
             raise RuntimeError('the QML interface did not load (see the messages above)')
@@ -118,6 +124,7 @@ class App:
 
     def run(self):
         self.backend.start_probes()
+        self.graphics.start()
         code = self.qt.exec()
         self.backend.shutdown()
         return code

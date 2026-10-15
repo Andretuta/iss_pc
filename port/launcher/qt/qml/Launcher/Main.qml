@@ -34,13 +34,17 @@ Rectangle {
                 Behavior on y { enabled: root.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 Loader {
                     anchors.fill: parent
-                    sourceComponent: index === 0 ? home : index === 3 ? fixes : index === 4 ? saves : soon
-                    onLoaded: if (index !== 0 && index !== 3 && index !== 4) item.key = root.pages[index]
+                    sourceComponent: index === 0 ? home : index === 1 ? graphics : index === 2 ? controls : index === 3 ? fixes : index === 4 ? saves : soon
+                    onLoaded: if (item.key !== undefined) item.key = root.pages[index]
                 }
             }
         }
     }
     Component { id: home; HomePage { animate: root.animate; onOpenFixes: root.current = 3; onOpenSaves: root.current = 4 } }
+    Component { id: graphics; GraphicsPage { } }
+    Component { id: controls
+        ControlsPage { guidesShown: root.pages.indexOf("guides") >= 0
+                       onOpenGuides: root.current = root.pages.indexOf("guides") } }
     Component { id: fixes; FixesPage { } }
     Component { id: saves; SavesPage { } }
     Component { id: soon; SoonPage { } }

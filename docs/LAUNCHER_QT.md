@@ -1,6 +1,6 @@
 # Novo launcher (Qt Quick) - fase 1
 
-O novo launcher usa Qt Quick (PySide6) e segue a maquete aprovada: trilho de navegação à esquerda, tela **Início** com o botão **Jogar** e as telas **Correções** (BP01-BP12 e chaves A/B). Gráficos, Controles, Suporte e Atualizações aparecem como "Em breve". O launcher Tk (`infamous_launcher.py`) continua sendo o padrão e funciona como antes.
+O novo launcher usa Qt Quick (PySide6) e segue a maquete aprovada: trilho de navegação à esquerda, tela **Início** com o botão **Jogar** e as telas **Correções** (BP01-BP12 e chaves A/B). **Gráficos** e **Controles** estão descritos abaixo; Suporte e Atualizações aparecem como "Em breve". O launcher Tk (`infamous_launcher.py`) continua sendo o padrão e funciona como antes.
 
 Ele **não reimplementa nada**: usa `infamous_run.py` (`prepare`, `launch`, `build_env`, `save_experimental`), `backports_table.py`, `shader_cache.py` e `tlg_vulkan.py`. O mesmo `settings.json` e o mesmo `tlg.ini` valem nos dois launchers.
 
@@ -58,11 +58,29 @@ O mesmo valor vai para `--user`, `ISS_CONFIG` (`tlg.ini`), `TLG_GPU_USER_DIR`/ca
 
 Formato do `param.bin` lido: `title[128]`, `subtitle[128]`, `detail[1024]`, tempo de 64 bits em `0x508` (também lê PSF `param.sfo`).
 
+## Gráficos
+
+Entrada **Gráficos** (azul `#4d8bff`). Reúne, sem chave nova, o que o launcher Tk (caixa Vídeo) e as abas Imagem/Desempenho/Overlay do menu Insert já tinham. Lê e grava pelo mesmo caminho das outras telas: `settings.json` (modo de janela, VSync, mostrar FPS, precisão da GPU 0/1/2, leitura antecipada, escrita sem esperar, orçamento de VRAM) e `tlg.ini` via `Backend.setFix` (a mesma tabela de `backports_table.py` da tela Correções: FSR 1, nitidez RCAS e intensidade, limite de FPS, quadros na fila, compilação assíncrona, leituras adiadas/atrasadas, pipelines em segundo plano, itens do overlay). Cada opção tem a etiqueta **no jogo** (muda também pelo Insert, na hora) ou **reinicia o jogo**.
+
+- **Predefinições** (`qt/gfxlogic.py`, só mexem em VSync, limite de FPS, quadros na fila, FSR 1, RCAS, compilação assíncrona, leituras adiadas/atrasadas e pipelines em segundo plano; modo de janela, VRAM, precisão da GPU e overlay ficam como estão): **Desempenho** (VSync desligado, 2 quadros na fila, FSR 1), **Equilibrado** (tudo no padrão da tabela; é o "voltar ao padrão" dessas chaves), **Qualidade** (FSR 1, shaders compilados antes de desenhar, leituras em dia), **Fiel ao PS4** (30 FPS, sem FSR nem nitidez, nada adiado). A tela diz qual predefinição vale agora ou "personalizada".
+- **VRAM:** "Sua GPU (nome) tem X GB de VRAM. Orçamento sugerido: N MB", lido numa thread por `nvidia-smi`, depois `/sys/class/drm/card*/device/mem_info_vram_total` (amdgpu) e por fim os heaps `DEVICE_LOCAL` do `vulkaninfo`. A regra é a do Tk (6 GB: 3500, 8: 5000, 12: 8500, 16: 12000, 24: 19000; entre os pontos, interpolação), com botão "Usar N MB" e aviso quando o orçamento passa de 90% da placa. Sem leitura, mostra o texto da regra do Tk.
+- **Cache de shaders:** tamanho (`shader_cache_size`) e **Limpar cache** (`clear_shader_cache`) com confirmação, desativado com o jogo aberto; os textos são os do Tk.
+- **Não incluído:** resolução de saída, upscaler temporal (FSR 3/4, TAA, DLSS) e resolução de renderização não existem no inFAMOUS (o menu do jogo só tem FSR 1 e RCAS; ver o comentário em `tlg_overlay.cpp`), então não há controle para eles.
+
+## Controles
+
+Entrada **Controles** (néon `#ff3d9a`). Lógica e nomes de tecla em `launcher/padsettings.py`, conferidos com o código do jogo (`port/src/runtime_pad.c`, `port/gpu/shim/tlg_settings.cpp`) por `test_qt_screens_a.py`.
+
+- **Controle:** nome e tipo detectados (o mesmo detector do chip do Início), zona morta dos analógicos (0-40%, `stick_deadzone`, reinicia) e velocidade da mira do grafite (`sensor_aim`, no jogo). Texto curto sobre sensor/touchpad e botão para a tela **Guias de controle** (só aparece se essa tela existir).
+- **Mouse:** `mouse_enabled`, `mouse_sensitivity`, `mouse_invert_y`, `mouse_smoothing`, `mouse_accel`, `mouse_deadzone` no `tlg.ini` (a chave sai quando volta ao padrão) e o botão **Desligar o mouse** (`mouse_enabled=0`, o mesmo que `TLG_MOUSE=0`). Modo touchpad do mouse: `settings.json` (`mouse_pad`, `mouse_pad_key`, `mouse_pad_mode`, `mouse_pad_sens`, `mouse_pad_drag`) virando `ISS_MOUSE_PAD`, `ISS_MOUSE_PAD_KEY` (Ctrl esquerdo ou X1 por padrão), `ISS_MOUSE_PAD_MODE` (`hold`/`toggle`), `ISS_MOUSE_PAD_SENS` e `ISS_MOUSE_PAD_DRAG` em `build_env`, só quando diferem do padrão. O código do mouse está em `feat/mouse-camera`; sem ele no jogo, as chaves são gravadas e ignoradas.
+- **Teclado:** tabela do mapa padrão (lida do `key_map` de `runtime_pad.c`; um teste compara) e o campo avançado do `TLG_KEY_MAP` (`botão=tecla`, vírgulas, `|` para várias fontes, `none`, até 1023 caracteres e 8 fontes por botão; botões e nomes de mouse como em `apply_button_map`). Erros de formato bloqueiam o botão Salvar; nome de tecla que a lista do launcher não conhece é só aviso (quem decide é o SDL no jogo). O valor vai em `settings.json` (`key_map`) e sai como `ISS_KEY_MAP`; um `TLG_KEY_MAP`/`ISS_KEY_MAP` do sistema vale mais.
+
 ## Estrutura
 
 - `qt/qml/Launcher/Theme.qml`: todas as cores, tamanhos e ícones (um lugar só).
 - `qt/logic.py`: lógica sem Qt (textos, chips, novidades, save, grupos de correções); coberta por `port/tests/test_qt_launcher.py`.
 - `qt/backend.py`: o objeto que o QML usa (`Backend`).
+- `qt/graphics.py`, `qt/controls.py`, `qt/gfxlogic.py`, `launcher/padsettings.py`, `qt/rowsmodel.py`: telas Gráficos e Controles (controladores, lógica sem Qt, modelo de linhas); componentes `OptionRow`, `LevelSlider`, `SectionTitle` e `NoteBar` em `qml/Launcher/`.
 - `qt/i18n/strings.json`: textos novos em pt-BR e en-US; textos que o Tk já tem (`exp_live`, `exp_recommended`...) são reaproveitados de `infamous_launcher.TEXT`.
 
 ## Capturas sem abrir o jogo
