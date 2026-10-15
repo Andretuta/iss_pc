@@ -507,8 +507,22 @@ void Runtime::CopyMip(VideoCore::Image* src, VideoCore::Image* dst, u32 mip, u32
     ASSERT(mip_block_h == (src->info.size.height >> src_dim));
     ASSERT(mip_block_p == (src->info.pitch >> src_dim));
 
-    const auto [src_layers, dst_layers] =
-        SanitizeCopyLayers(src->info, dst->info, src->info.size.depth, "CopyMip");
+    // tlg: the source is one subresource (usually a single layer) going into layer `slice` of
+    // a larger image: the copy covers the source's layers, not the destination's whole array.
+    // SanitizeCopyLayers compares whole-image layer counts (1 against 256 in inFAMOUS, logged
+    // hundreds of times per session) and its minimum happened to be the right count; take it
+    // directly and keep the copy inside the destination array.
+    u32 src_layers, dst_layers;
+    if (ConvertImageType(src->info.type) == ConvertImageType(dst->info.type) &&
+        ConvertImageType(dst->info.type) != vk::ImageType::e3D) {
+        const u32 dst_available = dst->info.resources.layers > slice
+                                      ? dst->info.resources.layers - slice
+                                      : 1u;
+        src_layers = dst_layers = std::min(src->info.resources.layers, dst_available);
+    } else {
+        std::tie(src_layers, dst_layers) =
+            SanitizeCopyLayers(src->info, dst->info, src->info.size.depth, "CopyMip");
+    }
 
     const vk::ImageCopy image_copy{
         .srcSubresource{
