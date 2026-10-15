@@ -105,6 +105,9 @@ TEXT = {
     'exp_shader': ('the first game after changing it recompiles the shaders (may flicker or look green for a while)', 'a primeira partida depois de mudar recompila os shaders (pode piscar ou ficar verde por um tempo)'),
     'exp_source': ('source: {source}', 'origem: {source}'),
     'exp_default': ('default', 'padrão'),
+    'occlusion': ('Light glare (occlusion)', 'Brilho das luzes (oclusão)'),
+    'occlusion_hint': ('How much of a light the game counts as visible. 3 (recommended) keeps the headlight glow from showing through characters; 0 is the old behaviour. Applies on the next start.',
+                       'Quanto de uma luz o jogo conta como visível. 3 (recomendado) evita o brilho dos faróis aparecer por cima dos personagens; 0 é o comportamento antigo. Vale na próxima partida.'),
     'exp_auto': ('Automatic', 'Automático'),
     'exp_on': ('On', 'Ligado'),
     'exp_off': ('Off', 'Desligado'),
@@ -265,6 +268,22 @@ class Launcher:
         spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
         spin.bind('<FocusOut>', lambda _: self.changed())
         ttk.Label(video, text=self.t('vram_hint'), foreground='#777', wraplength=360).grid(row=4, column=0, columnspan=2, sticky='w')
+
+        self.exp_states = tlg_run.experimental_states(self.settings)
+        occ_item = next(i for i in backports_table.ITEMS if i.key == 'occlusion_mode')
+        occ_box = ttk.LabelFrame(middle, text=self.t('occlusion'), padding=8)
+        occ_box.grid(sticky='ew', pady=(8, 0))
+        occ_box.columnconfigure(0, weight=1)
+        occ_options = [(v, (pt if self.pt() else en) + (f' ({self.t("exp_default")})' if v == occ_item.default else ''))
+                       for v, en, pt in occ_item.choices]
+        occ_value = backports_table.effective(occ_item, self.exp_states)
+        occ_combo = ttk.Combobox(occ_box, values=[o[1] for o in occ_options], state='readonly')
+        occ_combo.current(next((i for i, o in enumerate(occ_options) if o[0] == occ_value), 0))
+        occ_combo.grid(row=0, column=0, sticky='ew')
+        occ_combo.bind('<<ComboboxSelected>>',
+                       lambda _, o=occ_options, b=occ_combo, i=occ_item: self.exp_set(i, o[b.current()][0]))
+        ttk.Label(occ_box, text=self.t('occlusion_hint'), foreground='#777', wraplength=360,
+                  justify='left').grid(row=1, column=0, sticky='w', pady=(6, 0))
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
         log_frame.grid(row=2, column=2, sticky='nsew', **pad)

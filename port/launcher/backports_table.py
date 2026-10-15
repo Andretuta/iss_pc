@@ -47,6 +47,10 @@ def _ab(key, env, default, shader, live, name, what, store='ini', pass_env=True,
                  name, what, shader=shader, live=live, store=store, pass_env=pass_env, broken=broken)
 
 
+def _ab_choice(key, env, default, choices, name, what, **kw):
+    return _make(env, 'ab', key, env, 'choice', default, name, what, choices=choices, pass_env=True, **kw)
+
+
 def _menu(tab, key, vtype, default, name, what, **kw):
     return _make('menu:' + key, 'menu', key, '', vtype, default, name, what, live=True, tab=tab, **kw)
 
@@ -208,6 +212,19 @@ DIAGNOSTICS = [
         ('Still crashes the game on the NVIDIA 595 driver; off by default in this port.',
          'Ainda derruba o jogo no driver NVIDIA 595; desligado por padrão neste port.'),
         broken=True),
+    _ab_choice('occlusion_mode', 'TLG_OCCLUSION_MODE', '3',
+               (('0', '0 · As before (fake counter, glare may show through)', '0 · Como antes (contador falso, o brilho pode atravessar)'),
+                ('1', '1 · Lights count as hidden', '1 · Luzes contam como tapadas'),
+                ('2', '2 · Lights count as fully visible', '2 · Luzes contam como totalmente visíveis'),
+                ('3', '3 · Zero counts (recommended)', '3 · Contagem zero (recomendado)')),
+               ('Occlusion query (diagnostic)', 'Consulta de oclusão (diagnóstico)'),
+               ('Test for the headlight glow that shows through characters and flickers: the counter the game '
+                'reads to know how much of a light is visible is a fake one. 1 = nothing visible, 2 = everything '
+                'visible, 3 = zero counts; 0 is the old behaviour; 3 is the default. Send the log and a screenshot of each mode.',
+                'Teste do brilho dos faróis que atravessa personagens e pisca: o contador que o jogo lê para saber '
+                'quanto de uma luz está visível é falso. 1 = nada visível, 2 = tudo visível, 3 = contagem zero; '
+                '0 é o comportamento antigo; 3 é o padrão. Mande o log e uma captura de cada modo.'),
+               source='diagnóstico (liverpool.cpp ZPASS_DONE)'),
 ]
 
 ITEMS = MENU + BACKPORTS + DIAGNOSTICS
