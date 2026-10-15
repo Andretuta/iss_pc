@@ -29,6 +29,35 @@ Sem PySide6 o ponto de entrada imprime como instalar e sai. As fontes (Big Shoul
 | Novidades | as 3 primeiras linhas de "Novidades" do `README.md` (ou texto fixo) |
 | Arte do herói | `sce_sys/pic1.png` do dump do jogador, lido em tempo de execução; sem ele, o gradiente de neon e chuva desenhado em `qt/app.py`. Nada da Sony vai para o repositório |
 
+## Saves e dados
+
+Entrada **Saves e dados** no trilho (destaque verde). O problema que resolve: com os dados em `<pasta do port>/user`, quem atualiza extraindo o zip em outra pasta (ou dentro da antiga, ou apagando a antiga) abre o jogo sem saves e acha que a atualização os apagou. A atualização nunca apaga nada (o zip não traz `user/`), mas os saves ficaram na pasta antiga.
+
+**Pasta de dados** (`infamous_run.user_dir()`, regras em `launcher/userdata.py`), nesta ordem:
+
+1. variável de ambiente `ISS_USER_DIR` (`TLG_USER_DIR` ainda vale);
+2. arquivo-ponteiro por usuário, **fora** da pasta do jogo: Windows `%APPDATA%\inFAMOUS-PC\launcher.json`, Linux `$XDG_CONFIG_HOME/infamous-pc/launcher.json` (chaves `user_dir`, `backup_extra_dir`, `backup_keep`);
+3. `<pasta do port>/user` (modo portátil, como sempre foi).
+
+O mesmo valor vai para `--user`, `ISS_CONFIG` (`tlg.ini`), `TLG_GPU_USER_DIR`/cache de shaders, backups e lista de saves, nos launchers Qt e Tk e em `run.py`. Sugestões estáveis: `Documentos\inFAMOUS-PC` (Windows) e `~/.local/share/infamous-pc` (Linux).
+
+**Mudar a pasta** copia, nunca move: se a antiga tem saves e a nova está vazia, o launcher pergunta "Copiar os saves e configurações para a nova pasta?" (saves, backups e `tlg.ini`; o cache de shaders é refeito). Confere espaço, copia para um nome temporário e renomeia; nada é apagado da pasta antiga. Com `ISS_USER_DIR` definida a escolha fica travada na tela.
+
+**Saves de outras instalações:** uma varredura limitada (profundidade, número de pastas e 8 s) em Downloads, Área de Trabalho, Documentos, home, `C:\Games`, `D:\`..., pastas irmãs e pais da atual, incluindo pasta-dentro-de-pasta (`infamous-windows-x86_64\infamous-windows-x86_64\user`). Mostra "Encontramos saves em ... Importar?" na tela e um aviso no Início quando a pasta atual não tem saves.
+
+**Lista de saves:** um cartão por slot (`infamousssAuto0/1`, `infamousssUser0..N`) com o título de `param.bin` (subtítulo: capítulo, karma, %), data, tamanho e a miniatura `icon0.png` do próprio save (lida na hora; nada é copiado para o repositório). Ações: exportar `.zip`, duplicar (para o próximo `infamousssUserN`), excluir. Barra superior: **Fazer backup agora** (todos os saves), importar `.zip`, exportar tudo.
+
+**Backups:** lista de `savedata_backups` (data, quantidade de saves, tamanho) com **Restaurar**; manter os últimos N (padrão 10) e **pasta extra de backup** (outro disco) que recebe uma cópia de cada backup. Um backup é feito antes de toda partida (pulado se nada mudou desde o último).
+
+**Segurança** (`launcher/savemanager.py`, testes em `test_savemanager.py`, `test_userdata.py`, `test_qt_saves.py`):
+
+- toda operação que pode substituir ou apagar um save passa por `guarded()`/`backup_now()`: o jogo não pode estar rodando (processo `tlg-probe`), o backup de segurança é feito antes (e copiado para a pasta extra); se o backup falhar, nada muda;
+- copiar para temporário e renomear; troca de slot com desfazer em caso de erro; restauração troca por renomeações;
+- `.zip` validado antes de escrever qualquer byte: estrutura `savedata/<usuario>/CUSA00223/<slot>[.sce_sys]/...` (até 2 pastas de embrulho), recusa total de `../`, caminho absoluto, `C:`, links e tamanhos absurdos (5000 arquivos / 1 GiB); nunca sobrescreve sem perguntar (a tela lista "novo" e "substitui seu ... por ...");
+- erros (permissão, disco cheio) viram mensagens claras em pt-BR/en-US; com o jogo aberto as ações que escrevem em `savedata` ficam desativadas.
+
+Formato do `param.bin` lido: `title[128]`, `subtitle[128]`, `detail[1024]`, tempo de 64 bits em `0x508` (também lê PSF `param.sfo`).
+
 ## Estrutura
 
 - `qt/qml/Launcher/Theme.qml`: todas as cores, tamanhos e ícones (um lugar só).
