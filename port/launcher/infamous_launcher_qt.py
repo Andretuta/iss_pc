@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""inFAMOUS Second Son launcher, Qt Quick edition (PySide6). Work in progress: the classic
-Tk launcher (infamous_launcher.py) is still the default. Same settings file, same game start
+"""inFAMOUS Second Son launcher, Qt Quick edition (PySide6). The default launcher of the packages; the classic
+Tk launcher (infamous_launcher.py) ships next to it as "<name> (classic)". Same settings file, same game start
 path (infamous_run.prepare/launch), same tlg.ini as the Tk launcher.
 
     python3 infamous_launcher_qt.py            # needs: pip install PySide6-Essentials
@@ -23,6 +23,9 @@ def main():
         sys.exit(tlg_run.main(args))
     if args[:1] == ['--play']:
         sys.exit(tlg_run.main(args[1:]))
+    if args[:1] == ['--selftest']:  # CI smoke test of the frozen launcher: opens offscreen, touches nothing
+        from qt import selftest
+        sys.exit(selftest.run())
     os.environ.setdefault('QT_QUICK_CONTROLS_STYLE', 'Basic')  # we style the controls ourselves
     try:
         from qt.app import App
