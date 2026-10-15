@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "video_core/amdgpu/tlg_amd_1d.h"
 #include "common/logging/log.h"
 #include "shader_recompiler/resource.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -172,7 +173,19 @@ ImageView::ImageView(const Vulkan::Instance& instance, const ImageViewInfo& info
                   magic_enum::enum_name(info.type), magic_enum::enum_name(image.info.type));
     }
 
+    const bool trace_1d = AmdGpu::ImgTrace() && (image_view_ci.viewType == vk::ImageViewType::e1D ||
+                                                 image_view_ci.viewType == vk::ImageViewType::e1DArray);
+    if (trace_1d) {
+        TLG_IMG_TRACE("create 1D view %s of image %p %s mips %u+%u layers %u+%u usage %s\n",
+                      vk::to_string(image_view_ci.viewType).c_str(), (void*)VkImage(image_view_ci.image),
+                      vk::to_string(image_view_ci.format).c_str(), info.range.base.level,
+                      info.range.extent.levels, info.range.base.layer, info.range.extent.layers,
+                      vk::to_string(usage_ci.usage).c_str());
+    }
     auto [view_result, view] = instance.GetDevice().createImageViewUnique(image_view_ci);
+    if (trace_1d) {
+        TLG_IMG_TRACE("created 1D view: %s\n", vk::to_string(view_result).c_str());
+    }
     ASSERT_MSG(view_result == vk::Result::eSuccess, "Failed to create image view: {}",
                vk::to_string(view_result));
     image_view = std::move(view);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "video_core/amdgpu/tlg_amd_1d.h"
 #include "tlg_toggles.h"
 #include <ranges>
 #include "common/assert.h"
@@ -160,6 +161,14 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
     }
 
     usage_flags = ImageUsageFlags(instance, info);
+    // tlg: TLG_1D_NO_STORAGE / TLG_1D_NO_MUTABLE (video_core/amdgpu/tlg_amd_1d.h).
+    const bool host_1d = !info.props.is_host_2d && ConvertImageType(info.type) == vk::ImageType::e1D;
+    if (host_1d && AmdGpu::img_1d_no_storage.load(std::memory_order_relaxed)) {
+        usage_flags &= ~vk::ImageUsageFlagBits::eStorage;
+    }
+    if (host_1d && AmdGpu::img_1d_no_mutable.load(std::memory_order_relaxed)) {
+        flags &= ~(vk::ImageCreateFlagBits::eMutableFormat | vk::ImageCreateFlagBits::eExtendedUsage);
+    }
     format_features = FormatFeatureFlags(usage_flags);
     if (info.props.is_depth) {
         aspect_mask = vk::ImageAspectFlagBits::eDepth;
@@ -222,7 +231,17 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
     backing = &backing_images.emplace_back();
     backing->num_samples = info.num_samples;
     backing->image = UniqueImage{instance.GetDevice(), instance.GetAllocator()};
+    if (host_1d) {
+        TLG_IMG_TRACE("create 1D image %ux%u layers %u mips %u %s flags %s usage %s at %#llx\n",
+                      info.size.width, info.size.height, u32(info.resources.layers),
+                      u32(info.resources.levels), vk::to_string(supported_format).c_str(),
+                      vk::to_string(flags).c_str(), vk::to_string(usage_flags).c_str(),
+                      (unsigned long long)info.guest_address);
+    }
     backing->image.Create(image_ci);
+    if (host_1d) {
+        TLG_IMG_TRACE("created 1D image %p\n", (void*)VkImage(backing->image.image));
+    }
 
     Vulkan::SetObjectName(instance.GetDevice(), GetImage(),
                           "Image {}x{}x{} {} {} {:#x}:{:#x} L:{} M:{} S:{}", info.size.width,

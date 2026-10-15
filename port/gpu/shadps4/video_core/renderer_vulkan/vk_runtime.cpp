@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "video_core/amdgpu/tlg_amd_1d.h"
 #include <boost/container/small_vector.hpp>
 #include "tlg_toggles.h"
 #include "video_core/buffer_cache/buffer.h"
@@ -243,10 +244,28 @@ void Runtime::UploadImage(VideoCore::Image* dst, const VideoCore::Buffer* src,
         FlushBarriers();
     }
 
+    const bool trace_1d = AmdGpu::ImgTrace() && !dst->info.props.is_host_2d &&
+                          dst->info.size.height == 1;
+    if (trace_1d) {
+        TLG_IMG_TRACE("upload to 1D image %p: %zu regions, first %ux%u mip %u layers %u+%u\n",
+                      (void*)VkImage(dst->GetImage()), upload_copies.size(),
+                      upload_copies.empty() ? 0u : upload_copies[0].imageExtent.width,
+                      upload_copies.empty() ? 0u : upload_copies[0].imageExtent.height,
+                      upload_copies.empty() ? 0u : upload_copies[0].imageSubresource.mipLevel,
+                      upload_copies.empty() ? 0u : upload_copies[0].imageSubresource.baseArrayLayer,
+                      upload_copies.empty() ? 0u : upload_copies[0].imageSubresource.layerCount);
+    }
     scheduler.Record([src_handle = src->Handle(), image = dst->GetImage(),
-                      regions = scheduler.RecordData(upload_copies)](vk::CommandBuffer cmdbuf) {
+                      regions = scheduler.RecordData(upload_copies), trace_1d](vk::CommandBuffer cmdbuf) {
+        if (trace_1d) {
+            TLG_IMG_TRACE("record copyBufferToImage %p (%zu regions)\n", (void*)VkImage(image),
+                          (size_t)regions.size());
+        }
         cmdbuf.copyBufferToImage(src_handle, image, vk::ImageLayout::eTransferDstOptimal,
                                  regions.size(), regions.data());
+        if (trace_1d) {
+            TLG_IMG_TRACE("recorded copyBufferToImage %p\n", (void*)VkImage(image));
+        }
     });
 
     for (const auto& copy : upload_copies) {
