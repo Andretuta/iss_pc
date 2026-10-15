@@ -58,6 +58,16 @@ O mesmo valor vai para `--user`, `ISS_CONFIG` (`tlg.ini`), `TLG_GPU_USER_DIR`/ca
 
 Formato do `param.bin` lido: `title[128]`, `subtitle[128]`, `detail[1024]`, tempo de 64 bits em `0x508` (também lê PSF `param.sfo`).
 
+## Suporte e Atualizações
+
+**Suporte** (ciano) tem três blocos. *Problemas conhecidos para a sua GPU*: tabela local em `qt/data/known_issues.json` (GPU/fabricante/driver/SO/VRAM e o que fazer; as que casam com a GPU detectada ficam no topo, as outras atrás de um botão). *Relatar um problema*, em 3 passos: (1) coleta local: GPU, driver e VRAM (`vulkaninfo`, com o mesmo ambiente do jogo), SO, CPU com SSE4A/AVX2/F16C (`/proc/cpuinfo`; no Windows a sonda `tlg-probe --cpu-features`), RAM, versão do port (arquivo `VERSION` do pacote, ou o commit da linha `Build:` do último log), jogo (TITLE_ID e APP_VER do `param.sfo`); (2) log: lista `out/logs/run-*.log` (o mais recente vem marcado), mostra o resumo (`Build:`, bloco `Config:`, `Fault:`/`STOP:`/`FREEZE:` e FPS médio) e faz a cópia **redigida**; (3) saída: *Copiar relatório* (markdown), *Salvar .zip* (relatório + log redigido) e *Abrir issue no GitHub* (`webbrowser.open` em `.../issues/new?title=&body=`; corpo acima de 6000 caracteres, ou URL acima de 7500, leva só o resumo e pede para anexar o .zip). Links: Discord, YouTube, GitHub e a pasta de logs.
+
+Redação (`qt/report.py`): o nome em `C:\Users\<nome>`, `/home/<nome>`, `/Users`, `/var/home`, `/run/media` e `/media` vira `<user>`, mais o login/home/hostname desta máquina onde aparecerem soltos; o resto do texto fica igual. O relatório e o log são conferidos de novo antes de gravar o .zip (`leftover_home_paths`): se sobrar caminho pessoal, nada é gravado. **Nenhuma chamada de rede** e nada é enviado sem o clique do jogador.
+
+**Atualizações** (amarelo): versão instalada, *Verificar atualizações* (um único GET HTTPS em `api.github.com/repos/HayatoG/iss_pc/releases/latest`, timeout de 10 s, só o `User-Agent` `iss_pc-launcher/<versão>`; sem dados do jogador), notas da release no idioma da interface (o corpo que o CI gera tem `## Novidades` e `## What's new`; blocos `<!-- notes:pt-BR -->` também são lidos) e *Baixar*, que só abre a página da release. Nada é baixado nem instalado. *Verificar ao abrir* fica **desligado** por padrão (`check_updates_on_open` no `settings.json`). O ponto amarelo do trilho aparece só quando a última versão conhecida (`update_seen` no settings) é mais nova que a instalada. Erros de rede viram mensagens simples (sem internet, demora, limite do GitHub, resposta estranha).
+
+Versão: o pacote agora leva um arquivo `VERSION` com o nome da release (`vAAAA.MM.DD-<commit>`, escrito por `packaging/*/package.sh` quando `GITHUB_SHA` existe). Sem ele, só o commit do `Build:` do log é conhecido e a comparação diz "é outra versão" em vez de "mais nova". Testes: `port/tests/test_qt_support.py` (sem rede: o GET usa um `opener` de teste).
+
 ## Estrutura
 
 - `qt/qml/Launcher/Theme.qml`: todas as cores, tamanhos e ícones (um lugar só).
