@@ -37,7 +37,7 @@ QtObject {
     readonly property color neon: "#ff3d9a"   // Controls
     readonly property color cyan: "#19e3ff"   // Support
     readonly property var accents: ({ play: "#ff6a2b", graphics: "#4d8bff", controls: "#ff3d9a",
-                                      fixes: "#ff6a2b", support: "#19e3ff", updates: "#f5c400" })
+                                      fixes: "#ff6a2b", saves: "#35d07f", support: "#19e3ff", updates: "#f5c400" })
     // type
     property string fontDisplay: Backend.fontDisplay
     property string fontText: Backend.fontText
@@ -49,6 +49,7 @@ QtObject {
         graphics: "M4 7h10M18 7h2M4 17h2M10 17h10 M18 7a2 2 0 1 0-4 0a2 2 0 1 0 4 0 M10 17a2 2 0 1 0-4 0a2 2 0 1 0 4 0",
         controls: "M7 8h10a4 4 0 0 1 4 4l-1 5a2 2 0 0 1-3.4 1L15 16H9l-1.6 2A2 2 0 0 1 4 17l-1-5a4 4 0 0 1 4-4z",
         fixes: "M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z M8.5 12l2.5 2.5 4.5-5",
+        saves: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M12 10.5v5M9.5 13.5 12 16l2.5-2.5",
         support: "M21 12a9 9 0 1 0-18 0a9 9 0 1 0 18 0 M15.5 12a3.5 3.5 0 1 0-7 0a3.5 3.5 0 1 0 7 0 M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9",
         updates: "M12 4v11M7.5 11 12 15.5 16.5 11M5 20h14"
     })

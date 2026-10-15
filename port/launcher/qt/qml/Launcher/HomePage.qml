@@ -5,6 +5,7 @@ import Launcher
 Item {
     id: page
     signal openFixes()
+    signal openSaves()
     property real pulse: 0
     property bool animate: true
     readonly property color accent: Theme.smoke
@@ -130,6 +131,19 @@ Item {
                        text: Backend.notice !== "" ? Backend.notice : Theme.tr("first_run_warning")
                        color: Theme.textDim; font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.4
                        lineHeightMode: Text.ProportionalHeight }
+            }
+            Item {   // the data folder has no saves but another place does (typically after an update)
+                visible: Saves.homeHint !== ""
+                width: parent.width; height: hintCol.implicitHeight
+                Rectangle { width: 3; height: parent.height; color: Theme.ok }
+                Column {
+                    id: hintCol
+                    x: 15; width: parent.width - 15; spacing: 6
+                    Text { width: parent.width; wrapMode: Text.WrapAnywhere; text: Saves.homeHint; color: Theme.textSoft
+                           font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.4; lineHeightMode: Text.ProportionalHeight }
+                    Text { text: Theme.tr("saves_home_open"); color: Theme.ok; font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold
+                           MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSaves() } }
+                }
             }
         }
         Rectangle {

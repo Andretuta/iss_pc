@@ -18,6 +18,7 @@ sys.path.insert(0, str(HERE.parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402
 import savemanager  # noqa: E402
+import userdata  # noqa: E402
 import shader_cache  # noqa: E402
 
 # ---------------------------------------------------------------------------------------- i18n

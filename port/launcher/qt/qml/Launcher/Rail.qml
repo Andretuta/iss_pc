@@ -12,6 +12,7 @@ Rectangle {
     readonly property var entries: [
         { key: "play", label: "nav_play" }, { key: "graphics", label: "nav_graphics" },
         { key: "controls", label: "nav_controls" }, { key: "fixes", label: "nav_fixes" },
+        { key: "saves", label: "nav_saves" },
         { key: "support", label: "nav_support" }, { key: "updates", label: "nav_updates" } ]
 
     Column {

@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, Qt, QUrl, Signal, Slot)
 
 from . import logic
+from .saves import Saves
 from .logic import backports_table, tlg_run
 
 URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g'}
@@ -127,6 +128,7 @@ class Backend(QObject):
         self.lineReceived.connect(self._on_line)
         self.finished.connect(self._on_finished)
         self.refresh()
+        self.saves = Saves(self, self.probes.get('saves'))
 
     # -- fonts and motion (set by app.py) ------------------------------------------------------
     @Property(str, constant=True)
@@ -150,7 +152,9 @@ class Backend(QObject):
         return self.probes[name]() if name in self.probes else default()
 
     def start_probes(self):
-        """GPU/Vulkan detection runs off the UI thread (vulkaninfo takes a moment)."""
+        """GPU/Vulkan detection and the search for saves run off the UI thread."""
+        self.saves.scan()
+        self.saves.start_timer()
         def work():
             self.gpuFound.emit(self.probe('gpu', logic.detect_gpu))
         threading.Thread(target=work, daemon=True).start()
@@ -173,6 +177,15 @@ class Backend(QObject):
         self.stateChanged.emit()
         self.profileChanged.emit()
         self.gameDirChanged.emit()
+
+    def reload_user(self):
+        """The data folder changed: tlg.ini (fix switches) and the last save come from the new one."""
+        self.fix_states = tlg_run.experimental_states(self.settings)
+        self.fixes.refresh_all()
+        self.profileChanged.emit()
+        self.refresh()
+        if hasattr(self, 'saves'):
+            self.saves.reload()
 
     # -- text -----------------------------------------------------------------------------------
     @Slot(str, result=str)
@@ -352,6 +365,10 @@ class Backend(QObject):
             self.process.terminate()
 
     # -- fixes ----------------------------------------------------------------------------------
+    @Property(QObject, constant=True)
+    def savesController(self):
+        return self.saves
+
     @Property(QObject, constant=True)
     def fixesModel(self):
         return self.fixes
