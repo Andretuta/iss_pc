@@ -11,6 +11,7 @@ HomePage 1.0 HomePage.qml
 FixesPage 1.0 FixesPage.qml
 FixRow 1.0 FixRow.qml
 SoonPage 1.0 SoonPage.qml
+GraphicsPage 1.0 GraphicsPage.qml
 OptionRow 1.0 OptionRow.qml
 LevelSlider 1.0 LevelSlider.qml
 SectionTitle 1.0 SectionTitle.qml
