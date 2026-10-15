@@ -73,3 +73,9 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software python3 -m qt.screenshots ..
 ```
 
 Usa dados de demonstração e uma pasta de configuração temporária; não toca nos seus saves nem no `settings.json`.
+
+## Guias de controle
+
+Entrada **Guias de controle** (destaque néon). Chips Xbox / Nintendo Switch Pro / 8BitDo (pré-seleciona o controle detectado; Xbox se não houver), a imagem-guia no idioma do launcher (pt-BR ou en-US) ajustada à largura da janela com rolagem e zoom (+/−/Ajustar), **Salvar imagem…** (PNG), **Copiar imagem** (área de transferência, para colar no Discord) e **Abrir pasta das imagens**. Texto curto explicando que o port simula giroscópio e touchpad e um link para a seção do README sobre teclado e mouse.
+
+As 6 imagens ficam em `port/launcher/qt/assets/controller_guides/inFAMOUS-controle-{xbox,switch,8bitdo}-{pt-BR,en-US}.png` e são lidas em tempo de execução; se faltarem, a tela mostra "Imagens não incluídas neste pacote" (dá para trocar por ilustrações próprias com os mesmos nomes). Ao empacotar (PyInstaller), inclua `qt/assets` como dados, junto de `qt/qml`, `qt/fonts` e `qt/i18n`. O gerador é `port/tools/controller_guides/make_guides.py` (README ao lado; as fotos-base não ficam no repositório).

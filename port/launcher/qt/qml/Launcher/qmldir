@@ -12,6 +12,7 @@ FixesPage 1.0 FixesPage.qml
 FixRow 1.0 FixRow.qml
 SoonPage 1.0 SoonPage.qml
 SavesPage 1.0 SavesPage.qml
+GuidesPage 1.0 GuidesPage.qml
 SlotCard 1.0 SlotCard.qml
 ConfirmCard 1.0 ConfirmCard.qml
 Rail 1.0 Rail.qml

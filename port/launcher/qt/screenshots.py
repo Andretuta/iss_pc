@@ -137,7 +137,7 @@ def main(out):
     out.mkdir(parents=True, exist_ok=True)
     backend = demo_backend(with_art='--art' in sys.argv)
     app = App(backend=backend)
-    names = ['inicio', 'graficos', 'controles', 'correcoes', 'saves', 'suporte', 'atualizacoes']
+    names = ['inicio', 'graficos', 'controles', 'correcoes', 'saves', 'guias', 'suporte', 'atualizacoes']
     app.window.setProperty('animate', False)
     prefix = 'art-' if '--art' in sys.argv else ''
     for index, name in enumerate(names):
@@ -157,6 +157,16 @@ def main(out):
             app.go(index)
             app.grab(out / f'{name}.png')
         saves_shots(app, backend, out)
+        for lang, code in (('pt', 'pt_BR'), ('en', 'en_US')):
+            backend.setLang(code)
+            for kind in ('xbox', 'switch'):
+                backend.setGuideKind(kind)
+                app.go(5)
+                app.grab(out / f'guias-{kind}-{lang}.png')
+        backend.setGuideKind('8bitdo')
+        backend.probes['guide_dir'] = sandbox / 'no-images'
+        backend.guideChanged.emit()
+        app.grab(out / 'guias-sem-imagens.png')
     print('ok', out)
 
 

@@ -56,7 +56,7 @@ class TranslationTests(unittest.TestCase):
         for path in list(QT.rglob('*.qml')) + [QT / 'backend.py', QT / 'logic.py']:
             text = path.read_text(encoding='utf-8')
             used |= set(re.findall(r'(?:tr\(|t_\(|\bt\()["\'](\w+)["\']', text))
-        used |= {'nav_' + n for n in ('play', 'graphics', 'controls', 'fixes', 'saves', 'support', 'updates')}
+        used |= {'nav_' + n for n in ('play', 'graphics', 'controls', 'fixes', 'saves', 'guides', 'support', 'updates')}
         for key in (k for k in used if not k.endswith('_')):
             self.assertTrue(key in STRINGS or key in tk, key)
 
@@ -247,6 +247,26 @@ class BackendTests(unittest.TestCase):
         self.assertEqual('1', saved[-1]['TLG_OCCLUSION_MODE'])
         backend.setOcclusion('3')
         self.assertEqual(3, backend.occlusionIndex)
+
+    def test_controller_guides_follow_pad_language_and_tolerate_missing_files(self):
+        self.assertEqual('8bitdo', logic.guide_kind('8BitDo Pro 2'))
+        self.assertEqual('switch', logic.guide_kind('Switch Pro'))
+        self.assertEqual('xbox', logic.guide_kind(None))
+        with tempfile.TemporaryDirectory() as folder:
+            backend, _ = self.make()
+            backend.probes['guide_dir'] = Path(folder)
+            self.assertEqual('', backend.guideSource)                      # no images: no crash
+            (Path(folder) / 'inFAMOUS-controle-xbox-pt-BR.png').write_bytes(b'png')
+            backend.setGuideKind('xbox')
+            self.assertTrue(backend.guideSource.endswith('xbox-pt-BR.png'))
+            backend.setLang('en_US')
+            self.assertEqual('', backend.guideSource)                      # only pt-BR exists in the temp folder
+            out = Path(folder) / 'copy'
+            backend.setLang('pt_BR')
+            backend.saveGuide(str(out))
+            self.assertEqual(b'png', (Path(folder) / 'copy.png').read_bytes())
+        shipped = [logic.guide_path(k, pt) for k, _ in logic.GUIDE_KINDS for pt in (True, False)]
+        self.assertTrue(all(shipped))
 
     def test_language_switch_changes_texts_and_saves_setting(self):
         backend, _ = self.make()
