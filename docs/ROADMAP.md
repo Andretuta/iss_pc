@@ -34,7 +34,7 @@ com som próprio (AudioOut + Ajm, sem arquivo do firmware), saves, HUD correto, 
 | 2 | Engasgo de shader | 64–118 compilações por janela de 5 s em cenas novas; precisa do cache de pipelines em disco (`ISS_PIPELINE_BINARIES=1` ainda derruba o jogo) |
 | 3 | Névoa, água, fogo e luzes piscando; grade fina de linhas escuras | suspeitas: ballots wave64 em fluxo divergente, texturas BC 1D |
 | 4 | Brilho azul do dreno de drones | não aparece; ballot wave64, stencil ou readback |
-| 5 | Texturas BC 1D | promoção para 2D automática nos drivers que recusam BC 1D, menos a NVIDIA (o driver da AMD no Windows quebrava: #16, #31); `ISS_BLOCK1D=0/1` decide. Na NVIDIA fica desligada porque estraga o HUD |
+| 5 | Texturas BC 1D | promoção para 2D automática nos drivers que recusam BC 1D, menos a NVIDIA; `ISS_BLOCK1D=0/1` decide. Na NVIDIA fica desligada porque estraga o HUD. O driver da AMD no Windows quebrava com BC 1D e também com a promoção (#16, #31, #49): lá as BC1–BC5 1D ou menores que um bloco são decodificadas na CPU (`ISS_BC_TINY=0/1`); falta confirmar numa RX 580 |
 | 6 | Idiomas do jogo no launcher | a lista ainda é a do GR2; ler do `param.sfo`/dados |
 | 7 | `param.sfo` 1.07 na visão do jogo | a visão usa o 1.00 |
 | 8 | Prefixo `ISS_` nas variáveis | ✅ feito: o jogador usa `ISS_*`; o núcleo ainda lê `TLG_*` por dentro (o `tlg-probe` traduz na partida). Quando todos os ports usarem o ps4_core, o prefixo comum vira `PSCORE_` |

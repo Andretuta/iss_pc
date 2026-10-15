@@ -12,6 +12,7 @@
 #include "common/types.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
+#include "video_core/amdgpu/tlg_bc_tiny.h"
 #include "video_core/amdgpu/tlg_block1d.h"
 #include "video_core/amdgpu/tlg_msaa.h"
 #include "video_core/amdgpu/tlg_msaa_default.h"
@@ -862,6 +863,16 @@ void Instance::CollectDeviceParameters() {
                     block1d_as_2d ? "as 2D images (the driver refuses BC 1D; TLG_BLOCK1D=0 keeps 1D)"
                                   : "kept 1D although the driver refuses them (TLG_BLOCK1D=1 makes them 2D)");
     }
+
+    // tlg: see video_core/amdgpu/tlg_bc_tiny.h. Set before any image or shader exists.
+    const char* bc_tiny_env = std::getenv("TLG_BC_TINY");
+    const bool bc_tiny = bc_tiny_env && *bc_tiny_env
+                             ? *bc_tiny_env == '1'
+                             : driver_id == vk::DriverId::eAmdProprietary;
+    AmdGpu::bc_tiny_decode.store(bc_tiny, std::memory_order_relaxed);
+    std::printf("GPU: tiny block-compressed textures (BC1-BC5 1D, or under 4 texels) %s\n",
+                bc_tiny ? "decoded on the CPU to plain images, 1D kept 1D (TLG_BC_TINY=0 keeps BC)"
+                        : "kept block-compressed (TLG_BC_TINY=1 decodes them on the CPU)");
 
     const std::string model_name{GetModelName()};
     const std::string driver_version = GetDriverVersionName();

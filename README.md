@@ -138,6 +138,8 @@ O jogo pede o sensor de movimento e o touchpad em várias cenas: grafite, absorv
 
 **Tela congelada:** se o jogo passa 10 s sem mostrar um quadro novo, o log (`out/last_run.log`) ganha um bloco `FREEZE: no frame for 10 s; threads:` com cada thread do jogo, o que ela está esperando (mutex, semáforo, fila de eventos, leitura de arquivo, GPU...) e onde está no código. O jogo continua rodando, e o relatório só se repete depois que os quadros voltarem e pararem de novo. Mande esse log junto com o relato. `ISS_FREEZE_REPORT_SECONDS=<s>` muda o tempo (`0` desliga).
 
+**Placas AMD no Windows (RX 580): texturas BC minúsculas.** O driver da AMD no Windows (`amdvlk64.dll`) quebra logo depois dos logos (`Fault: write access to 0 at amdvlk64.dll+0xebbbb`, #16/#31/#49) na primeira textura comprimida BC 1D do jogo (512x1), seja ela criada 1D ou 2D. No driver da AMD o port decodifica na CPU as texturas BC1–BC5 que são 1D ou menores que um bloco de 4x4 e manda ao driver imagens comuns (RGBA8, R8 ou RG8, mantendo sRGB e snorm); o log mostra `GPU: tiny block-compressed textures ...` dizendo o modo. `ISS_BC_TINY=0` desliga e `ISS_BC_TINY=1` liga em qualquer placa (teste).
+
 ## Compilar do código-fonte
 
 ```bash
@@ -291,6 +293,8 @@ The game asks for the motion sensor and the touchpad in many scenes: graffiti, a
 **Windows red-zone protection.** PS4 code keeps variables in the 128 bytes below `rsp` (the "red zone"), and Windows writes there on every exception (the port uses exceptions to track GPU memory). At start the port rewrites the memory instructions of the functions that use the red zone so they run with `rsp` 128 bytes lower (crash at `0x1cfaaf`, #29/#41). On by default on Windows; `ISS_RED_ZONE_REWRITE=0` turns it off and `ISS_RED_ZONE_REWRITE=1` turns it on on Linux (testing). Linux test: `TLG_CLOBBER_RED_ZONE=<bytes>` zeroes that many bytes below `rsp` on every exception, like Windows (`1` = 128). Details: [port/docs/red_zone.md](port/docs/red_zone.md).
 
 **Frozen screen:** if the game shows no new frame for 10 s, the log (`out/last_run.log`) gets a `FREEZE: no frame for 10 s; threads:` block with every thread of the game, what it is waiting on (mutex, semaphore, event queue, file read, GPU...) and where it is in the code. The game keeps running, and the report only repeats after frames resume and stop again. Send that log with the report. `ISS_FREEZE_REPORT_SECONDS=<s>` changes the time (`0` turns it off).
+
+**AMD cards on Windows (RX 580): tiny BC textures.** AMD's Windows driver (`amdvlk64.dll`) crashes right after the logos (`Fault: write access to 0 at amdvlk64.dll+0xebbbb`, #16/#31/#49) on the game's first BC-compressed 1D texture (512x1), whether it is created 1D or 2D. On AMD's driver the port decodes BC1–BC5 textures that are 1D or smaller than a 4x4 block on the CPU and gives the driver plain images (RGBA8, R8 or RG8, sRGB and snorm kept); the log line `GPU: tiny block-compressed textures ...` says which mode is on. `ISS_BC_TINY=0` turns it off and `ISS_BC_TINY=1` turns it on on any GPU (testing).
 
 ## Building from source
 

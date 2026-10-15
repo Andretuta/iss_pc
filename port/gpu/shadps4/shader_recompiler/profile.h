@@ -59,6 +59,8 @@ struct Profile {
     bool dref_broadcast{};
     /// tlg: block-compressed 1D textures are 2D images (video_core/amdgpu/tlg_block1d.h).
     bool block1d_as_2d{};
+    /// tlg: tiny BC textures decoded to plain images (video_core/amdgpu/tlg_bc_tiny.h).
+    bool bc_tiny_decode{};
 
     bool operator==(const Profile&) const = default;
 };

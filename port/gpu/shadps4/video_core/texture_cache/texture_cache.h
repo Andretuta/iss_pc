@@ -218,6 +218,9 @@ public:
     /// Reuploads image contents.
     void RefreshImage(Image& image);
 
+    /// tlg: TLG_BC_TINY: fills an is_bc_decoded image from a CPU decode of guest memory.
+    void UploadDecodedImage(Image& image);
+
     /// Retrieves the sampler that matches the provided S# descriptor.
     /// extra_lod_bias: tlg, added to the S#'s bias (reduced scene rendering).
     [[nodiscard]] vk::Sampler GetSampler(const AmdGpu::Sampler& sampler,
