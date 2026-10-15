@@ -48,6 +48,7 @@ typedef struct GuestThread {
     char name[32];
     int detached, finished, joined, host_owned;
     uint64_t os_tid;  /* freeze report: matches the OS thread list */
+    uint32_t fp_mxcsr; uint16_t fp_x87cw; /* the creator's FP control: see host_start */
     RuntimeWait wait; /* freeze report: what the thread is blocked on */
 #ifdef _WIN32
     tlg_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
@@ -364,6 +365,12 @@ static void *host_start(void *p) {
     GuestThread *t=p;
     attach(t);
     if (thread_start_hook) thread_start_hook();
+    /* The creator's SSE (MXCSR) and x87 control words, as FreeBSD's libthr gives a new thread
+     * and as Linux happens to copy them on clone. Windows starts every thread at its defaults:
+     * inFAMOUS turns on flush-to-zero (MXCSR bit 15) in a thread, then creates its job workers
+     * from it; without the bit there, denormals reach divisions in the particle/light code
+     * (overexposed fire and smoke, flickering headlights, Windows only). */
+    __asm__ volatile("ldmxcsr %0\n\tfldcw %1" : : "m"(t->fp_mxcsr), "m"(t->fp_x87cw));
     set_host_name(t->name);
     if (!exit_setjmp(t)) t->result=t->entry(t->argument);
     runtime_thread_keys_cleanup();
@@ -378,6 +385,7 @@ static int32_t create(GuestThread **out,ThreadAttr **attr_slot,GuestEntry entry,
     if (!t) return ERR(12);
     if (a) { t->attr=*a; t->attr.next=NULL; }
     t->entry=entry; t->argument=argument; t->detached=t->attr.detached;
+    __asm__ volatile("stmxcsr %0\n\tfnstcw %1" : "=m"(t->fp_mxcsr), "=m"(t->fp_x87cw));
     snprintf(t->name,sizeof(t->name),"%s",name ? name : "guest");
     pthread_attr_t host;
     pthread_attr_init(&host);
