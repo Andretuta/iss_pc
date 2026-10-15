@@ -207,6 +207,8 @@ class Backend(QObject):
         self.langChanged.emit()
         self.fixes.refresh_all()
         self.refresh()
+        if hasattr(self, 'saves'):
+            self.saves.reload()   # its texts follow the language
 
     # -- home state -----------------------------------------------------------------------------
     @Property('QVariantList', notify=chipsChanged)

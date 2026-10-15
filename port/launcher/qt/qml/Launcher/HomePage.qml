@@ -39,6 +39,19 @@ Item {
                 GradientStop { position: 1; color: Theme.bg }
             }
         }
+        Rectangle {   // the data folder has no saves but another place does (typically after an update)
+            visible: Saves.homeHint !== ""
+            x: 36; y: 18; width: Math.min(parent.width - 72, 640); height: hintCol.implicitHeight + 24
+            radius: 10; color: Qt.rgba(0.05, 0.06, 0.07, 0.86); border.width: 1; border.color: Qt.rgba(Theme.ok.r, Theme.ok.g, Theme.ok.b, 0.6)
+            Column {
+                id: hintCol
+                x: 16; y: 12; width: parent.width - 32; spacing: 6
+                Text { width: parent.width; wrapMode: Text.WrapAnywhere; text: Saves.homeHint; color: Theme.text
+                       font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.3; lineHeightMode: Text.ProportionalHeight }
+                Text { text: Theme.tr("saves_home_open") + " →"; color: Theme.ok; font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold
+                       MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSaves() } }
+            }
+        }
         Column {
             anchors.left: parent.left; anchors.leftMargin: 36
             anchors.bottom: parent.bottom; anchors.bottomMargin: 34
@@ -147,19 +160,6 @@ Item {
                        text: Backend.notice !== "" ? Backend.notice : Theme.tr("first_run_warning")
                        color: Theme.textDim; font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.4
                        lineHeightMode: Text.ProportionalHeight }
-            }
-            Item {   // the data folder has no saves but another place does (typically after an update)
-                visible: Saves.homeHint !== ""
-                width: parent.width; height: hintCol.implicitHeight
-                Rectangle { width: 3; height: parent.height; color: Theme.ok }
-                Column {
-                    id: hintCol
-                    x: 15; width: parent.width - 15; spacing: 6
-                    Text { width: parent.width; wrapMode: Text.WrapAnywhere; text: Saves.homeHint; color: Theme.textSoft
-                           font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.4; lineHeightMode: Text.ProportionalHeight }
-                    Text { text: Theme.tr("saves_home_open"); color: Theme.ok; font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold
-                           MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSaves() } }
-                }
             }
         }
         Rectangle {
