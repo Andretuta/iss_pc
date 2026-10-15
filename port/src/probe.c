@@ -1242,6 +1242,12 @@ int main(int argc, char **argv) {
         runtime_freeze_start((uintptr_t)image, round_page(size) + stub_area + red_zone_area, gpu_enabled ? seconds : 0);
     }
     printf("Entering original x86-64 code at guest offset 0x%" PRIx64 "\n", entry);
+#ifdef _WIN32
+    /* The guest main thread starts with the PS4's (FreeBSD's) x87 control word: 64-bit
+     * precision (0x037F, as on Linux). Windows' default is 53-bit (0x027F). Threads the game
+     * creates copy the creator's x87 and SSE control words (runtime_thread.c host_start). */
+    { const uint16_t cw = 0x037F; __asm__ volatile("fldcw %0" : : "m"(cw)); }
+#endif
     entered_game=1;
     struct { uint64_t argc; const char *argv[2]; } params = {1, {"/app0/eboot.bin", NULL}};
 #ifdef _WIN32
