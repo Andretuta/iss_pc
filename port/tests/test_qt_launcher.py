@@ -1,5 +1,6 @@
 """The Qt launcher's logic (launcher/qt/logic.py, backend.py): translations, chips, news, saves,
 fix groups. The pure-Python parts need no PySide6; the Backend tests skip without it."""
+import os
 import json
 import re
 import struct
@@ -247,6 +248,35 @@ class BackendTests(unittest.TestCase):
         self.assertEqual('1', saved[-1]['TLG_OCCLUSION_MODE'])
         backend.setOcclusion('3')
         self.assertEqual(3, backend.occlusionIndex)
+
+    def test_game_language_list_comes_from_game_languages_in_order(self):
+        backend, _ = self.make()
+        self.assertEqual(list(logic.tlg_run.GAME_LANGUAGES), [o['value'] for o in backend.gameLanguageOptions])
+        self.assertEqual(6, len(backend.gameLanguageOptions))
+        self.assertEqual(['English', 'Português (Brasil)', 'Español (Latinoamérica)', 'Français (Canada)',
+                          'Türkçe', 'Русский'], [o['label'] for o in backend.gameLanguageOptions])
+        tk = (ROOT / 'launcher' / 'infamous_launcher.py').read_text(encoding='utf-8')
+        for key, name in logic.GAME_LANGUAGE_NAMES.items():
+            self.assertIn(f"'{key}': '{name}'", tk)
+
+    def test_game_language_shows_the_current_one_and_saves_the_key(self):
+        backend, _ = self.make()
+        self.assertEqual(1, backend.gameLanguageIndex)          # default pt_BR stays visible
+        with mock.patch.object(logic.tlg_run, 'save_settings') as save:
+            backend.setGameLanguage('ru')
+            self.assertEqual('ru', save.call_args[0][0]['game_language'])
+            self.assertEqual(5, backend.gameLanguageIndex)
+            backend.setGameLanguage('xx')                        # unknown keys are ignored
+            self.assertEqual(1, save.call_count)
+        self.assertEqual('ru', backend.settings['game_language'])
+
+    def test_build_env_passes_the_chosen_game_language(self):
+        for key, number in (('en', '1'), ('pt_BR', '17'), ('es_LA', '20'), ('fr_CA', '22'), ('tr', '19'), ('ru', '8')):
+            backend, _ = self.make()
+            with mock.patch.object(logic.tlg_run, 'save_settings'), mock.patch.dict('os.environ'):
+                os.environ.pop('ISS_LANGUAGE', None)
+                backend.setGameLanguage(key)
+                self.assertEqual(number, logic.tlg_run.build_env(backend.settings)['ISS_LANGUAGE'], key)
 
     def test_controller_guides_follow_pad_language_and_tolerate_missing_files(self):
         self.assertEqual('8bitdo', logic.guide_kind('8BitDo Pro 2'))

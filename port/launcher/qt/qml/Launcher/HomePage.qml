@@ -107,6 +107,22 @@ Item {
                 text: Theme.tr("choose_folder")
                 onClicked: folderDialog.open()
             }
+            Column {   // game language (voice and text): next start; the interface language is separate
+                width: parent.width; spacing: 4
+                Row {
+                    spacing: 10
+                    Text { text: Theme.tr("game_language_label"); color: Theme.textMuted; font.family: Theme.fontText; font.pixelSize: 12; font.weight: Font.Bold
+                           width: 84; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
+                    Select {
+                        accent: page.accent; width: actions.width - 94
+                        model: Backend.gameLanguageOptions
+                        currentIndex: Backend.gameLanguageIndex
+                        onActivated: (i) => Backend.setGameLanguage(Backend.gameLanguageOptions[i].value)
+                    }
+                }
+                Text { width: parent.width; text: Theme.tr("game_language_hint"); wrapMode: Text.WordWrap; color: Theme.textSoft
+                       font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.2; lineHeightMode: Text.ProportionalHeight }
+            }
         }
     }
 

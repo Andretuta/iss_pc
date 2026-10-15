@@ -102,6 +102,7 @@ class Backend(QObject):
     gameDirChanged = Signal()
     logChanged = Signal()
     profileChanged = Signal()
+    gameLanguageChanged = Signal()
     gpuFound = Signal(object)
     lineReceived = Signal(str)
     finished = Signal(int)
@@ -418,6 +419,24 @@ class Backend(QObject):
     @Slot(str)
     def setOcclusion(self, value):
         self.setFix(self._occlusion_item().id, value)
+
+    # -- game language (voice and text; the interface language above is separate) ---------------
+    @Property('QVariantList', constant=True)
+    def gameLanguageOptions(self):
+        """The six languages of the game, in the order of infamous_run.GAME_LANGUAGES."""
+        return [{'value': k, 'label': logic.GAME_LANGUAGE_NAMES.get(k, k)} for k in tlg_run.GAME_LANGUAGES]
+
+    @Property(int, notify=gameLanguageChanged)
+    def gameLanguageIndex(self):
+        return next((n for n, k in enumerate(tlg_run.GAME_LANGUAGES) if k == self.settings.get('game_language')), 0)
+
+    @Slot(str)
+    def setGameLanguage(self, key):
+        if key not in tlg_run.GAME_LANGUAGES:
+            return
+        self.settings['game_language'] = key   # build_env reads it at the next start (ISS_LANGUAGE)
+        tlg_run.save_settings(self.settings)
+        self.gameLanguageChanged.emit()
 
     # -- controller guides ----------------------------------------------------------------------
     @Property('QVariantList', constant=True)
