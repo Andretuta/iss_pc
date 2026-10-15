@@ -8,6 +8,7 @@ pgo/
 *.png
 !packaging/icon/*.png
 !launcher/*.png
+!launcher/qt/assets/controller_guides/*.png
 last_run.log
 dist/
 packaging/runtime-paths.nix
