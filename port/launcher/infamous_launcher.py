@@ -51,10 +51,10 @@ TEXT = {
                       'Aumente se o personagem ou a câmera se mexer sozinho (drift).'),
     'sensor_hint': ('Motion sensor: DualShock/DualSense gyro works as is. Without a sensor, press L3+R3 '
                     '(or Share on Xbox Series) for sensor mode (the graffiti spray can, held sideways): cross/A shakes, R2 sprays, left stick aims; L3+R3 again '
-                    'turns it off. Touchpad: View/Select (hold + right stick = swipe). Keyboard T/G/Y.',
+                    'turns it off. Touchpad: View/Select (hold + right stick = swipe; + R1 = both ends). Keyboard T/G/Y.',
                     'Sensor de movimento: o giroscópio do DualShock/DualSense funciona direto. Sem sensor, aperte L3+R3 '
                     '(ou Share no Xbox Series) para o modo sensor (a lata de spray do grafite, já de lado): X/A sacode, R2 pinta, analógico esquerdo mira; '
-                    'L3+R3 de novo desliga. Touchpad: View/Select (segurar + analógico direito = deslizar). '
+                    'L3+R3 de novo desliga. Touchpad: View/Select (segurar + analógico direito = deslizar; + R1 = as duas pontas). '
                     'Teclado T/G/Y.'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),

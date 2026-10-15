@@ -33,6 +33,10 @@ static PadData read_pad(void) {
 static int touch_at(const PadData *d, int x) {
     return d->touch_count==1 && d->touches[0].x==x && d->touches[0].y==471;
 }
+/* Two fingers at the left and right ends of the touchpad. */
+static int two_ends(const PadData *d) {
+    return d->touch_count==2 && d->touches[0].x==120 && d->touches[1].x==1800 && d->touches[0].id!=d->touches[1].id;
+}
 static void pump(void) { SDL_UpdateJoysticks(); SDL_UpdateGamepads(); }
 
 int main(void) {
@@ -112,6 +116,34 @@ int main(void) {
     assert(!(data.buttons & BTN_TOUCHPAD) && touch_at(&data,1440));
     inject(path,"");
     data=read_pad(); /* the release is seen here: the tail starts */
+    usleep(220000);
+    data=read_pad();
+    assert(data.buttons==0 && data.touch_count==0);
+
+    /* Two fingers at both ends (inFAMOUS: lifting the car off Reggie): both click sources, or
+     * the right click + R1. The fingers come first, the button CLICK_LEAD_US later, R1 is hidden. */
+    inject(path,"touchpad_left touchpad_right");
+    data=read_pad();
+    assert(!(data.buttons & BTN_TOUCHPAD) && two_ends(&data));
+    usleep(60000);
+    data=read_pad();
+    assert((data.buttons & BTN_TOUCHPAD) && two_ends(&data));
+    inject(path,"");
+    data=read_pad(); /* the release is seen here: the fingers linger */
+    assert(!(data.buttons & BTN_TOUCHPAD) && two_ends(&data));
+    usleep(220000);
+    data=read_pad();
+    assert(data.buttons==0 && data.touch_count==0);
+    inject(path,"r1 touchpad_right");
+    data=read_pad();
+    assert(data.buttons==0 && two_ends(&data));
+    usleep(60000);
+    data=read_pad();
+    assert(data.buttons==BTN_TOUCHPAD && two_ends(&data));
+    inject(path,"r1");
+    data=read_pad();
+    assert(!(data.buttons & BTN_TOUCHPAD) && two_ends(&data)); /* R1 stays hidden during the tail */
+    inject(path,"");
     usleep(220000);
     data=read_pad();
     assert(data.buttons==0 && data.touch_count==0);
