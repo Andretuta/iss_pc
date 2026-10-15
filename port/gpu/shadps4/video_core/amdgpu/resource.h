@@ -331,8 +331,13 @@ struct Image {
         // TLG_BC_TINY decodes BC1-BC5 1D textures to plain 1D images instead (tlg_bc_tiny.h).
         const auto type = GetType();
         const auto dfmt = GetDataFmt();
-        return Block1DAs2D() && (type == ImageType::Color1D || type == ImageType::Color1DArray) &&
-               IsBlockCoded(dfmt) && !(BcTinyDecode() && IsBcTinyDecodable(dfmt));
+        const bool is_1d = type == ImageType::Color1D || type == ImageType::Color1DArray;
+        // tlg: BP09, every 1D image (not only block-coded ones) is 2D of height 1 on the host.
+        if (is_1d && All1DAs2D()) {
+            return true;
+        }
+        return Block1DAs2D() && is_1d && IsBlockCoded(dfmt) &&
+               !(BcTinyDecode() && IsBcTinyDecodable(dfmt));
     }
 
     /// tlg: BC formats the TLG_BC_TINY CPU decoder handles (texture_cache/tlg_bc_decode.h).

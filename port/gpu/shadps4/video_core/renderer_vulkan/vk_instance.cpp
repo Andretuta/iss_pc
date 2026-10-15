@@ -891,6 +891,14 @@ void Instance::CollectDeviceParameters() {
                                   : "kept 1D although the driver refuses them (TLG_BLOCK1D=1 makes them 2D)");
     }
 
+    // tlg: BP09 (CTR d26bcb2): every 1D image as 2D of height 1; read once, before any image or
+    // shader exists, so the shaders and the images of a session agree.
+    const bool all_1d_as_2d = Common::Backports::On(Common::Backports::Id::Image1DAs2D);
+    AmdGpu::all_1d_as_2d.store(all_1d_as_2d, std::memory_order_relaxed);
+    if (all_1d_as_2d) {
+        std::printf("GPU: every 1D texture as a 2D image of height 1 (TLG_BP09=1)\n");
+    }
+
     // tlg: see video_core/amdgpu/tlg_bc_tiny.h. Set before any image or shader exists.
     const char* bc_tiny_env = std::getenv("TLG_BC_TINY");
     const bool bc_tiny = bc_tiny_env && *bc_tiny_env
