@@ -6,7 +6,7 @@ O botão **Correções experimentais…** do launcher abre uma janela com três 
 - **Correções experimentais (BPnn):** as 12 correções portadas de outros ports de PS4 e do shadPS4 (`port/gpu/shadps4/common/backports.h`). As de padrão desligado (BP06 a BP09) são experimentais. Em cada uma, o launcher mostra a origem; as que mudam shader avisam que a primeira partida depois de mudar recompila os shaders (pode piscar ou ficar verde por um tempo).
 - **Chaves de diagnóstico / A-B:** chaves que só existiam como variável de ambiente, para descobrir qual mudança causa um problema. `TLG_PIPELINE_BINARIES` ainda derruba o jogo no driver NVIDIA 595.
 
-Botões: **Voltar ao padrão** (apaga todas as escolhas) e **Como a release anterior** (grava `bp01=0` ... para todo BPnn que vem ligado; é o mesmo que iniciar com `TLG_BACKPORTS=0`, mas as caixas mostram o estado e dá para religar uma a uma).
+Botões: **Voltar ao recomendado** (apaga todas as escolhas; o perfil Recomendado são os padrões da tabela, com o selo "recomendado" nas linhas que o compõem; a janela mostra "Perfil: Recomendado" ou "Perfil: personalizado (N mudanças)") e **Como a release anterior** (grava `bp01=0` ... para todo BPnn que vem ligado; é o mesmo que iniciar com `TLG_BACKPORTS=0`, mas as caixas mostram o estado e dá para religar uma a uma).
 
 Variáveis: o launcher passa `ISS_<nome>=0/1` ao jogo (o `tlg-probe` copia para `TLG_<nome>`; um `ISS_`/`TLG_` já definido fora do launcher vence). As opções do menu do jogo são lidas do `tlg.ini` pelo próprio jogo.
 
@@ -80,7 +80,7 @@ The launcher's **Experimental fixes…** button opens a window with three tabs. 
 - **Experimental fixes (BPnn):** the 12 fixes ported from other PS4 ports and from shadPS4 (`port/gpu/shadps4/common/backports.h`). Those off by default (BP06 to BP09) are experimental. Each shows its origin; the ones that change shaders warn that the first game after changing recompiles the shaders (it may flicker or look green for a while).
 - **Diagnostic / A-B switches:** switches that were environment variables only, to find which change causes a problem. `TLG_PIPELINE_BINARIES` still crashes the game on the NVIDIA 595 driver.
 
-Buttons: **Back to defaults** (clears every choice) and **Like the previous release** (writes `bp01=0` ... for every BPnn that is on by default; same as starting with `TLG_BACKPORTS=0`, but the boxes show the state and you can turn single ones back on).
+Buttons: **Back to recommended** (clears every choice; the Recommended profile is the table defaults, rows in it carry a "recommended" badge; the window shows "Profile: Recommended" or "Profile: custom (N changes)") and **Like the previous release** (writes `bp01=0` ... for every BPnn that is on by default; same as starting with `TLG_BACKPORTS=0`, but the boxes show the state and you can turn single ones back on).
 
 Variables: the launcher gives the game `ISS_<name>=0/1` (`tlg-probe` copies it to `TLG_<name>`; an `ISS_`/`TLG_` already set outside the launcher wins). The game menu options are read from `tlg.ini` by the game itself.
 
@@ -145,3 +145,6 @@ Variables: the launcher gives the game `ISS_<name>=0/1` (`tlg-probe` copies it t
 |  Overlay layout | `overlay_layout` | (read from tlg.ini) | 0 | in game (Insert) |  |
 
 The table is generated from `port/launcher/backports_table.py`; `port/tests/test_backports_table.py` keeps it in step with the sources.
+
+Na primeira abertura do launcher depois de atualizar, uma mensagem única explica que as correções novas já vêm ativadas e como voltar ("Como a release anterior"); a chave `backports_notice_seen` no settings do launcher impede que ela se repita.
+On the first launcher start after updating, a one-time message explains that the new fixes are already on and how to go back ("Like the previous release"); the `backports_notice_seen` key in the launcher settings keeps it from repeating.

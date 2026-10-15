@@ -132,6 +132,30 @@ class StatesTest(unittest.TestCase):
             self.assertEqual(path.read_text(encoding='utf-8'), '# c\nvsync=1\nbp02=0\nbp03=0\n')
 
 
+class RecommendedTest(unittest.TestCase):
+    def test_recommended_is_the_table_defaults(self):
+        states = t.read_states({})
+        self.assertEqual(t.changes(states), 0)
+        self.assertEqual(t.environment(states), {})
+        rec = {i.id for i in t.ITEMS if t.is_recommended(i)}
+        self.assertTrue({f'BP{n:02d}' for n in (1, 2, 3, 4, 5, 10, 11, 12)} <= rec)
+        self.assertFalse(rec & {f'BP{n:02d}' for n in (6, 7, 8, 9)})
+        self.assertNotIn('TLG_PIPELINE_BINARIES', rec)
+
+    def test_profile_counts_changes_but_not_menu_preferences(self):
+        states = t.read_states({'bp01': '0', 'bp06': '1', 'overlay_corner': '3'})
+        self.assertEqual(t.changes(states), 2)
+        self.assertEqual(t.changes(t.previous_release(t.read_states({}))), 8)
+        self.assertEqual(t.changes(t.defaults(states)), 0)
+
+    def test_first_run_notice_once(self):
+        settings = {}
+        self.assertTrue(t.notice_pending(settings))
+        t.mark_notice_seen(settings)
+        self.assertFalse(t.notice_pending(settings))
+        self.assertFalse(t.notice_pending(dict(settings)))  # as saved and loaded again
+
+
 class LaunchEnvTest(unittest.TestCase):
     def test_build_env_carries_only_the_changes(self):
         import os

@@ -288,6 +288,27 @@ def defaults(states, group=None):
     return {k: (None if group is None or _group(k) == group else v) for k, v in states.items()}
 
 
+def is_recommended(item):
+    """Rows that are part of the Recommended profile (the table's defaults): the fixes and
+    switches that are on by default. Recommended = no choice stored; nothing here changes a default."""
+    return item.group in ('bp', 'ab') and item.vtype == 'bool' and item.default == '1'
+
+
+def changes(states):
+    """How many fixes/switches (BPnn and A/B) differ from the Recommended profile. The game menu
+    options (overlay corner, limits...) are preferences and do not count."""
+    return sum(1 for item in BACKPORTS + DIAGNOSTICS if states.get(item.id) is not None)
+
+
+def notice_pending(settings):
+    """The one-time notice about the new fixes has not been shown yet."""
+    return not settings.get('backports_notice_seen')
+
+
+def mark_notice_seen(settings):
+    settings['backports_notice_seen'] = True
+
+
 def _group(item_id):
     return next(item.group for item in ITEMS if item.id == item_id)
 

@@ -87,7 +87,7 @@ TEXT = {
     'discord': ('Discord community', 'Comunidade no Discord'),
     'experimental': ('Experimental fixes…', 'Correções experimentais…'),
     'exp_title': ('Experimental fixes and game menu options', 'Correções experimentais e opções do menu do jogo'),
-    'exp_intro': ('Everything here is saved in tlg.ini and applies the next time the game starts. Items tagged "in game" can also be changed while playing, in the Insert menu. If you do not touch anything, the defaults of the port are used.', 'Tudo aqui é salvo no tlg.ini e vale na próxima vez que o jogo abrir. Os itens com a etiqueta "no jogo" também podem ser mudados durante a partida, no menu Insert. Se você não mexer em nada, valem os padrões do port.'),
+    'exp_intro': ('Everything here is saved in tlg.ini and applies the next time the game starts. Items tagged "in game" can also be changed while playing, in the Insert menu. If you do not touch anything, the recommended profile (the table defaults) is used.', 'Tudo aqui é salvo no tlg.ini e vale na próxima vez que o jogo abrir. Os itens com a etiqueta "no jogo" também podem ser mudados durante a partida, no menu Insert. Se você não mexer em nada, vale o perfil recomendado (os padrões do port).'),
     'exp_tab_menu': ('Game menu (Insert)', 'Menu do jogo (Insert)'),
     'exp_tab_bp': ('Experimental fixes (BPnn)', 'Correções experimentais (BPnn)'),
     'exp_tab_ab': ('Diagnostic / A-B switches', 'Chaves de diagnóstico / A-B'),
@@ -108,7 +108,14 @@ TEXT = {
     'exp_auto': ('Automatic', 'Automático'),
     'exp_on': ('On', 'Ligado'),
     'exp_off': ('Off', 'Desligado'),
-    'exp_defaults': ('Back to defaults', 'Voltar ao padrão'),
+    'exp_defaults': ('Back to recommended', 'Voltar ao recomendado'),
+    'exp_recommended': ('recommended', 'recomendado'),
+    'exp_profile_rec': ('Profile: Recommended', 'Perfil: Recomendado'),
+    'exp_profile_custom': ('Profile: custom ({n} changes)', 'Perfil: personalizado ({n} mudanças)'),
+    'notice': ('This version brings new fixes, already on in the recommended mode. If you notice anything odd (lights, textures, freezes), open Experimental fixes and use "Like the previous release"; then tell us what you saw.',
+               'Esta versão traz correções novas, já ativadas no modo recomendado. Se notar algo estranho (luzes, texturas, travamentos), abra Correções experimentais e use Como a release anterior; depois conte o que viu.'),
+    'notice_open': ('Open fixes', 'Abrir correções'),
+    'notice_ok': ('OK', 'OK'),
     'exp_previous': ('Like the previous release (turn all BPnn off)', 'Como a release anterior (desliga todos os BPnn)'),
     'exp_previous_hint': ('"Like the previous release" writes bp01=0 ... for every fix that is on by default (the same as starting with TLG_BACKPORTS=0); the boxes show it, and you can turn single ones back on.', '"Como a release anterior" grava bp01=0 ... em todas as correções que vêm ligadas (é o mesmo que iniciar com TLG_BACKPORTS=0); as caixas mostram isso e você pode religar uma a uma.'),
     'exp_close': ('Close', 'Fechar'),
@@ -150,6 +157,8 @@ class Launcher:
         self.lines = queue.Queue()
         self.build()
         self.root.after(100, self.pump)
+        if backports_table.notice_pending(self.settings):
+            self.root.after(400, self.show_notice)
 
     # -- language ---------------------------------------------------------------------------
     def pt(self):
@@ -406,6 +415,30 @@ class Launcher:
         self.exp_states = tlg_run.experimental_states(self.settings)
         self.build_experimental()
 
+    def show_notice(self):
+        """Once after the update: the new fixes are on; how to go back. The key is saved first, so
+        a second start never repeats it."""
+        backports_table.mark_notice_seen(self.settings)
+        tlg_run.save_settings(self.settings)
+        box = tk.Toplevel(self.root)
+        box.title(self.t('title'))
+        box.transient(self.root)
+        ttk.Label(box, text=self.t('notice'), wraplength=440, justify='left', padding=14).pack()
+        row = ttk.Frame(box, padding=(14, 0, 14, 12))
+        row.pack(fill='x')
+        ttk.Button(row, text=self.t('notice_ok'), command=box.destroy).pack(side='right')
+        ttk.Button(row, text=self.t('notice_open'),
+                   command=lambda: (box.destroy(), self.open_experimental())).pack(side='right', padx=8)
+
+    def exp_status_text(self):
+        n = backports_table.changes(self.exp_states)
+        return self.t('exp_profile_rec') if n == 0 else self.t('exp_profile_custom', n=n)
+
+    def exp_refresh_status(self):
+        label = getattr(self, 'exp_status', None)
+        if label is not None and label.winfo_exists():
+            label.configure(text=self.exp_status_text())
+
     def exp_name(self, pair):
         return pair[1] if self.pt() else pair[0]
 
@@ -421,6 +454,7 @@ class Launcher:
     def exp_set(self, item, value):
         self.exp_states[item.id] = backports_table.normalize(item, value)
         self.exp_save()
+        self.exp_refresh_status()
 
     def exp_reset(self, which):
         if which == 'previous':
@@ -454,6 +488,8 @@ class Launcher:
         top = ttk.Frame(window, padding=10)
         top.pack(fill='both', expand=True)
         ttk.Label(top, text=self.t('exp_intro'), wraplength=800, justify='left').pack(anchor='w', pady=(0, 6))
+        self.exp_status = ttk.Label(top, text=self.exp_status_text(), font=('TkDefaultFont', 10, 'bold'))
+        self.exp_status.pack(anchor='w', pady=(0, 4))
         notebook = ttk.Notebook(top)
         notebook.pack(fill='both', expand=True)
         groups = (('menu', 'exp_tab_menu', 'exp_menu_note'), ('bp', 'exp_tab_bp', 'exp_bp_note'),
@@ -484,6 +520,8 @@ class Launcher:
 
     def exp_tags(self, item):
         tags = [self.t('exp_live') if item.live else self.t('exp_restart')]
+        if backports_table.is_recommended(item):
+            tags.append(self.t('exp_recommended'))
         if item.risky:
             tags.append(self.t('exp_experimental'))
         if item.broken:
