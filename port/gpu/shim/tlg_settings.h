@@ -75,7 +75,10 @@ struct Values {
     std::atomic<int> display_mode{0};
     std::atomic<bool> vsync{true};
     std::atomic<int> fps_limit{0};
-    std::atomic<bool> async_shaders{true};
+    /// Off by default (2026-10-16): a draw whose pipeline was still compiling was skipped, and the
+    /// object vanished for a frame (grey flashes when the camera turns). Measured in the city with the
+    /// first-run cache: 0 skipped draws against 85, same FPS, better worst frame (67 ms against 117).
+    std::atomic<bool> async_shaders{false};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
     std::atomic<int> rcas_strength{60};
