@@ -87,6 +87,7 @@ TEXT = {
     'port_by': ('PC port by HayatoG', 'Port para PC por HayatoG'),
     'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
     'discord': ('Discord community', 'Comunidade no Discord'),
+    'sponsor': ('♥ Sponsor on GitHub', '♥ Apoie no GitHub'),
     'experimental': ('Experimental fixes…', 'Correções experimentais…'),
     'exp_title': ('Experimental fixes and game menu options', 'Correções experimentais e opções do menu do jogo'),
     'exp_intro': ('Everything here is saved in tlg.ini and applies the next time the game starts. Items tagged "in game" can also be changed while playing, in the Insert menu. If you do not touch anything, the recommended profile (the table defaults) is used.', 'Tudo aqui é salvo no tlg.ini e vale na próxima vez que o jogo abrir. Os itens com a etiqueta "no jogo" também podem ser mudados durante a partida, no menu Insert. Se você não mexer em nada, vale o perfil recomendado (os padrões do port).'),
@@ -128,6 +129,7 @@ TEXT = {
 TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
+SPONSOR_URL = 'https://github.com/sponsors/HayatoG'
 GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
                        'fr_CA': 'Français (Canada)', 'tr': 'Türkçe', 'ru': 'Русский'}
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
@@ -201,7 +203,7 @@ class Launcher:
         credits = ttk.Frame(header)
         credits.pack(side='right', anchor='ne')
         ttk.Label(credits, text=self.t('port_by'), foreground='#777').pack(anchor='e')
-        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL)):
+        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL), ('sponsor', SPONSOR_URL)):
             link = ttk.Label(credits, text=self.t(key), foreground='#2a6fdb', cursor='hand2',
                              font=('TkDefaultFont', 10, 'underline'))
             link.pack(anchor='e')

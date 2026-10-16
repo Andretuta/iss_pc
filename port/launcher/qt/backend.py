@@ -14,7 +14,8 @@ from .updates import Updates
 from .logic import backports_table, tlg_run
 import advanced_table  # noqa: E402
 
-URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g'}
+URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g',
+        'sponsor': 'https://github.com/sponsors/HayatoG'}
 
 
 class FixesModel(QAbstractListModel):

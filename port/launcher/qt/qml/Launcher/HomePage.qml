@@ -107,6 +107,11 @@ Item {
                 text: Theme.tr("choose_folder")
                 onClicked: folderDialog.open()
             }
+            GhostButton {   // GitHub Sponsors page (an embedded iframe is not possible in Qt)
+                width: parent.width
+                text: "♥  " + Theme.tr("sponsor_label")
+                onClicked: Backend.openUrl("sponsor")
+            }
             Column {   // game language (voice and text): next start; the interface language is separate
                 width: parent.width; spacing: 4
                 Row {
