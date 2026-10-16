@@ -427,6 +427,15 @@ class Graphics(QObject):
     def defenderTone(self):
         return self._def_tone
 
+    def auto_defender(self):
+        """At start (Windows): asks once per cache folder. A No or a refusal is remembered, so the
+        Windows prompt does not come back at every start; the card's button asks again."""
+        folder = str(self.defender_folder())
+        if (not self.defenderShown or self.defenderDone or self._def_busy
+                or self.settings.get('defender_asked') == folder):
+            return
+        self.addDefenderExclusion()
+
     @Slot()
     def addDefenderExclusion(self):
         """Windows shows its administrator prompt; the launcher waits for the answer off the UI thread."""
@@ -448,14 +457,15 @@ class Graphics(QObject):
 
     def _on_defender(self, result):
         self._def_busy = False
+        self.settings['defender_asked'] = str(self.defender_folder())
         if result == defender.OK:
             self.settings['defender_excluded'] = str(self.defender_folder())
-            tlg_run.save_settings(self.settings)
             self._def_msg, self._def_tone = self.t('defender_ok'), 'good'
         elif result == defender.CANCELLED:
             self._def_msg, self._def_tone = self.t('defender_cancelled'), 'info'
         else:
             self._def_msg, self._def_tone = self.t('defender_failed'), 'bad'
+        tlg_run.save_settings(self.settings)
         self.changed.emit()
 
     @Slot()

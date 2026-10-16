@@ -142,7 +142,8 @@ class CardTests(unittest.TestCase):
         self.wait(graphics)
         self.assertFalse(graphics.defenderDone)
         self.assertEqual('Cancelled: nothing changed.', graphics.defenderMessage)
-        self.assertFalse(infamous_run.config_path().exists())
+        saved = json.loads(infamous_run.config_path().read_text())
+        self.assertEqual('', saved['defender_excluded'])   # only "already asked" is kept
 
     def test_refused(self):
         graphics = self.make(defender.FAILED)
@@ -150,6 +151,36 @@ class CardTests(unittest.TestCase):
         self.wait(graphics)
         self.assertEqual('bad', graphics.defenderTone)
         self.assertFalse(graphics.defenderDone)
+
+    def test_asks_by_itself_once(self):
+        graphics = self.make(defender.CANCELLED)
+        graphics.auto_defender()
+        self.wait(graphics)
+        self.assertEqual(1, len(self.asked))
+        saved = json.loads(infamous_run.config_path().read_text())
+        self.assertEqual(str(self.dir / 'user' / 'cache'), saved['defender_asked'])
+        graphics.auto_defender()                      # a No is remembered: no prompt at every start
+        self.wait(graphics)
+        self.assertEqual(1, len(self.asked))
+        graphics.addDefenderExclusion()               # the button still asks
+        self.wait(graphics)
+        self.assertEqual(2, len(self.asked))
+
+    def test_no_prompt_when_done_or_elsewhere(self):
+        graphics = self.make(defender.OK)
+        graphics.auto_defender()
+        self.wait(graphics)
+        graphics.auto_defender()
+        self.wait(graphics)
+        self.assertEqual(1, len(self.asked))
+        self.assertTrue(graphics.defenderDone)
+        hidden = self.make(defender.OK, shown=False)
+        hidden.auto_defender()
+        self.assertEqual([], self.asked)
+
+    def test_the_window_asks_at_start(self):
+        text = (ROOT / 'launcher' / 'qt' / 'app.py').read_text(encoding='utf-8')
+        self.assertIn('QTimer.singleShot(DEFENDER_DELAY_MS, self.graphics.auto_defender)', text)
 
     def test_hidden_outside_windows(self):
         self.assertFalse(self.make(defender.OK, shown=False).defenderShown)
