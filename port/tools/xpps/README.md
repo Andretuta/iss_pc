@@ -39,13 +39,13 @@ A varredura segue as **tabelas de ligação** (`KNLI`) do pacote em vez de adivi
 
 **Base única do registro de pass (0xB8 B):** +0x00 hash de classe, +0x20 início do objeto (entrada CID), +0x28 id do pass, +0x30 fetch, +0x38 VS, +0x40 PS, +0x48/+0x50 IRO do VS/PS (0x138 B), +0x58 lista de bytes, +0x68/+0x78/+0x88/+0x98 pares `{estágio, slot}`, +0xA8 lista de u32.
 
-## Formato do índice (esquema 1)
+## Formato do índice (esquema 2)
 
 Offsets relativos aos dados do pacote (`doff` do KCAP). Valores u64 (hashes, classes) ficam como int64 com sinal; hashes de 16 B e estruturas cruas ficam como BLOB.
 
 | Tabela | Conteúdo |
 |---|---|
-| `schema_version` | versão do esquema (1) |
+| `schema_version` | versão do esquema (2: as mesmas tabelas do 1, mas com as tabelas de ligação divididas lidas; um índice 1 é refeito inteiro) |
 | `meta` | raiz, contagens, tempo, `content_sha`, resultado da resolução dos imports |
 | `files` | `id, path` (com `/`), `size, mtime_ns, fp`, cabeçalho KCAP e estatísticas da varredura (JSON) |
 | `shader_occ` | uma linha por cabeçalho Gnm: `hdr_off, code_off, size` (código + rodapé), `stage, hash, footer_off` |
