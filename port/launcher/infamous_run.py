@@ -118,6 +118,8 @@ DEFAULT_SETTINGS = {
     'precompile_shaders': True,  # launcher: make the shader jobs list before the game starts (precompile.py)
     'close_on_play': True,  # launcher: close about 2 s after the game starts (an open launcher cost ~30% FPS in CPU-bound scenes)
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
+    'defender_excluded': '',  # Windows: the cache folder the player excluded from Defender (defender.py)
+    'defender_asked': '',     # Windows: the cache folder the launcher already asked about (once, at start)
 }
 
 

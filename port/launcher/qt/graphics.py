@@ -10,6 +10,7 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from . import gfxlogic, logic, report
 from .logic import backports_table, shader_cache, tlg_run
 from .rowsmodel import RowsModel
+import defender  # noqa: E402  (launcher/defender.py)
 import preset_share  # noqa: E402  (launcher/preset_share.py; logic put the folder on sys.path)
 
 # (id, kind, live) of the options kept in settings.json. live: also in the Insert menu.
@@ -41,6 +42,7 @@ STEPS = {'menu:overlay_scale': 10, 's:vram_budget_mb': 200}
 
 class Graphics(QObject):
     changed = Signal()
+    defenderFinished = Signal(str)   # defender.OK | CANCELLED | FAILED, from the prompt's thread
     vramFound = Signal(object)
     scrollRequested = Signal(int)   # used by the screenshot tool
     dialogChanged = Signal()
@@ -57,10 +59,12 @@ class Graphics(QObject):
         self._confirm = False
         self._cache = 0
         self._msg, self._tone = '', 'info'
+        self._def_busy, self._def_msg, self._def_tone = False, '', 'info'
         self._share_msg, self._share_tone = '', 'info'
         self._dialog, self._handlers = {}, {}
         self._imported = None      # (profile name, targets) of the last imported file
         self.vramFound.connect(self._on_vram)
+        self.defenderFinished.connect(self._on_defender)
         backend.profileChanged.connect(self.rebuild)
         backend.langChanged.connect(self.rebuild)
         backend.saves.changed.connect(self.changed)
@@ -394,6 +398,75 @@ class Graphics(QObject):
     @Property(str, notify=changed)
     def messageTone(self):
         return self._tone
+
+    # -- Windows Defender exclusion of the cache folder (defender.py) ----------------------------------------
+    def defender_folder(self):
+        return tlg_run.gpu_user_dir() / 'cache'
+
+    @Property(bool, notify=changed)
+    def defenderShown(self):
+        return self.probes['defender_shown']() if 'defender_shown' in self.probes else defender.supported()
+
+    @Property(bool, notify=changed)
+    def defenderDone(self):
+        return defender.is_marked(self.settings, self.defender_folder())
+
+    @Property(bool, notify=changed)
+    def defenderBusy(self):
+        return self._def_busy
+
+    @Property(str, notify=changed)
+    def defenderFolderText(self):
+        return str(self.defender_folder())
+
+    @Property(str, notify=changed)
+    def defenderMessage(self):
+        return self._def_msg
+
+    @Property(str, notify=changed)
+    def defenderTone(self):
+        return self._def_tone
+
+    def auto_defender(self):
+        """At start (Windows): asks once per cache folder. A No or a refusal is remembered, so the
+        Windows prompt does not come back at every start; the card's button asks again."""
+        folder = str(self.defender_folder())
+        if (not self.defenderShown or self.defenderDone or self._def_busy
+                or self.settings.get('defender_asked') == folder):
+            return
+        self.addDefenderExclusion()
+
+    @Slot()
+    def addDefenderExclusion(self):
+        """Windows shows its administrator prompt; the launcher waits for the answer off the UI thread."""
+        if self._def_busy:
+            return
+        self._def_busy, self._def_msg = True, self.t('defender_waiting')
+        self._def_tone = 'info'
+        self.changed.emit()
+        folder = self.defender_folder()
+        add = self.probes.get('defender') or defender.add_exclusion
+
+        def work():
+            try:
+                result = add(folder)
+            except Exception:
+                result = defender.FAILED
+            self.defenderFinished.emit(result)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_defender(self, result):
+        self._def_busy = False
+        self.settings['defender_asked'] = str(self.defender_folder())
+        if result == defender.OK:
+            self.settings['defender_excluded'] = str(self.defender_folder())
+            self._def_msg, self._def_tone = self.t('defender_ok'), 'good'
+        elif result == defender.CANCELLED:
+            self._def_msg, self._def_tone = self.t('defender_cancelled'), 'info'
+        else:
+            self._def_msg, self._def_tone = self.t('defender_failed'), 'bad'
+        tlg_run.save_settings(self.settings)
+        self.changed.emit()
 
     @Slot()
     def askClear(self):

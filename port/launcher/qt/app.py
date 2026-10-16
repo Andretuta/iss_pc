@@ -4,7 +4,7 @@ import math
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QUrl
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage, QLinearGradient, QPainter,
                            QPen, QRadialGradient)
 from PySide6.QtQml import QQmlApplicationEngine
@@ -17,6 +17,7 @@ from .graphics import Graphics
 
 HERE = Path(__file__).resolve().parent
 QML_ROOT = HERE / 'qml'
+DEFENDER_DELAY_MS = 1500   # the Windows prompt comes after the window is on screen
 FONT_DISPLAY = 'Big Shoulders Stencil Display'
 FONT_TEXT = 'Barlow'
 
@@ -127,6 +128,7 @@ class App:
     def run(self):
         self.backend.start_probes()
         self.graphics.start()
+        QTimer.singleShot(DEFENDER_DELAY_MS, self.graphics.auto_defender)   # Windows: once, over the window
         code = self.qt.exec()
         self.backend.shutdown()
         return code

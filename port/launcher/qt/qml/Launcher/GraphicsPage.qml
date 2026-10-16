@@ -119,6 +119,27 @@ Item {
                     }
                 }
             }
+
+            // ---- Windows Defender exclusion of the cache folder (Windows only) ---------------------------------
+            Rectangle {
+                visible: Graphics.defenderShown
+                width: parent.width; height: visible ? defCol.implicitHeight + 36 : 0
+                radius: 14; color: Theme.card; border.width: 1; border.color: Theme.cardLine
+                Column {
+                    id: defCol
+                    x: 18; y: 18; width: parent.width - 36; spacing: 10
+                    Text { text: Theme.tr("defender_title"); color: "#fff"; font.family: Theme.fontText; font.pixelSize: 17; font.weight: Font.DemiBold }
+                    Text { width: parent.width; text: Theme.tr("defender_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
+                           font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.35; lineHeightMode: Text.ProportionalHeight }
+                    NoteBar { visible: Graphics.defenderDone && Graphics.defenderMessage === ""
+                              text: Backend.tf("defender_done", {"folder": Graphics.defenderFolderText}); bar: Theme.ok; textColor: Theme.textSoft }
+                    NoteBar { visible: Graphics.defenderMessage !== ""; text: Graphics.defenderMessage; textColor: Theme.textSoft
+                              bar: Graphics.defenderTone === "good" ? Theme.ok : (Graphics.defenderTone === "bad" ? Theme.bad : page.accent) }
+                    GhostButton { compact: true; enabled: !Graphics.defenderBusy
+                                  text: Graphics.defenderDone ? Theme.tr("defender_again") : Theme.tr("defender_button")
+                                  onClicked: Graphics.addDefenderExclusion() }
+                }
+            }
         }
     }
 
