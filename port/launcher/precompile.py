@@ -144,10 +144,16 @@ def decide(settings, version=None, print_fingerprint=None):
 
 def generator_command(root, out, index):
     """THE place that knows how to call the generator (interface: iss_ref/agent_status/jobs_cli.txt):
-    scripts/build_jobs.py <xpps folder> <out> --index <sqlite> --nice, run by the launcher itself
-    (--script) in a packaged build, by python otherwise."""
+    scripts/build_jobs.py <xpps folder> <out> --index <sqlite> --jobs <N>, run by the launcher itself
+    (--script) in a packaged build, by python otherwise. The player waits for it before the game
+    starts, so it takes every core but one (no --nice)."""
     script = tlg_run.PORT_DIR / 'scripts' / 'build_jobs.py'
-    return [*tlg_run.python_command(script), str(root), str(out), '--index', str(index), '--nice']
+    return [*tlg_run.python_command(script), str(root), str(out), '--index', str(index),
+            '--jobs', str(generator_processes())]
+
+
+def generator_processes():
+    return max(1, (os.cpu_count() or 2) - 1)
 
 
 NEW_GROUP = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)

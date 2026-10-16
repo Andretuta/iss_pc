@@ -9,6 +9,7 @@ import textwrap
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from paths import ROOT
@@ -334,6 +335,20 @@ class _Dead:
     def wait(self):
         return 0
 
+
+
+class GeneratorCommandTests(unittest.TestCase):
+    """The player waits for the generator: it takes every core but one, at normal priority."""
+    def test_every_core_but_one(self):
+        with mock.patch.object(precompile.os, 'cpu_count', return_value=16):
+            command = precompile.generator_command('/game', '/out.bin', '/index.sqlite')
+        self.assertEqual('15', command[command.index('--jobs') + 1])
+        self.assertNotIn('--nice', command)
+
+    def test_one_core(self):
+        for count in (1, None):
+            with mock.patch.object(precompile.os, 'cpu_count', return_value=count):
+                self.assertEqual(1, precompile.generator_processes())
 
 if __name__ == '__main__':
     unittest.main()
