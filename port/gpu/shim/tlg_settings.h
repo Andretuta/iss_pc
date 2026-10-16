@@ -130,6 +130,15 @@ struct Values {
     int startup_output_res = OutputDefault;
     int startup_live_resolution = 0;
 
+    // Draw distance (tlg_view.h, src/view_hook.h; inFAMOUS 1.07 only, view_supported). Live:
+    // the LOD values on the next frame, the clip planes for cameras the game creates afterwards.
+    std::atomic<float> lod_scale{1.0f}, region_lod{1.0f}, region_fade{1.0f};
+    std::atomic<float> near_clip{10.0f}, far_clip{1.0e7f};
+    std::atomic<float> lod_bands[6]{400.0f, 750.0f, 1500.0f, 3500.0f, 6000.0f, 15000.0f};
+    std::atomic<bool> view_supported{false};
+    /// Extra texture LOD bias of the game's draws (vk_rasterizer.cpp), any game.
+    std::atomic<float> mip_lod_bias{0.0f};
+
     // Mouse and keyboard (src/runtime_pad.c through tlggpu_input_settings, src/mouse_stick.h):
     // the mouse turns the camera (right stick). Live from the menu.
     std::atomic<bool> mouse_enabled{true}, mouse_invert_y{false};

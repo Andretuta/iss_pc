@@ -9,10 +9,12 @@
 #include <optional>
 #include <dlfcn.h>
 #endif
+#include <cmath>
 #include <unordered_set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
 #include "tlg_toggles.h"
+#include "tlg_settings.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "video_core/renderer_vulkan/vk_lighting_test.h"
 #include "video_core/renderer_vulkan/vk_pass_census.h"
@@ -2092,11 +2094,14 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
     // tlg: G-buffer passes sample material textures for a scene rendered below the output
     // size; the temporal upscaler restores the detail of the output's mip level (FSR guide:
     // log2(render / output)). Shadows, post-processing and UI keep the guest's bias.
-    sampler_lod_bias = 0.0f;
+    // The menu's texture LOD bias (mip_lod_bias) adds to every draw: textures without mips
+    // (UI, full-screen passes) are unaffected. Steps of 1/8: dragging the slider creates few samplers.
+    sampler_lod_bias = pipeline->IsCompute() ? 0.0f
+                                             : std::round(TlgSettings::Get().mip_lod_bias.load() * 8.0f) / 8.0f;
     if (!pipeline->IsCompute() && !TlgToggle::Disabled(TlgToggle::SceneMipBias) &&
         std::popcount(static_cast<const GraphicsPipeline*>(pipeline)->GetGraphicsKey().mrt_mask &
                       0xff) >= 5) {
-        sampler_lod_bias = upscaler->SceneMipBias();
+        sampler_lod_bias += upscaler->SceneMipBias();
         static float reported = 0.0f;
         if (sampler_lod_bias != reported) {
             reported = sampler_lod_bias;
