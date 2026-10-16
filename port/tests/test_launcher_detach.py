@@ -230,6 +230,86 @@ class BackendTests(unittest.TestCase):
         quit_.assert_called_once()
 
 
+@unittest.skipUnless(HAVE_QT, 'PySide6 not installed')
+class CacheSizeTests(unittest.TestCase):
+    """The shader cache holds tens of thousands of files after the first start: its size is measured
+    off the UI thread, never by a QML property (the window froze on Windows, close-on-play included)."""
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QCoreApplication.instance() or QCoreApplication([])
+
+    def make(self, measure):
+        probes = {'gpu': lambda: ('GPU', '1.4'), 'pad': lambda: None, 'problems': lambda: [],
+                  'save': lambda: None, 'news': lambda: [], 'version': lambda: 'v1',
+                  'saves': {'running': lambda: False, 'scan': lambda: [], 'open': lambda p: None}}
+        data = {**infamous_run.DEFAULT_SETTINGS, 'ui_language': 'en_US', 'backports_notice_seen': True}
+        with mock.patch.object(backend_module.tlg_run, 'shader_cache_size', measure):
+            backend = Backend(settings=data, probes=probes)
+            return backend, self.wait(backend)
+
+    def wait(self, backend):
+        import time
+        deadline = time.monotonic() + 10
+        while backend._measuring and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertFalse(backend._measuring)
+        return backend
+
+    def test_measured_off_the_ui_thread(self):
+        import threading
+        threads = []
+
+        def measure(_settings):
+            threads.append(threading.current_thread())
+            return 5 * 2 ** 20
+        backend, _ = self.make(measure)
+        self.assertTrue(threads)
+        self.assertNotIn(threading.main_thread(), threads)
+        self.assertEqual(5 * 2 ** 20, backend.cache_bytes())
+        self.assertIn('Shader cache: 5', ' '.join(chip['text'] for chip in backend.chips))
+        self.assertFalse(backend.showFirstRun)
+
+    def test_properties_never_walk_the_folder(self):
+        backend, _ = self.make(lambda _settings: 0)
+        with mock.patch.object(backend_module.tlg_run, 'shader_cache_size', side_effect=AssertionError):
+            for _ in range(50):              # each progress line of the shader list re-reads them
+                backend._on_jobs_progress('index', 1, 2)
+                backend.showFirstRun
+                backend.playSubtitle
+        self.assertTrue(backend.showFirstRun)   # measured empty: first start
+
+    def test_unknown_size_is_not_a_first_start(self):
+        import threading
+        release = threading.Event()
+
+        def slow(_settings):
+            release.wait(10)
+            return 0
+        data = {**infamous_run.DEFAULT_SETTINGS, 'ui_language': 'en_US', 'backports_notice_seen': True}
+        probes = {'gpu': lambda: None, 'pad': lambda: None, 'problems': lambda: [], 'save': lambda: None,
+                  'news': lambda: [], 'version': lambda: 'v1',
+                  'saves': {'running': lambda: False, 'scan': lambda: [], 'open': lambda p: None}}
+        with mock.patch.object(backend_module.tlg_run, 'shader_cache_size', slow):
+            backend = Backend(settings=data, probes=probes)
+            self.assertIsNone(backend._cache_bytes)
+            self.assertIn('Shader cache: measuring', ' '.join(chip['text'] for chip in backend.chips))
+            backend.refresh()                 # a second request while measuring runs once more after
+            release.set()
+            self.wait(backend)
+            self.wait(backend)
+        self.assertEqual(0, backend.cache_bytes())
+
+    def test_quit_hides_the_window_first(self):
+        backend, _ = self.make(lambda _settings: 0)
+        window = mock.Mock()
+        with mock.patch.object(self.app, 'quit') as quit_, \
+                mock.patch.object(type(self.app), 'topLevelWindows', create=True, new=lambda _self: [window]):
+            backend._quit_app()
+        window.hide.assert_called_once()
+        quit_.assert_called_once()
+
+
 class OptionTextTests(unittest.TestCase):
     def test_tk_has_both_languages(self):
         import re

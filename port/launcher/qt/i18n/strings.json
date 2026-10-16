@@ -178,6 +178,7 @@
   "chip_profile_custom": {"en": "Profile: custom ({n} changes)", "pt": "Perfil: personalizado ({n} mudanças)"},
   "chip_cache": {"en": "Shader cache: {size}", "pt": "Cache de shaders: {size}"},
   "chip_cache_empty": {"en": "Shader cache: empty", "pt": "Cache de shaders: vazio"},
+  "chip_cache_checking": {"en": "Shader cache: measuring…", "pt": "Cache de shaders: medindo…"},
   "chip_pad": {"en": "Controller: {name}", "pt": "Controle: {name}"},
   "chip_pad_none": {"en": "No controller detected", "pt": "Nenhum controle detectado"},
   "first_run_warning": {

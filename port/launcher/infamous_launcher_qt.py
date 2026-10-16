@@ -40,7 +40,13 @@ def main():
     except ImportError as error:
         sys.exit(f'PySide6 is missing ({error}). Install it with: pip install PySide6-Essentials\n'
                  f'PySide6 não encontrado. Instale com: pip install PySide6-Essentials')
-    sys.exit(App().run())
+    code = App().run()
+    # Settings are already saved and the game runs on its own: skip the interpreter teardown, where
+    # PySide6/QML destructors and leftover threads could keep a closed launcher alive (Windows).
+    for stream in (sys.stdout, sys.stderr):   # None in the windowed executable
+        if stream is not None:
+            stream.flush()
+    os._exit(code if isinstance(code, int) else 0)
 
 
 if __name__ == '__main__':

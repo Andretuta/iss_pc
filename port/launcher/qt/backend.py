@@ -149,6 +149,7 @@ class Backend(QObject):
     gpuFound = Signal(object)
     lineReceived = Signal(str)
     jobsProgress = Signal(str, int, int)   # shader list: phase, done, total (from the play thread)
+    cacheMeasured = Signal(object)         # bytes of the shader cache (from the measuring thread)
     finished = Signal(int)
     gameStarted = Signal(str)   # the log path; from the play thread right after the game was launched
     message = Signal(str)
@@ -174,6 +175,9 @@ class Backend(QObject):
         self._message = ''
         self._guide_kind, self._guide_message = None, ''
         self.process = None
+        self._cache_bytes = None   # None until the first measure ends; QML properties never walk the folder
+        self._measuring = self._measure_again = False
+        self.cacheMeasured.connect(self._on_cache_measured)
         self.fixes = FixesModel(self)
         self.advanced = FixesModel(self, 'adv')
         self.gpuFound.connect(self._on_gpu)
@@ -230,11 +234,8 @@ class Backend(QObject):
 
     def refresh(self):
         self._pad = self.probe('pad', logic.detect_pad)
-        problems = self.probes['problems']() if 'problems' in self.probes else None
-        cache = self.probes['cache']() if 'cache' in self.probes else None
-        self._chips, self._ready = logic.compute_chips(
-            self.settings, self.t_, gpu=self._gpu, pad=self._pad, problems=problems,
-            states=self.fix_states, cache_bytes=cache)
+        self.measure_cache()
+        self._compute_chips()
         self._news = self.probe('news', lambda: logic.news(self.t_, self.t_.pt()))
         savedata = tlg_run.user_dir() / 'savedata'
         self._save = self.probe('save', lambda: logic.last_save_title(savedata))
@@ -242,6 +243,49 @@ class Backend(QObject):
         self.stateChanged.emit()
         self.profileChanged.emit()
         self.gameDirChanged.emit()
+
+    def _compute_chips(self):
+        problems = self.probes['problems']() if 'problems' in self.probes else None
+        self._chips, self._ready = logic.compute_chips(
+            self.settings, self.t_, gpu=self._gpu, pad=self._pad, problems=problems,
+            states=self.fix_states, cache_bytes=self._cache_bytes, measure_cache=False)
+
+    # -- shader cache size ---------------------------------------------------------------------
+    def measure_cache(self):
+        """Sizes the shader cache off the UI thread. After the first start it holds tens of thousands of
+        files: walking them on the UI thread at every state change (the Home chip, showFirstRun, each
+        progress line of the shader list) froze the window on Windows, close-on-play timer included."""
+        if 'cache' in self.probes:
+            self._cache_bytes = self.probes['cache']()
+            return
+        if self._measuring:
+            self._measure_again = True
+            return
+        self._measuring = True
+        settings = dict(self.settings)
+        def work():
+            try:
+                size = tlg_run.shader_cache_size(settings)
+            except Exception:
+                size = 0
+            self.cacheMeasured.emit(size)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_cache_measured(self, size):
+        self._measuring = False
+        if self._measure_again:   # the cache changed while it was measured (cleared, folder changed)
+            self._measure_again = False
+            self.measure_cache()
+        if size == self._cache_bytes:
+            return
+        self._cache_bytes = size
+        self._compute_chips()
+        self.chipsChanged.emit()
+        self.stateChanged.emit()
+
+    def cache_bytes(self):
+        """The last measured size; 0 while the first measure runs."""
+        return self._cache_bytes or 0
 
     def reload_user(self):
         """The data folder changed: tlg.ini (fix switches) and the last save come from the new one."""
@@ -348,10 +392,7 @@ class Backend(QObject):
 
     @Property(bool, notify=stateChanged)
     def showFirstRun(self):
-        try:
-            empty = not tlg_run.shader_cache_size(self.settings) if 'cache' not in self.probes else not self.probes['cache']()
-        except Exception:
-            empty = False
+        empty = self._cache_bytes == 0   # unknown (still measuring) is not empty
         return empty or backports_table.notice_pending(self.settings)
 
     @Property(str, notify=gameDirChanged)
@@ -455,8 +496,11 @@ class Backend(QObject):
 
     def _quit_app(self):
         app = QCoreApplication.instance()
-        if app is not None:
-            app.quit()
+        if app is None:
+            return
+        for window in getattr(app, 'topLevelWindows', lambda: [])():   # gone at once, even if the exit is slow
+            window.hide()
+        app.quit()
 
     def _poll_log(self, final=False):
         """Reads the bytes the game appended; the panel is rebuilt once per tick, never per line."""
