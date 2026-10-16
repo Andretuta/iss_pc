@@ -32,6 +32,7 @@ import sys
 from collections import Counter, defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from . import eboot as EB
 from . import engine_tables as ET
 from . import gcn_mem
 from . import jobfile
@@ -287,8 +288,9 @@ def load_graphics_context(ix: Index, pairs: Optional[set] = None):
     groups = defaultdict(list)
     vs_effects = defaultdict(set)
     want_vs = {v for v, _p in pairs} if pairs is not None else None
-    for (f, o, pid, vs, ps, fo, fs, tp, sp) in db.execute(
-            "SELECT file, off, pass_id, vs, ps, fetch_off, fetch_size, tex_pairs, smp_pairs FROM passes"):
+    for (f, o, pid, vs, ps, fo, fs, tp, sp, cid, ids) in db.execute(
+            "SELECT file, off, pass_id, vs, ps, fetch_off, fetch_size, tex_pairs, smp_pairs, cid_class, "
+            "ids_a8 FROM passes"):
         vs, ps = vs & U64, ps & U64
         if want_vs is not None and vs not in want_vs:
             continue
@@ -303,7 +305,8 @@ def load_graphics_context(ix: Index, pairs: Optional[set] = None):
             vs_effects[vs].add(eff)
         if pairs is not None and (vs, ps) not in pairs:
             continue
-        groups[(vs, ps, pid)].append((f, o, fo, fs, tp or b"", sp or b"", eff))
+        groups[(vs, ps, pid)].append((f, o, fo, fs, tp or b"", sp or b"", eff,
+                                      None if cid is None else cid & U64, ids or b""))
     needed = {e for lst in vs_effects.values() for e in lst}
     mats = defaultdict(list)
     for f, o, ef, eo, nt, tl in db.execute(
@@ -339,6 +342,21 @@ def material_bindings(effect, tex_pairs: bytes):
         if b in mm:
             mat[(stage, api)] = mm.index(b)
     return mat, desc
+
+
+def descriptor_names(effect, tex_pairs: bytes):
+    """(stage, api) -> (name hash, type byte) of every resource descriptor (effect +0xd0) a pass
+    binds: the engine finds its slots by these hashes (FUN_01445ae0, all.c l.~955100)."""
+    td = effect[1]
+    out = {}
+    for j in range(0, len(tex_pairs) - 1, 2):
+        stage = ET.STAGE_CODE.get(tex_pairs[j])
+        at = tex_pairs[j + 1] * ET.TEX_DESC_SIZE
+        if stage is None or at + ET.TEX_DESC_SIZE > len(td):
+            continue
+        (h,) = struct.unpack_from("<Q", td, at)
+        out[(stage, td[at + ET.TEX_DESC_API])] = (h, td[at + ET.TEX_DESC_TYPE])
+    return out
 
 
 def effect_samplers(effect, smp_pairs: bytes):
@@ -417,14 +435,34 @@ def _particle_strides(ix: Index) -> Dict[int, int]:
 
 # --- generation ---------------------------------------------------------------------------
 class Builder:
-    def __init__(self, ix: Index, tables: ET.Tables, max_state=12, max_material=12, max_compute=8,
-                 compute_model="re", compute_wide=False):
-        self.ix, self.t = ix, tables
+    def __init__(self, ix: Index, tables: Optional[ET.Tables], max_state=12, max_material=12,
+                 max_compute=8, compute_model="re", compute_wide=False, eboot_path=None,
+                 step_variants=True, null_variants=True):
+        self.ix = ix
+        self.stats = Counter()
+        self.model = tables is None
+        self.t = tables if tables is not None else ET.Tables({})
+        self.step_variants, self.null_variants = step_variants, null_variants
+        self.eb, self.class_type, self.buffers, self.textures = None, {}, {}, {}
+        if self.model:
+            path = eboot_path or EB.find_eboot(ix.root or ".")
+            if path:
+                try:
+                    self.eb = EB.Eboot(path)
+                except (OSError, ValueError):
+                    self.eb = None
+            self.stats["eboot_found"] = int(self.eb is not None)
+            if self.eb is not None:
+                self.class_type = self.eb.types_of(
+                    c & U64 for (c,) in ix.db.execute("SELECT DISTINCT cid_class FROM passes "
+                                                      "WHERE cid_class IS NOT NULL"))
+                self.buffers = ET.engine_buffer_table(self.eb)
+                self.textures = ET.engine_texture_table(self.eb)
         self.compute_model, self.compute_wide = compute_model, compute_wide
         self.def_strides = None
         self.max_state, self.max_material, self.max_compute = max_state, max_material, max_compute
-        self.stats = Counter()
         self.seen = set()
+        self.progress, self.done, self.total = None, 0, 0
 
     def fallback(self, key: str, usage: int):
         w = self.t.fallback.get(key)
@@ -458,6 +496,101 @@ class Builder:
             keep.setdefault(key, (restrict_state(st, mask), vsw, psw))
         ranked = sorted(cnt, key=lambda k: (best[k], cnt[k]), reverse=True)
         return [keep[k] for k in ranked[:limit]]
+
+    # --- v2: the eboot model (no capture) ---------------------------------------------------
+    def model_states(self, tid, pid, vh: S.Header, ph: S.Header, flag_sets):
+        """Candidate states of a pass group (render target set x blend x depth x raster x vs)."""
+        nmrt = bin(S.mrt_written(ph)).count("1")
+        engine = tid is None or pid == 255
+        prims = ET.CLASS_PRIM.get(tid) or (ET.ENGINE_PRIMS if engine else (4,))
+        shadow = tid in ET.SHADOW_CASTERS
+        rasters = [(1, 0), (0, 0), (1, 1), (0, 1)] if shadow else [(1, 0)]   # (zclip, user plane)
+        steps = [(0, 0), (1, 1)] if self.step_variants else [(0, 0)]
+        blends = []
+        for f in flag_sets:
+            for b in ET.class_blends(tid, pid, f):
+                if b not in blends:
+                    blends.append(b)
+        out = []
+        for step in steps:
+            for zclip, ucp in rasters:
+                for name in ET.class_sets(tid, pid, nmrt):
+                    if step != (0, 0) and name in ET.FIRST_BUCKET_SETS:
+                        continue
+                    targets, set_mask, depth = ET.RT_SETS[name]
+                    for rt_i, blend, mask_and in blends:
+                        mask = set_mask & (mask_and if mask_and is not None else ~0)
+                        cb = {}
+                        for i, (fmt, nt, swap) in enumerate(targets):
+                            m = mask >> 4 * i & 0xF
+                            if m:
+                                cb[i] = [fmt, nt, swap, blend if i == rt_i else 0, m, 0]
+                        d = [depth[0], depth[1], 0, 1] if depth and not ET.class_depth_off(tid, pid) \
+                            else [0, 0, 0, 1]
+                        for prim in prims:
+                            out.append({"off": False, "cb": cb, "depth": d,
+                                        "raster": [prim, 2, 0, zclip, 1, 0xCC],
+                                        "vs": [ucp, 1, 0, step[0], step[1], int(prim in (0x11, 0x13))]})
+        return out
+
+    def model_engine(self, stage_name, slots, desc, code):
+        """Engine sharps of a stage: [variant {key: witness json}], bound first and, when a named
+        engine buffer can be null, the variant with those null."""
+        bound, null = {}, {}
+        nullable = False
+        acc = None
+        for key, usage, api, start, n in slots:
+            d = desc.get((stage_name, api))
+            w = None
+            if usage == S.USAGE_SAMPLER:
+                w = ["S", 0, 0]
+            elif n == 8:
+                spec = self.textures.get(d[0]) if d else None
+                if spec is not None:
+                    w = ["I", 1, spec[0], spec[1], spec[2], [4, 5, 6, 7]]
+                    self.stats["sharp_engine_texture_named"] += 1
+                else:
+                    typ = ET.DESC_TYPE_TO_IMAGE.get(d[1], 9) if d else 9
+                    w = ["I", 1, typ, 10, 0, [4, 5, 6, 7]]
+            elif usage in (S.USAGE_RESOURCE, S.USAGE_RW) and n == 4 and d is not None:
+                spec = self.buffers.get(d[0])
+                if spec is not None:
+                    stride, df, nf, sel, mt, can_null = spec
+                    w = ["B", 1, stride, 0, 0, 0, df, nf, list(sel), mt, 0]
+                    self.stats["sharp_engine_named"] += 1
+                    if can_null:
+                        nullable = True
+                        null[key] = json.dumps(ET.NULL_BUFFER_WITNESS)
+                elif d[1] == ET.DESC_TYPE_REGULAR_BUFFER:
+                    if acc is None:
+                        acc = gcn_mem.accesses(code)
+                    stride = gcn_mem.code_stride(acc, start) or 16
+                    w = ["B", 1, stride, 0, 0, 0] + list(ET.REG4[:2]) + [list(ET.REG4[2]), 4, 0]
+                    self.stats["sharp_engine_code_stride"] += 1
+            if w is None:
+                w = self.fallback(key, usage)
+            bound[key] = json.dumps(w)
+        out = [bound]
+        if nullable and self.null_variants:
+            out.append({**bound, **null})
+        return out
+
+    def model_choices(self, tid, pid, vh, ph, vslots, pslots, desc, flag_sets, vs, ps):
+        states = self.model_states(tid, pid, vh, ph, flag_sets)
+        vvars = self.model_engine("VS", vslots, desc, self.ix.code(vs))
+        pvars = self.model_engine("PS", pslots, desc, self.ix.code(ps))
+        mask = S.mrt_written(ph)
+        out, seen = [], set()
+        for vw, pw in [(v, p) for v in vvars for p in pvars]:
+            vsw = tuple((k, vw[k]) for k, *_ in vslots)
+            psw = tuple((k, pw[k]) for k, *_ in pslots)
+            for st in states:
+                key = (project_state(st, mask), vsw, psw)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((restrict_state(st, mask), vsw, psw))
+        return out
 
     def profiles_for(self, pid: int):
         ps = self.t.engine.get(pid)
@@ -496,12 +629,16 @@ class Builder:
                     keep.setdefault(key, attrs)
         return [keep[k] for k, _ in cnt.most_common(self.max_material)]
 
+    def tick(self):
+        """One work unit done (a pass group or a compute shader): the progress callback."""
+        self.done += 1
+        if self.progress and (self.done % 50 == 0 or self.done == self.total):
+            self.progress(self.done, self.total)
+
     def graphics(self, groups, effects, mats, meshes, tex, vs_effects=None) -> Iterable[dict]:
         ix = self.ix
-        total = len(groups)
-        for gi, ((vs, ps, pid), rows) in enumerate(sorted(groups.items())):
-            if gi % 200 == 0:
-                print(f"PROGRESS jobs {gi} {total}", flush=True)
+        for (vs, ps, pid), rows in sorted(groups.items()):
+            self.tick()
             vh, ph = ix.headers.get(vs), ix.headers.get(ps)
             if vh is None or ph is None or vh.stage != "VS" or ph.stage != "PS":
                 self.stats["pair_without_header"] += 1
@@ -512,7 +649,7 @@ class Builder:
             # material/fetch tuples over the pass records of this pair and pass id
             mt_cnt, mt_keep = Counter(), {}
             fetch_codes = {}
-            for (f, o, fo, fs, tp, sp, eff) in rows:
+            for (f, o, fo, fs, tp, sp, eff, *_x) in rows:
                 fcode = ix.read(f, fo, fs) if fo is not None and fs else b""
                 if fcode:
                     fetch_codes[hashlib.sha1(fcode).digest()] = fcode
@@ -553,8 +690,23 @@ class Builder:
                         mt_cnt[nk] += c
                         mt_keep.setdefault(nk, (fcode, mt, smp, attrs))
                         self.stats["fetch_from_vs_meshes"] += 1
-            choices = self.engine_choices(self.profiles_for(pid), [(k, u) for k, u, *_ in vslots],
-                                          [(k, u) for k, u, *_ in pslots], ph, self.max_state)
+            if self.model:
+                names, tids, flag_sets = {}, Counter(), []
+                for (f, o, fo, fs, tp, sp, eff, cid, ids) in rows:
+                    if eff in effects:
+                        names.update(descriptor_names(effects[eff], tp))
+                    if cid is not None and cid in self.class_type:
+                        tids[self.class_type[cid]] += 1
+                    fl = ET.flags_of(ids)
+                    if fl not in flag_sets:
+                        flag_sets.append(fl)
+                tid = tids.most_common(1)[0][0] if tids else None
+                choices = self.model_choices(tid, pid, vh, ph, vslots, pslots, names, flag_sets,
+                                             vs, ps)
+                self.stats["model_states"] += len(choices)
+            else:
+                choices = self.engine_choices(self.profiles_for(pid), [(k, u) for k, u, *_ in vslots],
+                                              [(k, u) for k, u, *_ in pslots], ph, self.max_state)
             base_regs = header_regs(vh, ph)
             for mkey, _ in mt_cnt.most_common(self.max_material):
                 fcode, mt, smp, attrs = mt_keep[mkey]
@@ -589,6 +741,16 @@ class Builder:
                             vsh = []
                             for i, (sg, off) in enumerate(loads):
                                 a = attrs[i] if attrs and i < len(attrs) and attrs[i] else None
+                                if a is None and self.model:
+                                    size = sem[i][2] if i < len(sem) else 4
+                                    if attrs and size == 1:
+                                        # past the mesh streams: the engine's per-instance
+                                        # index stream (16-bit uint, ET.INSTANCE_STREAM)
+                                        a = tuple(words_of(ET.INSTANCE_STREAM_WITNESS))
+                                        self.stats["fetch_instance_stream"] += 1
+                                    else:
+                                        a = tuple(words_of(ET.vertex_witness_by_size(size)))
+                                        self.stats["fetch_by_size"] += 1
                                 if a is None:
                                     # INFERRED: (input semantic, size) -> the vertex format
                                     by_sem = (self.t.fallback.get(f"fetch/{sem[i][0]}/{sem[i][2]}")
@@ -607,13 +769,13 @@ class Builder:
                     self.seen.add(sig)
                     self.stats["graphics"] += 1
                     yield rec
-        print(f"PROGRESS jobs {total} {total}", flush=True)
 
     def compute(self, hashes: Iterable[int]) -> Iterable[dict]:
         ix = self.ix
         if self.compute_model == "re" and self.def_strides is None:
             self.def_strides = particle_strides(ix)
         for h in sorted(hashes):
+            self.tick()
             hdr = ix.headers.get(h)
             if hdr is None or hdr.stage != "CS":
                 continue
@@ -716,28 +878,90 @@ S_PS, S_VS, S_CS = jobfile.SW_FRAGMENT, jobfile.SW_VERTEX, jobfile.SW_COMPUTE
 H_PS, H_VS, H_CS = jobfile.HW_FRAGMENT, jobfile.HW_VERTEX, jobfile.HW_COMPUTE
 
 
-def build(index_path, tables: ET.Tables, *, game=None, pairs=None, cs=None, compute=True,
-          graphics=True, **caps):
-    """All records (a generator) and the builder (its .stats fill while iterating)."""
+def build(index_path, tables: Optional[ET.Tables] = None, *, game=None, pairs=None, cs=None,
+          compute=True, graphics=True, progress=None, eboot=None, **caps):
+    """All records (a generator) and the builder (its .stats fill while iterating).
+    tables=None is the product: only the eboot tables of engine_tables (no capture)."""
     ix = Index(index_path, game)
-    b = Builder(ix, tables, **caps)
+    b = Builder(ix, tables, eboot_path=eboot, **caps)
+    b.progress = progress
 
     def gen():
-        if graphics:
-            ctx = load_graphics_context(ix, pairs)
-            yield from b.graphics(*ctx)
+        ctx = load_graphics_context(ix, pairs) if graphics else None
+        hs = []
         if compute:
             hs = cs if cs is not None else [h for h, x in ix.headers.items() if x.stage == "CS"]
+        b.total = (len(ctx[0]) if ctx else 0) + len(hs)
+        if progress:
+            progress(0, b.total)
+        if ctx:
+            yield from b.graphics(*ctx)
+        if hs:
             yield from b.compute(hs)
+        if progress and b.done < b.total:
+            progress(b.total, b.total)
         ix.close()
     return gen(), b
 
 
+def print_progress(n: int, total: int) -> None:
+    print(f"PROGRESS jobs {n} {total}", flush=True)
+
+
+def default_index_path(out: str) -> str:
+    base, _ext = os.path.splitext(out)
+    return base + ".index.sqlite"
+
+
+def cmd_build(a) -> int:
+    """The launcher entry point (interface in the README): index (incremental) + jobs."""
+    from . import index as IX
+    out = a.out
+    index_path = a.index or default_index_path(out)
+    IX.build(a.xpps, index_path, jobs=a.jobs, nice=a.nice)
+    recs, b = build(index_path, None, game=a.xpps, progress=print_progress,
+                    compute_wide=a.compute_wide)
+    tmp = out + ".tmp"
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    try:
+        n = jobfile.write(tmp, recs)
+        os.replace(tmp, out)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    print(json.dumps({"records": n, "index": index_path, **b.stats}, sort_keys=True), file=sys.stderr)
+    return 0
+
+
+def make_build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog="python -m xpps.jobs build",
+                                 description="Index the player's .xpps files and write the precompile jobs.")
+    ap.add_argument("xpps", help="folder with the game's .xpps files (searched recursively)")
+    ap.add_argument("out", help="jobs file to write (ISSPJOB1)")
+    ap.add_argument("--index", help="index file (default: <out without extension>.index.sqlite); "
+                    "built or updated incrementally")
+    ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1),
+                    help="processes of the index phase (default: up to 4)")
+    ap.add_argument("--nice", action="store_true", help="lower the CPU priority of the index phase")
+    ap.add_argument("--compute-wide", action="store_true", help="more compute records")
+    return ap
+
+
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["build"]:
+        a = make_build_parser().parse_args(argv[1:])
+        from . import index as IX
+        try:
+            return cmd_build(a)
+        except (IX.IndexError_, kcap.KcapError, OSError, sqlite3.Error) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+    # development form: an existing index and, optionally, INFERRED tables (jobs_eval infer)
     ap = argparse.ArgumentParser(prog="python -m xpps.jobs", description=__doc__.split("\n")[0])
     ap.add_argument("index")
-    ap.add_argument("tables", help="INFERRED tables (jobs_eval.py infer)")
     ap.add_argument("out")
+    ap.add_argument("--tables", help="INFERRED tables (jobs_eval.py infer): development only")
     ap.add_argument("--game", help="folder of the .xpps files (default: the index root)")
     ap.add_argument("--max-state", type=int, default=12)
     ap.add_argument("--max-material", type=int, default=12)
@@ -747,8 +971,9 @@ def main(argv=None) -> int:
     ap.add_argument("--no-compute", action="store_true")
     ap.add_argument("--no-graphics", action="store_true")
     a = ap.parse_args(argv)
-    recs, b = build(a.index, ET.Tables.load(a.tables), game=a.game, compute=not a.no_compute,
-                    graphics=not a.no_graphics, max_state=a.max_state,
+    tables = ET.Tables.load(a.tables) if a.tables else None
+    recs, b = build(a.index, tables, game=a.game, compute=not a.no_compute,
+                    graphics=not a.no_graphics, progress=print_progress, max_state=a.max_state,
                     max_material=a.max_material, max_compute=a.max_compute,
                     compute_model=a.compute_model, compute_wide=a.compute_wide)
     n = jobfile.write(a.out, recs)

@@ -2,7 +2,7 @@
 
     python -m xpps.jobs_eval infer <capture> <index.sqlite> <tables.json>
     python -m xpps.jobs_eval rules <capture> <index.sqlite>
-    python -m xpps.jobs_eval eval  <capture> <index.sqlite> <tables.json> [--cv K] [--cost]
+    python -m xpps.jobs_eval eval  <capture> <index.sqlite> [--tables <tables.json> [--cv K]] [--cost]
                                    [--max-state N] [--max-material N] [--max-compute N]
 
 infer  writes the INFERRED tables (enums only) from the captured draws and dispatches.
@@ -148,7 +148,7 @@ def rules(records, ix: J.Index, out=sys.stdout):
         cand_t, cand_t_raw, cand_s, mapped, eng_desc = defaultdict(set), defaultdict(set), defaultdict(set), set(), {}
         fetch_cands = set()
         loads = J.fetch_loads(st[3]["fetch"]) if st[3]["fetch"] else []
-        for (f, o, fo, fs, tp, sp, eff) in rows:
+        for (f, o, fo, fs, tp, sp, eff, *_x) in rows:
             if eff not in effects:
                 continue
             e = effects[eff]
@@ -314,7 +314,7 @@ def evaluate(records, index_path, tables: dict, *, cv=0, seed=1, caps=None, out=
     generated = Counter()
     for fold in folds:
         if fold is None:
-            t = ET.Tables(tables)
+            t = ET.Tables(tables) if tables is not None else None
             gsel, csel = g, c
         else:
             train = [r for r, s in uniq.values()
@@ -358,7 +358,8 @@ def main(argv=None) -> int:
     a2 = sub.add_parser("rules")
     a2.add_argument("capture"); a2.add_argument("index")
     a3 = sub.add_parser("eval")
-    a3.add_argument("capture"); a3.add_argument("index"); a3.add_argument("tables")
+    a3.add_argument("capture"); a3.add_argument("index")
+    a3.add_argument("--tables", help="INFERRED tables (v1); without them the product model (eboot only)")
     a3.add_argument("--cv", type=int, default=0)
     a3.add_argument("--cost", action="store_true")
     a3.add_argument("--max-state", type=int, default=12)
@@ -381,9 +382,11 @@ def main(argv=None) -> int:
     else:
         caps = {"max_state": a.max_state, "max_material": a.max_material, "max_compute": a.max_compute,
                 "compute_model": a.compute_model, "compute_wide": a.compute_wide}
-        evaluate(records, a.index, json.load(open(a.tables)), cv=a.cv, caps=caps)
+        if a.cv and not a.tables:
+            ap.error("--cv needs --tables (cross-validation of the inferred tables)")
+        evaluate(records, a.index, json.load(open(a.tables)) if a.tables else None, cv=a.cv, caps=caps)
         if a.cost:
-            recs, b = J.build(a.index, ET.Tables.load(a.tables), **caps)
+            recs, b = J.build(a.index, ET.Tables.load(a.tables) if a.tables else None, **caps)
             n = Counter("graphics" if r["kind"] == 0 else "compute" for r in recs)
             print(json.dumps({"whole_game_records": dict(n), "builder": dict(b.stats)}, sort_keys=True))
     return 0

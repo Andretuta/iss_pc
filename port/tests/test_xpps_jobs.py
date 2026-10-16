@@ -180,3 +180,133 @@ class GcnMem(unittest.TestCase):
         self.assertEqual(gcn_mem.code_stride(acc, 0), 48)
         self.assertFalse(gcn_mem.written(acc, 0))
         self.assertTrue(gcn_mem.written(acc, 4))
+
+
+def synthetic_eboot(path, class_hash, tid, impl, size=0x128):
+    """A tiny ELF with one text segment (the class table) and one relro segment (the factory)."""
+    from xpps import eboot as EB
+    text = struct.pack('<QQ', 0x0123, 7) + struct.pack('<QQ', class_hash, tid) + bytes(16)
+    fva = EB.FACTORY_VA + (tid - EB.FACTORY_ID) * EB.FACTORY_STRIDE
+    entry = struct.pack('<II', tid, impl) + bytes(8) + struct.pack('<QQ', 0x2DA280, 0x2DA2B0)
+    entry += bytes(0x74 - len(entry)) + struct.pack('<I', size) + bytes(8)
+    relro_va = fva - 0x40
+    relro = bytes(0x40) + entry
+    phoff, n = 0x40, 2
+    text_off = phoff + 56 * n
+    relro_off = text_off + len(text)
+    hdr = b'\x7fELF' + bytes(0x1C) + struct.pack('<Q', phoff) + bytes(0x10) + struct.pack('<H', n)
+    hdr += bytes(0x40 - len(hdr))
+    ph = struct.pack('<IIQQQQQQ', 1, 5, text_off, 0, 0, len(text), len(text), 0x4000)
+    ph += struct.pack('<IIQQQQQQ', 0x61000010, 4, relro_off, relro_va, relro_va, len(relro), len(relro), 0x4000)
+    with open(path, 'wb') as f:
+        f.write(hdr + ph + text + relro)
+
+
+class Eboot(unittest.TestCase):
+    def test_class_type_lookup(self):
+        from xpps import eboot as EB
+        with tempfile.TemporaryDirectory() as d:
+            game = Path(d) / 'CUSA00000'
+            cache = game / 'art' / 'cache'
+            cache.mkdir(parents=True)
+            synthetic_eboot(game / 'eboot.bin', 0x0BADC0FFEE123457, 0x3A0, 0x3A6)
+            p = EB.find_eboot(str(cache))
+            self.assertEqual(p, str(game / 'eboot.bin'))
+            eb = EB.Eboot(p)
+            self.assertEqual(eb.type_of_class(0x0BADC0FFEE123457), 0x3A0)
+            self.assertEqual(eb.factory(0x3A0)['impl'], 0x3A6)
+            self.assertEqual(eb.factory(0x3A0)['size'], 0x128)
+            self.assertIsNone(eb.type_of_class(0x0123))      # value has no factory entry
+            self.assertIsNone(eb.factory(0x3A1))
+
+
+class Model(Base):
+    """v2: the eboot model of the state and of the engine resources (no capture)."""
+
+    def test_flags_of(self):
+        f = ET.flags_of(struct.pack('<4I', 5, 0x4E, 0xA0, 0xA1))
+        self.assertEqual(f[0], 1 << 5)
+        self.assertEqual(f[9], 1 << 6)
+        self.assertEqual(f[20], 1)                    # id 160 still counts, 161 does not
+        self.assertEqual(len(ET.flags_of(b'')), 21)
+
+    def test_decal_mask_rule(self):
+        # FUN_011a3f60: f[9] & 0x40 keeps RT1 and blend off; nothing set -> blend on, RT0 only
+        keep = bytearray(21)
+        keep[9] = 0x40
+        keep[1] = 0x02
+        self.assertEqual(ET.class_blends(0x3A1, 0, bytes(keep)), [(0, 0, 0xFC3F & ~0xF000)])
+        self.assertEqual(ET.class_blends(0x3A1, 0, bytes(21)), [(0, ET.BL_ALPHA, 0x000F)])
+
+    def test_class_sets(self):
+        self.assertEqual(ET.class_sets(0x3C3, 16, 1), ['SHADOW'])
+        self.assertEqual(ET.class_sets(0x39B, 0, 5), ['G7'])
+        self.assertEqual(ET.class_sets(0x396, 0, 2), ['HDR_ZS'])     # dual source: 2 exports, 1 target
+        self.assertEqual(ET.class_sets(None, 255, 1), ET.ENGINE_SETS)
+        for name in ET.ENGINE_SETS + ['G7', 'G6', 'G6_T0']:
+            targets, mask, depth = ET.RT_SETS[name]
+            self.assertLessEqual(mask, (1 << 4 * len(targets)) - 1)
+
+    def test_vertex_by_size(self):
+        self.assertEqual(ET.vertex_witness_by_size(3)[8], [4, 5, 6, 1])
+        self.assertEqual(ET.vertex_witness_by_size(1)[8], [4, 0, 0, 1])
+        self.assertEqual(ET.INSTANCE_STREAM_WITNESS[2], 2)
+
+    def test_engine_tables_from_eboot(self):
+        """The hashes are read at the code addresses of the tables (movabs / movabs + lea)."""
+        from xpps import eboot as EB
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'eboot.bin'
+            synthetic_eboot(path, 0x0BADC0FFEE123457, 0x3A0, 0x3A6)
+            eb = EB.Eboot(str(path))
+        # patch two code addresses of the real tables into a fake text segment
+        ref, spec = ET.ENGINE_BUFFERS[0]
+        (base, lea), spec2 = next((r, s) for r, s in ET.ENGINE_BUFFERS if isinstance(r, tuple))
+        text = bytearray(max(ref, base, lea) + 16)
+        text[ref:ref + 10] = b'\x48\xba' + struct.pack('<Q', 0x1234)
+        text[base:base + 10] = b'\x49\xbc' + struct.pack('<Q', 0x5000)
+        text[lea:lea + 8] = b'\x49\x8d\x94\x24' + struct.pack('<i', 0x10)
+        eb.data, eb.segs, eb.text_end = bytes(text), [(0, 0, len(text))], len(text)
+        table = ET.engine_buffer_table(eb)
+        self.assertEqual(table[0x1234], spec)
+        self.assertEqual(table[0x5010], spec2)
+        self.assertEqual(ET.engine_buffer_table(None), {})
+
+
+class BuildCli(unittest.TestCase):
+    """`python -m xpps.jobs build`: index + jobs on synthetic packages, the launcher interface."""
+
+    def test_build(self):
+        import contextlib
+        import io
+        from test_xpps_index import make_pack
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d) / 'CUSA00000' / 'art' / 'cache'
+            (cache / 'sub').mkdir(parents=True)
+            (cache / 'a.xpps').write_bytes(make_pack())
+            (cache / 'sub' / 'core.xpps').write_bytes(make_pack(with_import=False, with_export=True,
+                                                               name_seed=5, split=True))
+            out = Path(d) / 'out' / 'all.jobs'
+            buf, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+                rc = J.main(['build', str(cache), str(out)])
+            self.assertEqual(rc, 0, err.getvalue())
+            lines = buf.getvalue().splitlines()
+            self.assertTrue(all(ln.startswith('PROGRESS ') for ln in lines))
+            phases = [ln.split()[1] for ln in lines]
+            self.assertEqual(phases[0], 'index')
+            self.assertEqual(phases[-1], 'jobs')
+            self.assertEqual(phases, sorted(phases, key=lambda p: p != 'index'))   # index, then jobs
+            self.assertEqual(lines[-1].split()[2], lines[-1].split()[3])          # n == total at the end
+            self.assertTrue((Path(d) / 'out' / 'all.index.sqlite').is_file())
+            recs = jobfile.read(out)
+            self.assertTrue(recs)
+            self.assertFalse(Path(str(out) + '.tmp').exists())
+            # second run: index reused, same records
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(J.main(['build', str(cache), str(out)]), 0)
+            self.assertEqual(len(jobfile.read(out)), len(recs))
+            # errors: exit code 1, the previous output stays
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(J.main(['build', str(Path(d) / 'missing'), str(out)]), 1)
+            self.assertEqual(len(jobfile.read(out)), len(recs))
