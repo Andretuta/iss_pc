@@ -305,7 +305,7 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         break;
     }
     case HwStage::Compute: {
-        const auto& cs_pgm = liverpool->GetCsRegs();
+        const auto& cs_pgm = sel.cs_regs ? *sel.cs_regs : liverpool->GetCsRegs();
         info.props.num_user_data = cs_pgm.settings.num_user_regs;
         info.props.num_allocated_vgprs = cs_pgm.settings.num_vgprs * 4;
         info.props.fp_denorm_mode32 = cs_pgm.settings.fp_denorm_mode32;
@@ -537,7 +537,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
                              AmdGpu::Liverpool* liverpool_, u32 sparse_page_shift)
     : instance{instance_}, scheduler{scheduler_}, liverpool{liverpool_},
       desc_heap{instance, scheduler.GetWorkSemaphore(), DescriptorHeapSizes} {
-    sel.regs = &liverpool->regs;
+    sel.regs = liverpool ? &liverpool->regs : nullptr;
     const auto& vk12_props = instance.GetVk12Properties();
     profile = Shader::Profile{
         .max_viewport_width = instance.GetMaxViewportWidth(),
@@ -1198,6 +1198,9 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     // tlg: region trace (TLG_REGION_TRACE=1): the first request of each pipeline.
     TlgRegion::NotePipeline('g', std::hash<GraphicsPipelineKey>{}(sel.graphics_key),
                             graphics_pipelines.contains(sel.graphics_key));
+    if (Precompile::CaptureEnabled() && !graphics_pipelines.contains(sel.graphics_key)) {
+        Precompile::CaptureGraphics(sel);
+    }
     if (AsyncCompilation() && !sel.regs->stage_enable.hs_en && !EmulatorSettings.IsShaderCollect()) {
         const auto found = graphics_pipelines.find(sel.graphics_key);
         if (found != graphics_pipelines.end()) {
@@ -1313,6 +1316,9 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
     TlgRegion::NotePipeline('c', std::hash<ComputePipelineKey>{}(compute_key),
                             compute_pipelines.contains(compute_key));
     const auto [it, is_new] = compute_pipelines.try_emplace(compute_key);
+    if (is_new && Precompile::CaptureEnabled()) {
+        Precompile::CaptureCompute(sel, liverpool->GetCsRegs());
+    }
     if (is_new) {
         const auto pipeline_hash = std::hash<ComputePipelineKey>{}(compute_key);
         LOG_INFO(Render_Vulkan, "Compiling compute pipeline {:#x}", pipeline_hash);
@@ -1672,17 +1678,22 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
 }
 
 bool PipelineCache::RefreshComputeKey() {
+    sel.cs_regs = nullptr;
+    return RefreshComputeKey(sel, compute_key);
+}
+
+bool PipelineCache::RefreshComputeKey(PipelineSelection& selection, ComputePipelineKey& key) {
     Shader::Backend::Bindings binding{};
-    const auto& cs_pgm = liverpool->GetCsRegs();
+    const auto& cs_pgm = selection.cs_regs ? *selection.cs_regs : liverpool->GetCsRegs();
     const auto cs_found = AmdGpu::TryGetParams(cs_pgm);
     if (!cs_found) {
-        sel.infos[0] = nullptr;
+        selection.infos[0] = nullptr;
         return false;
     }
     const auto& cs_params = *cs_found;
-    std::tie(sel.infos[0], sel.modules[0], sel.fetch_shader, compute_key.value) =
-        GetProgram(sel, HwStage::Compute, SwStage::Compute, cs_params, binding);
-    return sel.infos[0] != nullptr;
+    std::tie(selection.infos[0], selection.modules[0], selection.fetch_shader, key.value) =
+        GetProgram(selection, HwStage::Compute, SwStage::Compute, cs_params, binding);
+    return selection.infos[0] != nullptr;
 }
 
 vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::RuntimeInfo& runtime_info,

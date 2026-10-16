@@ -145,6 +145,7 @@ int main(int argc, char** argv) {
     }
     std::sort(metas.begin(), metas.end());
     Pools pools;
+    std::unordered_map<u64, std::vector<u32>> replay;
     size_t done = 0;
     for (const auto& path : metas) {
         if (done++ >= limit) {
@@ -224,7 +225,8 @@ int main(int argc, char** argv) {
                             v.divisor);
             }
         }
-        Info::replay_flat = meta_info.flattened_ud_buf;
+        replay = {{meta_info.pgm_hash, meta_info.flattened_ud_buf}};
+        Info::replay_flats = &replay;
         Gcn::ScopedFetchShaderSnapshot scoped{snapshot};
 
         std::vector<u32> spv;
@@ -260,10 +262,10 @@ int main(int argc, char** argv) {
         } catch (const std::exception& e) {
             std::printf("FAILED %s: %s\n", path.filename().string().c_str(), e.what());
             record(&Tally::failed);
-            Info::replay_flat = {};
+            Info::replay_flats = nullptr;
             continue;
         }
-        Info::replay_flat = {};
+        Info::replay_flats = nullptr;
 
         const auto matches = [&](const std::vector<u32>& words) {
             return words.size() * sizeof(u32) == expected_bytes.size() &&
@@ -307,7 +309,8 @@ int main(int argc, char** argv) {
                     try {
                         Info retry{meta_info.hw_stage, meta_info.sw_stage, params};
                         snapshot.info = &retry;
-                        Info::replay_flat = meta_info.flattened_ud_buf;
+                        replay = {{meta_info.pgm_hash, meta_info.flattened_ud_buf}};
+                        Info::replay_flats = &replay;
                         RuntimeInfo runtime = spec.runtime_info;
                         Backend::Bindings binding = spec.start;
                         pools.ReleaseContents();
@@ -316,7 +319,7 @@ int main(int argc, char** argv) {
                     } catch (const std::exception& e) {
                         std::printf("  search %zu failed: %s\n", c, e.what());
                     }
-                    Info::replay_flat = {};
+                    Info::replay_flats = nullptr;
                 }
                 if (same) {
                     record(&Tally::found_by_search);

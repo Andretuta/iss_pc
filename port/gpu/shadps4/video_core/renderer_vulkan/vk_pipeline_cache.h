@@ -16,6 +16,7 @@
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "video_core/renderer_vulkan/vk_resource_pool.h"
 #include "video_core/renderer_vulkan/vk_async_compiler.h"
+#include "video_core/renderer_vulkan/vk_precompile.h"
 
 template <>
 struct std::hash<vk::ShaderModule> {
@@ -111,6 +112,8 @@ namespace Vulkan {
 /// (PipelineCache::sel); draw-preparation workers use their own with their register copies.
 struct PipelineSelection {
     const AmdGpu::Regs* regs{};
+    /// tlg: compute registers for this selection (precompiler); null: the current queue's.
+    const AmdGpu::ComputeProgram* cs_regs{};
     std::array<Shader::RuntimeInfo, MaxShaderStages> runtime_infos{};
     std::array<const Shader::Info*, MaxShaderStages> infos{};
     std::array<vk::ShaderModule, MaxShaderStages> modules{};
@@ -178,6 +181,12 @@ public:
 
     const ComputePipeline* GetComputePipeline();
 
+    /// tlg: first-run shader compilation (vk_precompile.cpp): compiles the shaders and
+    /// pipelines of every record as a draw/dispatch with those registers would, and saves them
+    /// to the shader cache. Before the game starts, on the thread that owns the cache.
+    Precompile::Result Precompile(const std::vector<Precompile::Record>& records,
+                                  const std::function<void(u32 done, u32 total)>& progress);
+
     using Result = std::tuple<const Shader::Info*, vk::ShaderModule,
                               std::optional<Shader::Gcn::FetchShaderData>, u64>;
     Result GetProgram(PipelineSelection& sel, Shader::HwStage stage, Shader::SwStage l_stage,
@@ -220,6 +229,7 @@ private:
     bool RefreshGraphicsKey(PipelineSelection& sel);
     bool RefreshGraphicsStages(PipelineSelection& sel);
     bool RefreshComputeKey();
+    bool RefreshComputeKey(PipelineSelection& selection, ComputePipelineKey& key);
 
     void DumpShader(std::span<const u32> code, u64 hash, Shader::HwStage stage, size_t perm_idx,
                     std::string_view ext);
