@@ -367,6 +367,7 @@ def main(argv=None) -> int:
     a3.add_argument("--max-compute", type=int, default=8)
     a3.add_argument("--compute-model", choices=("re", "profiles"), default="re")
     a3.add_argument("--compute-wide", action="store_true")
+    a3.add_argument("--eboot", help="eboot.bin for the product model (default: next to the index root)")
     a = ap.parse_args(argv)
     records = jobfile.read(a.capture)
     if a.cmd == "infer":
@@ -382,6 +383,8 @@ def main(argv=None) -> int:
     else:
         caps = {"max_state": a.max_state, "max_material": a.max_material, "max_compute": a.max_compute,
                 "compute_model": a.compute_model, "compute_wide": a.compute_wide}
+        if a.eboot:
+            caps["eboot"] = a.eboot
         if a.cv and not a.tables:
             ap.error("--cv needs --tables (cross-validation of the inferred tables)")
         evaluate(records, a.index, json.load(open(a.tables)) if a.tables else None, cv=a.cv, caps=caps)

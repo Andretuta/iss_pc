@@ -1,22 +1,25 @@
-"""Job builder v1: precompile records (vk_precompile.h) from the index of the player's own files.
+"""Job builder v2: precompile records (vk_precompile.h) from the player's own files only.
 
-    python -m xpps.jobs <index.sqlite> <tables.json> <out.jobs> [--game <art/cache>]
-                        [--max-state N] [--max-material N] [--max-compute N] [--no-compute]
+    python -m xpps.jobs build <folder of the .xpps> <out.jobs> [--index <index.sqlite>] [--jobs N]
+                              [--nice] [--compute-wide] [--eboot <eboot.bin>]
+    python -m xpps.jobs <index.sqlite> <out.jobs> [--tables <tables.json>]     (development)
 
 For every pass (VS + PS pair of an effect, with its render slot = pass id) and every compute
 shader of the index it writes the records the precompiler compiles before the game starts:
     registers  the Gnm header of each shader (RSRC1/2, export formats, PS input enables, ...),
                DB_SHADER_CONTROL through the load rule (engine_tables, EBOOT), SPI_PS_INPUT_CNTL
                from the VS export and PS input semantics, and the render target / depth /
-               raster state of the pass id from the INFERRED state profiles
+               raster state from the engine model of the pass's class (engine_tables: RT sets,
+               per-class blend and mask, step rate and clip variants)
     sharps     at flat[startRegister] of every InputUsageSlot: material T# by the effect and
-               material instance (EBOOT rules, with the sRGB swap), effect samplers, canonical
-               constant buffers, and the rest (engine buffers and textures) from the INFERRED
-               profiles of the same pass id
+               material instance (with the sRGB swap), effect samplers, canonical constant
+               buffers, and the engine buffers/textures by the name hash of the effect
+               descriptor (hashes read in the player's eboot.bin, see eboot.py)
     vertex     the fetch shader of the pass and, per attribute it loads, the V# of a mesh that
-               uses the effect
+               uses the effect (or the instance stream / a format by component count)
     code       read from the .xpps files (never stored anywhere else)
-The output stays on the player's machine. Progress lines `PROGRESS jobs <n> <total>` go to stdout.
+The output stays on the player's machine. Progress lines `PROGRESS index|jobs <n> <total>` go to
+stdout. With --tables (development) the v1 INFERRED profiles replace the engine model.
 """
 from __future__ import annotations
 
@@ -501,8 +504,19 @@ class Builder:
     def model_states(self, tid, pid, vh: S.Header, ph: S.Header, flag_sets):
         """Candidate states of a pass group (render target set x blend x depth x raster x vs)."""
         nmrt = bin(S.mrt_written(ph)).count("1")
-        engine = tid is None or pid == 255
-        prims = ET.CLASS_PRIM.get(tid) or (ET.ENGINE_PRIMS if engine else (4,))
+        steps0 = [(0, 0), (1, 1)] if self.step_variants else [(0, 0)]
+        if tid in ET.ENGINE_CLASS_STATE:
+            out = []
+            for step in steps0:
+                for targets, mask, depth, blend, off, prim in ET.ENGINE_CLASS_STATE[tid]:
+                    cb = {i: [t[0], t[1], t[2], blend if i == 0 else 0, mask >> 4 * i & 0xF, 0]
+                          for i, t in enumerate(targets) if mask >> 4 * i & 0xF}
+                    out.append({"off": off, "cb": {} if off else cb,
+                                "depth": [depth[0], depth[1], 0, 1] if depth else [0, 0, 0, 1],
+                                "raster": [prim, 2, 0, 1, 1, 0xCC],
+                                "vs": [0, 1, 0, step[0], step[1], int(prim in (0x11, 0x13))]})
+            return out
+        prims = ET.CLASS_PRIM.get(tid) or (4,)
         shadow = tid in ET.SHADOW_CASTERS
         rasters = [(1, 0), (0, 0), (1, 1), (0, 1)] if shadow else [(1, 0)]   # (zclip, user plane)
         steps = [(0, 0), (1, 1)] if self.step_variants else [(0, 0)]
@@ -920,7 +934,7 @@ def cmd_build(a) -> int:
     index_path = a.index or default_index_path(out)
     IX.build(a.xpps, index_path, jobs=a.jobs, nice=a.nice)
     recs, b = build(index_path, None, game=a.xpps, progress=print_progress,
-                    compute_wide=a.compute_wide)
+                    compute_wide=a.compute_wide, eboot=a.eboot)
     tmp = out + ".tmp"
     os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
     try:
@@ -944,6 +958,8 @@ def make_build_parser() -> argparse.ArgumentParser:
                     help="processes of the index phase (default: up to 4)")
     ap.add_argument("--nice", action="store_true", help="lower the CPU priority of the index phase")
     ap.add_argument("--compute-wide", action="store_true", help="more compute records")
+    ap.add_argument("--eboot", help="the game's eboot.bin (default: searched next to and above the "
+                    ".xpps folder)")
     return ap
 
 

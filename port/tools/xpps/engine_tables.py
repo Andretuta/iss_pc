@@ -145,7 +145,8 @@ RT_SETS = {
     "RG16F_ZS": ([C16_16F], 0xF, D_ZS),                                # l.351355 (+0xf194)
     "RG16F": ([C16_16F], 0xF, None),                                   # l.351358
     "C8888": ([C8888], 0xF, None),                                     # l.351327
-    "C8888_ZS": ([C8888], 0xF, D_ZS),                                  # l.351280, main l.420415
+    "C8888_ZS": ([C8888], 0xF, D_ZS),                                  # l.351280 (+0x10838)
+    "MAIN": ([C8888], 0x7, D_ZS),                                      # 0x1f1d4b0, mask 7 l.420420
     "R8_ZS": ([C8], 0xF, D_ZS),                                        # l.351393 (shadow mask)
     "R8": ([C8], 0xF, None),                                           # l.351349
     "R16F": ([C16F1], 0xF, None),                                      # l.351331
@@ -181,8 +182,8 @@ def class_sets(tid, pid, nmrt):
     if nmrt >= 2:
         return ["G7"]                       # G6 projects the same on the MRTs a 5-target PS writes
     if tid in (0x3C0, 0x3C1):
-        return ["C8888_ZS", "G6_T0"]        # FUN_015a8b00: buckets 33/34 -> main colour 0x1f1d4b0;
-        #                                     G-buffer albedo (bucket 2, HYPOTHESIS)
+        return ["MAIN", "C8888_ZS"]         # FUN_015a8b00: buckets 33/34 -> main colour 0x1f1d4b0
+        #                                     (mask 7); +0x10838 (mask 0xf) is a HYPOTHESIS
     if tid == 0x3AD:
         return ["RG16F_ZS"]                 # bucket 29 (HYPOTHESIS: the only 16_16 float + depth set)
     if tid in GBUFFER_CLASSES and pid in (0, 9):
@@ -192,9 +193,39 @@ def class_sets(tid, pid, nmrt):
     return ["HDR_ZS"]
 
 
-# explicit engine passes (post-processing, pass id 255): every single-target set (HYPOTHESIS:
-# which one each engine function binds is not traced)
+# explicit engine passes (post-processing, pass id 255) whose draw function is not traced: every
+# single-target set (HYPOTHESIS)
 ENGINE_SETS = ["HDR", "HDR_ZS", "C8888", "C8888_ZS", "RG16F", "R8", "R16F", "R32F", "RG16U", "SHADOW"]
+
+# engine passes drawn by explicit code (agentF, FACT unless marked): (colour targets, mask, depth
+# (attachment needed) or None, CB_BLEND0, colour off, primitive). Depth control 0x70/0x60 = no
+# depth (no attachment in the key), 0x76 = always written. Classes absent here use ENGINE_SETS.
+ENGINE_CLASS_STATE = {
+    0x3AF: [([C16F], 0xF, None, 0, False, 4), ([C8], 0xF, None, 0, False, 4),
+            ([C8888], 0xF, None, 0, False, 4)],                   # FUN_01455f00 l.965098, sets l.349515/349655/348372
+    0x3AE: [([], 0, None, 0, True, 4)],                           # FUN_01301c90 l.679274 (colour off)
+    0x3B9: [([], 0, None, 0, True, 4)],                           # FUN_01457a10, l.679296
+    0x3B8: [([C16F], 0xF, None, BL_ADD, False, 4)],               # l.349660-349668, depth l.362375
+    0x3BA: [([C16F], 0xF, None, 0, False, 4), ([C16_16F], 0xF, None, 0, False, 4)],   # l.349526-349560
+    0x3BB: [([C16F], 0xF, None, BL_ALPHA, False, 4)],             # l.349564, blend l.363694
+    0x3BC: [([C16F], 0xF, None, 0, False, 4), ([C16F], 0xF, None, BL_ALPHA, False, 4)],  # l.349051-349087
+    0x3C6: [([], 0, D_ZS, 0, False, 4), ([], 0, None, 0, False, 4)],  # occlusion query, mask 0 l.416688
+    0x3D4: [([], 0, D_Z, 0, False, 4)],                           # depth 0x76 l.360798, mask 0 l.360805
+    0x3D5: [([C16F], 0xF, None, 0, False, 4)],                    # l.347973, depth l.361113
+    0x3D6: [([C8888], 0x7, None, 0, False, 4), ([C8888], 0xF, None, 0, False, 4),
+            ([C8888, C8], 0xFF, None, 0, False, 4)],              # l.350176/420108, l.349175
+    0x3D7: [([C8888], 0x7, None, 0, False, 4)],                   # l.349184/350159, depth l.361403
+    0x3D9: [([C16F], 0xF, None, 0, False, 4), ([C8], 0xF, None, 0, False, 4)],   # FUN_01191ac0 l.348121
+    0x3DA: [([C16F], 0xF, None, 0x40000401, False, 4)],           # l.348722-348726
+    0x3E4: [([C16F], 0xF, None, BL_ADD, False, 4)],               # l.352902, depth l.362760
+    0x3E5: [([C16F], 0xF, None, 0, False, 4)],                    # l.348771-348784
+    0x3E7: [([C16F], 0xF, None, 0, False, 4)],                    # l.348366, depth l.361232
+    # HYPOTHESIS on the target (the class's own code gives blend/mask/depth/primitive):
+    0x3B6: [([C8888], 0x7, None, 0, False, 6)],                   # FUN_014575b0 l.965540, prim 6 (FUN_014487a0 l.958739)
+    0x3B7: [([C8888], 0x7, None, BL_ALPHA, False, 4), ([C8888], 0x7, None, 0, False, 4)],  # l.965843-965845
+    0x3D2: [([C8888], 0x3, D_ZS, 0x40000200, False, 4)],          # bucket code l.347690-347706
+    0x3E1: [([C8888], 0x3, D_ZS, 0x40000200, False, 4)],
+}
 
 
 # VGT_INSTANCE_STEP_RATE_0/1: written only (1, 1), by the classes 0x3fe (l.893924) and 0x3c1
@@ -263,10 +294,10 @@ def class_depth_off(tid, pid):
     return tid == 0x3FE
 
 
-# primitive (VGT_PRIMITIVE_TYPE, setter FUN_01623740): 4 for scene passes (l.358344); 0x13 quad
-# list in FUN_011d0ce0 (class 0x3de), 6 in FUN_014487a0 (fullscreen strips of engine passes)
+# primitive (VGT_PRIMITIVE_TYPE, setter FUN_01623740): 4 for scene passes (l.358344) and the
+# fullscreen FUN_014489a0 (l.958613); 0x13 quad list in FUN_011d0ce0 (class 0x3de); 6 in
+# FUN_014487a0 (l.958739, class 0x3b6 in ENGINE_CLASS_STATE)
 CLASS_PRIM = {0x3DE: (0x13,)}
-ENGINE_PRIMS = (4, 6)
 
 # --- engine buffers named by hash (the shader declares the hash in the effect texture/buffer
 # descriptor +0x00; FUN_01445ae0 l.~955100 finds the api slot by it). ref = va of the movabs
@@ -295,6 +326,8 @@ ENGINE_BUFFERS = [
     (0x445FFA, (2, 2, 4, (4, 0, 0, 0), 4, False)),         # light index list, fmt 0x4402 (l.317077)
     (0x41925D, (112,) + REG4 + (4, True)),                 # obj+0x7b8 (FUN_014187c0 l.919134), null l.918773
     (0x3FBA35, (96,) + REG4 + (3, False)),                 # DAT_08d3eb54, l.884144 (mtype 3: 0x6e)
+    (0x1A140B, (4,) + REG4 + (3, False)),                  # FUN_011a1330 +0xd8 (HYPOTHESIS: the
+    #                                                        4-byte buffer of FUN_0126a900 l.524232)
 ]
 # (va relative to the ELF base 0 = all.c address - 0x1000000)
 
