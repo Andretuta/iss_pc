@@ -161,6 +161,19 @@ static u32 MapOutputs(std::span<Shader::OutputMap, 3> outputs, const AmdGpu::VsO
     return num_outputs;
 }
 
+// Lowered user clip planes ride the same emulation path as guest-exported distances, so the
+// fragment side arms whenever the hardware vertex stage lowers them, keeping its input locations in
+// sync with the shifted vertex outputs.
+static bool NeedsClipDistanceEmulation(const AmdGpu::Regs& regs, const Shader::Profile& profile) {
+    const bool lowers_user_clip_planes =
+        regs.clipper_control.user_clip_plane_enable &&
+        !regs.stage_enable.IsStageEnabled(static_cast<u32>(HwStage::Geometry));
+    return ((regs.vs_output_control.clip_distance_enable &&
+             !regs.stage_enable.IsStageEnabled(static_cast<u32>(HwStage::Local))) ||
+            lowers_user_clip_planes) &&
+           profile.needs_clip_distance_emulation;
+}
+
 const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& sel, HwStage stage,
                                                              SwStage l_stage) {
     auto& info = sel.runtime_infos[u32(l_stage)];
@@ -288,17 +301,7 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
         for (u32 i = 0; i < Shader::MaxColorBuffers; i++) {
             info.hw.fs.color_buffers[i] = sel.graphics_key.color_buffers[i];
         }
-        // Lowered user clip planes ride the same emulation path as guest-exported distances, so
-        // the fragment side arms whenever the hardware vertex stage lowers them, keeping its input
-        // locations in sync with the shifted vertex outputs.
-        const bool lowers_user_clip_planes =
-            regs.clipper_control.user_clip_plane_enable &&
-            !regs.stage_enable.IsStageEnabled(static_cast<u32>(HwStage::Geometry));
-        info.hw.fs.clip_distance_emulation =
-            ((regs.vs_output_control.clip_distance_enable &&
-              !regs.stage_enable.IsStageEnabled(static_cast<u32>(HwStage::Local))) ||
-             lowers_user_clip_planes) &&
-            profile.needs_clip_distance_emulation;
+        info.hw.fs.clip_distance_emulation = NeedsClipDistanceEmulation(regs, profile);
         break;
     }
     case HwStage::Compute: {
@@ -874,7 +877,7 @@ void PipelineCache::PublishShaders(bool wait) {
             build->spec.info = &program->info;
             RegisterShaderMeta(program->info, build->spec.fetch_shader_data, build->spec,
                                perm_hash, build->permutation);
-            program->AddPermut(build->module, std::move(build->spec));
+            program->InsertPermut(build->module, std::move(build->spec), build->permutation);
             build->module = nullptr;
             program->pending.reset();
         }
@@ -1572,6 +1575,14 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
     }
 
     const auto* fs_info = sel.infos[static_cast<u32>(SwStage::Fragment)];
+    if (!fs_info) {
+        // tlg: with no pixel shader, GraphicsPipeline adds the discard fragment shader from this
+        // runtime info. It used to keep the previous draw's, so a pipeline got the discard shader
+        // (or lost it) depending on the draw before it (NVIDIA clip distance emulation).
+        auto& fs_runtime = sel.runtime_infos[static_cast<u32>(SwStage::Fragment)];
+        fs_runtime = {};
+        fs_runtime.hw.fs.clip_distance_emulation = NeedsClipDistanceEmulation(regs, profile);
+    }
     key.mrt_mask = fs_info ? fs_info->mrt_mask : 0u;
     key.num_color_attachments = std::bit_width(key.mrt_mask);
 
@@ -1766,6 +1777,10 @@ void Program::LogPermutationGrowth() const {
                 DescribeSpecDiff(modules[n - 2].spec, modules[n - 1].spec));
 }
 
+bool Program::PendingInitial() const {
+    return pending && pending->initial;
+}
+
 PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage hw_stage,
                                                 SwStage sw_stage,
                                                 const Shader::ShaderParams& params,
@@ -1851,8 +1866,10 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
     }
     if (it_pgm == program_cache.end()) {
         auto new_program = std::make_unique<Program>(hw_stage, sw_stage, params);
+        const size_t first_idx = NewPermutationIndex(*new_program, params.hash);
         if (compile_async) {
-            QueueShader(*new_program, hw_stage, sw_stage, params, runtime_info, binding, 0, true);
+            QueueShader(*new_program, hw_stage, sw_stage, params, runtime_info, binding, first_idx,
+                        true);
             const Program* queued = new_program.get();
             {
                 std::unique_lock lock{programs_mutex};
@@ -1867,7 +1884,8 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         auto compile_runtime = runtime_info; // translation adjusts it; the key keeps the original
         vk::ShaderModule module;
         try {
-            module = CompileModule(new_program->info, compile_runtime, params.code, 0, binding);
+            module = CompileModule(new_program->info, compile_runtime, params.code, first_idx,
+                                   binding);
         } catch (const Shader::UnsupportedShaderError& e) {
             // tlg: kept in the cache as failed, so its draws are skipped without retranslating.
             LOG_ERROR(Render_Vulkan, "tlg: shader {:#x} refused: {}", params.hash, e.what());
@@ -1877,18 +1895,18 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
             return {};
         }
         auto spec = Shader::StageSpecialization(new_program->info, runtime_info, profile, start);
-        const auto perm_hash = HashCombine(params.hash, 0);
+        const auto perm_hash = HashCombine(params.hash, first_idx);
 
-        RegisterShaderMeta(new_program->info, spec.fetch_shader_data, spec, perm_hash, 0);
-        new_program->AddPermut(module, std::move(spec));
+        RegisterShaderMeta(new_program->info, spec.fetch_shader_data, spec, perm_hash, first_idx);
+        new_program->InsertPermut(module, std::move(spec), first_idx);
         new_program->info_template = std::make_unique<Shader::Info>(new_program->info);
         Program* program = new_program.get();
         {
             std::unique_lock lk{programs_mutex};
             program_cache.emplace(params.hash, std::move(new_program));
         }
-        return std::make_tuple(&program->info, module, program->modules[0].spec.fetch_shader_data,
-                               perm_hash);
+        return std::make_tuple(&program->info, module,
+                               program->modules[first_idx].spec.fetch_shader_data, perm_hash);
     }
 
     auto& program = it_pgm.value();
@@ -1899,7 +1917,8 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         return {};
     }
     if (program->modules.empty() && compile_async) {
-        QueueShader(*program, hw_stage, sw_stage, params, runtime_info, binding, 0, true);
+        QueueShader(*program, hw_stage, sw_stage, params, runtime_info, binding,
+                    NewPermutationIndex(*program, params.hash), true);
         if (wait_for_shader(*program)) {
             return GetProgram(sel, hw_stage, sw_stage, params, binding);
         }
@@ -2009,6 +2028,8 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
                                     program->failed_permutations.end()) {
             return {};
         }
+        perm_idx = NewPermutationIndex(*program, params.hash);
+        perm_hash = HashCombine(params.hash, perm_idx);
         if (compile_async) {
             QueueShader(*program, hw_stage, sw_stage, params, runtime_info, binding, perm_idx, false,
                         std::move(spec));
@@ -2027,7 +2048,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
 
         RegisterShaderMeta(info, spec.fetch_shader_data, spec, perm_hash, perm_idx);
         std::unique_lock lk{programs_mutex};
-        program->AddPermut(module, std::move(spec));
+        program->InsertPermut(module, std::move(spec), perm_idx);
     } else {
         info.AddBindings(binding);
         module = it->module;

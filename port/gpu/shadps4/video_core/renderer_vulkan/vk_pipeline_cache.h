@@ -82,6 +82,8 @@ struct Program {
     /// tlg: at 16, 32, 64... permutations, logs which key fields differ between the last two
     /// (a field that changes every draw makes the list, and every lookup, grow without end).
     void LogPermutationGrowth() const;
+    /// tlg: the pending compilation is the program's first: `info` is not translated yet.
+    [[nodiscard]] bool PendingInitial() const;
 
     void InsertPermut(vk::ShaderModule module, Shader::StageSpecialization&& spec,
                       size_t perm_idx) {
@@ -206,6 +208,8 @@ private:
     bool SaveDriverCacheUnchecked();
     void SeedWorkerCaches();
     bool CheckCacheProfile();
+    /// tlg: index for a new permutation of `program`: past every index the cache on disk holds.
+    size_t NewPermutationIndex(const Program& program, u64 hash) const;
     struct BackgroundWarmup;
     struct WarmStage;
     void ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data);
@@ -256,6 +260,12 @@ private:
     BackgroundWarmup* background = nullptr;
     tsl::robin_map<GraphicsPipelineKey, std::shared_ptr<AsyncGraphicsCompilation>> pending_graphics;
     tsl::robin_map<size_t, std::unique_ptr<Program>> program_cache;
+    /// tlg: per program hash, one past the highest permutation index of the .spv files on disk.
+    /// A permutation compiled in game takes an index from here, never one that a cached
+    /// permutation not yet loaded (background warm-up) already names: its .meta would be
+    /// overwritten with another specialization, and the .key files that name it would build
+    /// their pipelines with the wrong shader in the next session. Filled by CheckCacheProfile.
+    std::unordered_map<u64, size_t> next_permutation;
     std::vector<Program*> pending_programs;
     /// tlg: exclusive for program/permutation insertions, shared for worker lookups.
     std::shared_mutex programs_mutex;
