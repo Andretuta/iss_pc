@@ -5,7 +5,7 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, Qt, QUrl, Signal, Slot)
+from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, Qt, QTimer, QUrl, Signal, Slot)
 
 from . import logic
 from .saves import Saves
@@ -165,6 +165,12 @@ class Backend(QObject):
         self._message = ''
         self._guide_kind, self._guide_message = None, ''
         self.process = None
+        # The game's output reaches the log panel in batches: a signal per line (tens of thousands from the
+        # AMD driver trace) filled the window's event queue and froze it, most of all when the game closed.
+        self._incoming, self._incoming_lock = [], threading.Lock()
+        self._drain_timer = QTimer(self)
+        self._drain_timer.setInterval(120)
+        self._drain_timer.timeout.connect(self._drain_lines)
         self.fixes = FixesModel(self)
         self.advanced = FixesModel(self, 'adv')
         self.gpuFound.connect(self._on_gpu)
@@ -372,6 +378,9 @@ class Backend(QObject):
             tlg_run.save_settings(self.settings)
         self._play_state = 'launching'
         self._log = [self.t_('preparing')]
+        with self._incoming_lock:
+            self._incoming.clear()
+        self._drain_timer.start()
         self.logChanged.emit()
         self.stateChanged.emit()
         threading.Thread(target=self._run_game, daemon=True).start()
@@ -395,7 +404,8 @@ class Backend(QObject):
             for line in self.process.stdout:
                 out.write(line)
                 out.flush()
-                self.lineReceived.emit(line.rstrip('\n'))
+                with self._incoming_lock:
+                    self._incoming.append(line.rstrip('\n'))   # shown by _drain_lines, a batch at a time
         code = self.process.wait()
         self.process = None
         self.finished.emit(code)
@@ -405,7 +415,18 @@ class Backend(QObject):
         del self._log[:-2000]
         self.logChanged.emit()
 
+    def _drain_lines(self):
+        """Moves the lines the game printed since the last call into the log panel: one update."""
+        with self._incoming_lock:
+            lines, self._incoming = self._incoming, []
+        if lines:
+            self._log.extend(lines)
+            del self._log[:-2000]
+            self.logChanged.emit()
+
     def _on_finished(self, code):
+        self._drain_lines()
+        self._drain_timer.stop()
         self._play_state = 'idle'
         if code == -1000:
             pass
