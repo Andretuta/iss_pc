@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <time.h>
 #include "runtime.h"
 #include "cpu_check.h"
 #include "isa_rewrite.h"
@@ -863,12 +864,61 @@ static void alias_port_environment(void) {
     free(copy);
 }
 
+/* Detailed log mode (ISS_VERBOSE_LOG=1 or 2, copied to TLG_VERBOSE_LOG above): turns on the
+ * bounded trace switches that are safe together and asks the GPU log for debug (1) or trace (2).
+ * A variable the player already set is never overwritten. Switches left off on purpose, because
+ * they change behavior or are heavy single-subsystem debugging: TLG_IMPORT_TRACE (reroutes every
+ * import call through a stub), TLG_WRITE_LOG (ring buffer plus scans on every GPU write),
+ * TLG_REGION_TRACE (writes a file), TLG_DEBUG_MOTION (draws a debug overlay), TLG_SCENE_DEBUG
+ * (dumps frames and deletes the trigger file). */
+static void verbose_default(const char *name, const char *value, char *list, size_t size) {
+    if (getenv(name)) return;
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 0);
+#endif
+    size_t used = strlen(list);
+    snprintf(list + used, size - used, "%s%s=%s", used ? ", " : "", name, value);
+}
+static void apply_verbose_log(void) {
+    const char *mode = getenv("TLG_VERBOSE_LOG");
+    const int level = mode ? atoi(mode) : 0;
+    if (level <= 0) return;
+    char list[512] = "";
+    verbose_default("TLG_GPU_LOG", level >= 2 ? "trace" : "debug", list, sizeof list);
+    verbose_default("TLG_AUDIO_TRACE", "1", list, sizeof list);        /* 400 lines: sound opens, Ajm */
+    verbose_default("TLG_MOD_TRACE", "1", list, sizeof list);          /* 32 lines, only with TLG_MODS_DIR */
+    verbose_default("TLG_OCCLUSION_LOG", "1", list, sizeof list);      /* first 48 events, then 1 in 2000 */
+    verbose_default("TLG_MOTION_SELECT_LOG", "1", list, sizeof list);  /* one line per G-buffer shader */
+    verbose_default("TLG_PIPELINE_LOG", "1", list, sizeof list);       /* one line per pipeline built */
+    if (level >= 2) {
+        verbose_default("TLG_TRACE_SEMA", "1", list, sizeof list);     /* capped at 2000 lines by the runtime */
+        verbose_default("TLG_JSON_LOG", "1", list, sizeof list);       /* sce::Json serialize results */
+        verbose_default("TLG_MOUSE_LOG", "1", list, sizeof list);      /* 4 lines/s while the mouse is used */
+        verbose_default("TLG_RECORDER_TRACE", "1", list, sizeof list); /* top callers every 2000 recordings */
+    }
+    printf("Verbose log: on (level %d); switches: %s\n", level, list[0] ? list : "(all already set by the user)");
+}
+/* Detailed log mode: boot step with the time since the first one (ms). */
+static void boot_step(const char *what) {
+    if (!runtime_verbose()) return;
+    static struct timespec start;
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (!start.tv_sec && !start.tv_nsec) start = now;
+    printf("Verbose: boot step '%s' at +%ld ms\n", what,
+           (long)((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000));
+}
+
 #ifndef TLG_BUILD_COMMIT
 #define TLG_BUILD_COMMIT "unknown"
 #endif
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     alias_port_environment();
+    apply_verbose_log();
+    boot_step("start");
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
@@ -932,6 +982,7 @@ int main(int argc, char **argv) {
     }
     if (!cpu_supported(missing, sizeof missing)) return 20;
     if (cpu_missing_sets) printf("CPU: missing %s\n", missing);
+    boot_step("cpu check done");
     /* TLG_ISA_REWRITE=0 never rewrites, =1 rewrites every emulated site (MOVBE, BMI1, LZCNT, F16C, SSE4A:
      * a test on a complete CPU), a list such as "sse4a", "f16c" or "movbe,bmi1" rewrites those sets; by
      * default the sets the CPU lacks. */
@@ -988,6 +1039,7 @@ int main(int argc, char **argv) {
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
     }
+    boot_step("content mounted");
     tlggpu_register_kernel();
 #ifdef _WIN32
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
@@ -1034,7 +1086,9 @@ int main(int argc, char **argv) {
     import_count = read64(f);
     uint64_t capabilities = memcmp(magic, "G3PROBE1", 8) ? read64(f) : 0;
     if (capabilities & ~UINT64_C(1)) fail("unknown runtime capabilities");
+    boot_step("boot file read, starting runtime");
     runtime_start(strict_imports ? 0 : capabilities);
+    boot_step("runtime started");
     if (!size || size > 512*1024*1024 || entry >= size || !ns || ns > 64 || nr > 1000000 || import_count > 100000)
         fail("boot file limits exceeded");
     int multi=!memcmp(magic,"G3PROBE5",8);
@@ -1163,7 +1217,9 @@ int main(int argc, char **argv) {
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
         TlgGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
+        boot_step("initializing GPU");
         if (tlggpu_init(&gpu)) fail("GPU initialization failed");
+        boot_step("GPU ready");
         printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,tlggpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
@@ -1267,6 +1323,7 @@ int main(int argc, char **argv) {
     }
     if (!executable_entry) fail("entry is not executable");
     printf("Mapped %" PRIu64 " bytes, %" PRIu64 " segments; applied %" PRIu64 " relocations\n", size, ns, nr);
+    boot_step("image mapped and relocated");
     if (native_libc) {
         for (uint64_t m=0;m<module_count;++m) {
             int init_executable=0;
@@ -1294,6 +1351,7 @@ int main(int argc, char **argv) {
         unsigned seconds = freeze && *freeze ? (unsigned)strtoul(freeze, NULL, 10) : 10;
         runtime_freeze_start((uintptr_t)image, round_page(size) + stub_area + red_zone_area, gpu_enabled ? seconds : 0);
     }
+    boot_step("entering the game");
     printf("Entering original x86-64 code at guest offset 0x%" PRIx64 "\n", entry);
 #ifdef _WIN32
     /* The guest main thread starts with the PS4's (FreeBSD's) x87 control word: 64-bit

@@ -28,6 +28,7 @@
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "common/hash.h"
 #include "shader_recompiler/recompiler_toggles.h"
 #include "video_core/renderer_vulkan/vk_lighting_test.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
@@ -58,6 +59,10 @@ u32 CurrentShaderBinaryVersion() {
            4096u * Common::Backports::ShaderSalt();
 }
 } // namespace
+
+u32 ShaderBinaryVersionForCache() {
+    return CurrentShaderBinaryVersion();
+}
 
 namespace PipelineBinaryCache {
 bool ValidKey(const Key& key) {
@@ -769,6 +774,8 @@ void GraphicsPipeline::SerializationSupport::Serialize(Serialization::Archive& a
     sdata.Write(multisampling);
     sdata.Write(tcs);
     sdata.Write(tes);
+    // tlg: last, so .key files written before it still load (with no discard shader).
+    sdata.Write(fragment);
 }
 
 bool GraphicsPipeline::SerializationSupport::Deserialize(Serialization::Archive& ar) {
@@ -780,6 +787,9 @@ bool GraphicsPipeline::SerializationSupport::Deserialize(Serialization::Archive&
     sdata.Read(multisampling);
     sdata.Read(tcs);
     sdata.Read(tes);
+    if (!ar.IsEoS()) {
+        sdata.Read(fragment);
+    }
     return true;
 }
 
@@ -889,7 +899,59 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
     return true;
 }
 
+bool PipelineCache::LoadProgramFromCache(u64 hash) {
+    const auto next = next_permutation.find(hash);
+    if (next == next_permutation.end() || !lazy_tried.insert(hash).second) {
+        return false;
+    }
+    auto& db = Storage::DataBase::Instance();
+    std::unique_ptr<Program> program;
+    u32 loaded = 0;
+    for (size_t idx = 0; idx < next->second; ++idx) {
+        std::vector<u8> meta_blob;
+        db.Load(Storage::BlobType::ShaderMeta, fmt::format("{:#018x}", HashCombine(hash, idx)),
+                meta_blob);
+        if (meta_blob.empty()) {
+            continue;
+        }
+        auto candidate = std::make_unique<Program>();
+        Shader::StageSpecialization spec{};
+        std::optional<Shader::Gcn::FetchShaderData> fetch;
+        size_t perm_idx{};
+        Serialization::Archive ar{std::move(meta_blob)};
+        if (!LoadShaderMeta(ar, candidate->info, fetch, spec, perm_idx) || perm_idx != idx ||
+            candidate->info.pgm_hash != hash) {
+            continue;
+        }
+        std::vector<u32> spv;
+        db.Load(Storage::BlobType::ShaderBinary, fmt::format("{:#018x}_{}", hash, idx), spv);
+        if (spv.empty()) {
+            continue;
+        }
+        if (!program) {
+            program = std::move(candidate);
+        }
+        spec.info = &program->info;
+        program->InsertPermut(CompileSPV(spv, instance.GetDevice()), std::move(spec), idx);
+        ++loaded;
+    }
+    if (!program) {
+        return false;
+    }
+    std::unique_lock lock{programs_mutex};
+    program_cache.emplace(hash, std::move(program));
+    ++lazy_loaded_programs;
+    lazy_loaded_permutations += loaded;
+    if ((lazy_loaded_programs & 255) == 0) {
+        std::printf("Pipeline cache: %llu programs (%llu permutations) loaded on first use\n",
+                    (unsigned long long)lazy_loaded_programs,
+                    (unsigned long long)lazy_loaded_permutations);
+    }
+    return true;
+}
+
 bool PipelineCache::CheckCacheProfile() {
+    next_permutation.clear();
     if (!EmulatorSettings.IsPipelineCacheEnabled()) {
         return false;
     }
@@ -929,7 +991,37 @@ bool PipelineCache::CheckCacheProfile() {
                                            std::move(profile_data));
         return false;
     }
+    // tlg: the indices the cache already holds, so permutations compiled in game never take one.
+    Storage::DataBase::Instance().ForEachBlobName(
+        Storage::BlobType::ShaderBinary, [this](std::string_view name) {
+            // "{:#018x}_{}": program hash, permutation index
+            const auto split = name.find('_');
+            if (split == std::string_view::npos) {
+                return;
+            }
+            const std::string hash_text{name.substr(0, split)};
+            const std::string index_text{name.substr(split + 1)};
+            char* end = nullptr;
+            const u64 hash = std::strtoull(hash_text.c_str(), &end, 16);
+            if (end == hash_text.c_str() || *end) {
+                return;
+            }
+            const u64 index = std::strtoull(index_text.c_str(), &end, 10);
+            if (end == index_text.c_str() || *end) {
+                return;
+            }
+            auto& next = next_permutation[hash];
+            next = std::max<size_t>(next, index + 1);
+        });
+    std::printf("Pipeline cache: %zu programs on disk\n", next_permutation.size());
     return true;
+}
+
+size_t PipelineCache::NewPermutationIndex(const Program& program, u64 hash) const {
+    // A program has at most one permutation in flight, and the one inserted at this index makes
+    // modules.size() the next one, so nothing needs reserving (a refused queue retries the same).
+    const auto it = next_permutation.find(hash);
+    return std::max(program.modules.size(), it == next_permutation.end() ? 0 : it->second);
 }
 
 void PipelineCache::WarmUp(const std::function<void(u32, u32)>& progress) {
@@ -1078,7 +1170,12 @@ struct PipelineCache::BackgroundWarmup {
     u64 pump_ns = 0, pump_max_ns = 0, pump_gap_max_ns = 0;
     u32 batches = 0;
     bool finished = false;
+    /// tlg: a precompiled cache holds the pipelines of the whole game: load only their shader
+    /// stages, and build each pipeline when the game first asks for it (the driver's own cache
+    /// has it from the first start's compilation, so that takes about a millisecond).
+    bool stages_only = false;
     u32 loaded = 0, threads = 0;
+    u32 merge_refused_initial = 0, merge_refused_moved = 0, merge_refused_taken = 0;
     std::chrono::steady_clock::time_point started, last_batch;
     std::chrono::steady_clock::time_point last_pump{}, last_report{};
     std::unique_ptr<WarmupPool> pool; ///< last: its jobs use the members above
@@ -1094,6 +1191,26 @@ bool PipelineCache::StartBackgroundWarmUp() {
     background = new BackgroundWarmup;
     auto& warm = *background;
     warm.started = std::chrono::steady_clock::now();
+    {
+        const char* env = std::getenv("TLG_WARMUP_STAGES_ONLY");
+        std::error_code ec;
+        warm.stages_only = env && *env ? env[0] == '1'
+                                       : std::filesystem::exists(
+                                             Storage::GameCacheDir() / Precompile::DoneFile, ec);
+        if (warm.stages_only) {
+            UseDefaultPipelineWait();
+        }
+        // TLG_LAZY_PROGRAMS=0 keeps loading every stage in the background instead.
+        const char* lazy = std::getenv("TLG_LAZY_PROGRAMS");
+        if (warm.stages_only && !(lazy && *lazy == '0')) {
+            lazy_programs = true;
+            std::printf("Pipeline warm-up: none; programs load from the cache on first use "
+                        "(%zu programs on disk)\n", next_permutation.size());
+            delete background;
+            background = nullptr;
+            return true;
+        }
+    }
     warm.threads = WarmupThreadCount(std::max(1u, std::thread::hardware_concurrency()));
     warm.pool = std::make_unique<WarmupPool>(warm.threads, true);
     // The first job reads the whole store; with one thread the builds queue behind it.
@@ -1110,7 +1227,8 @@ bool PipelineCache::StartBackgroundWarmUp() {
         warm.reading = false;
         return true;
     });
-    std::printf("Pipeline warm-up: loading in the background (%u threads)\n", warm.threads);
+    std::printf("Pipeline warm-up: loading %s in the background (%u threads)\n",
+                warm.stages_only ? "shader stages only" : "pipelines", warm.threads);
     return true;
 }
 
@@ -1203,17 +1321,22 @@ bool PipelineCache::MergeWarmStage(WarmStage& stage) {
     }
     // The game already uses this shader: its permutations are the ones that count.
     Program& program = *it_pgm->second;
-    if (program.pending) {
-        return false; // the game is compiling a permutation that takes the next index
+    if (program.PendingInitial()) {
+        ++background->merge_refused_initial; // its Info is not translated yet
+        return false;
     }
+    // A permutation the game compiles takes an index past every cached one
+    // (NewPermutationIndex), so a cached permutation keeps its own even while one is pending.
     const auto it = std::ranges::find(program.modules, stage.spec, &Program::Module::spec);
     if (it != program.modules.end()) {
         if (size_t(std::distance(program.modules.begin(), it)) != stage.perm_idx) {
+            ++background->merge_refused_moved; // the game compiled it again at another index
             return false;
         }
         stage.result = it->module;
     } else {
         if (stage.perm_idx < program.modules.size() && program.modules[stage.perm_idx].module) {
+            ++background->merge_refused_taken; // another specialization holds this index
             return false;
         }
         stage.spec.info = &program.info;
@@ -1291,7 +1414,7 @@ void PipelineCache::PumpWarmUp() {
                 fetch = stage.fetch; // the blocking load keeps the last stage's too
             }
         }
-        if (!usable) {
+        if (!usable || warm.stages_only) {
             warm.done.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
@@ -1335,6 +1458,9 @@ void PipelineCache::PumpWarmUp() {
                 warm.loaded, warm.total.load(),
                 std::chrono::duration<double>(now - warm.started).count(), warm.threads);
     LOG_INFO(Render, "Preloaded {} pipelines in the background", warm.loaded);
+    std::printf("Warm-up merge: refused %u (initial compile pending), %u (compiled again at "
+                "another index), %u (index taken by another specialization)\n",
+                warm.merge_refused_initial, warm.merge_refused_moved, warm.merge_refused_taken);
     ReportPipelineBinaryCache();
     std::printf("Warm-up profile: reader wall %.3f s, entries %.3f s, shader IO/meta %.3f s, "
                 "modules %.3f s (%u); GPU pump %.3f s, max %.3f ms, gap max %.3f ms, "

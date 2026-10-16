@@ -11,6 +11,9 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <miniz.h>
 
 #include <condition_variable>
@@ -371,6 +374,35 @@ void DataBase::ForEachBlob(BlobType type, const std::function<void(std::vector<u
                 }
             }
         }
+    }
+}
+
+void DataBase::ForEachBlobName(BlobType type,
+                               const std::function<void(std::string_view name)>& func) {
+    const auto ext = "." + GetBlobFileExtension(type);
+    const auto visit = [&](std::string_view name) {
+        if (name.ends_with(ext)) {
+            func(name.substr(0, name.size() - ext.size()));
+        }
+    };
+    if (EmulatorSettings.IsPipelineCacheArchived()) {
+        const auto num_files = mz_zip_reader_get_num_files(&zip_ar);
+        for (int index = 0; index < num_files; ++index) {
+            std::array<char, MZ_ZIP_MAX_ARCHIVE_FILENAME_SIZE> file_name{};
+            mz_zip_reader_get_filename(&zip_ar, index, file_name.data(), file_name.size());
+            visit(file_name.data());
+        }
+        return;
+    }
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator{cache_path, error}) {
+        visit(entry.path().filename().string());
+    }
+}
+
+void DataBase::WaitIdle() {
+    while (opened && std::atomic_ref<u32>(num_requests).load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 

@@ -17,11 +17,17 @@ def orb(length, shader_hash, type_id=1):
     return head + struct.pack('<QI', shader_hash, 0)
 
 
+def code(size):
+    """Code that follows the start rule: s_mov_b32 vcc_hi, (size/8 - 1), then zeros."""
+    return struct.pack('<II', si.CODE_MARKER, size // 8 - 1) + bytes(size - 8)
+
+
 def container(*shaders):
-    """KCAP-ish blob: magic, then code + OrbShdr per shader, with padding between."""
+    """KCAP-ish blob: magic, then code + OrbShdr per shader, with padding between. The footer's
+    length field is 4 bytes short of the code, as on the game, so the old rule would be wrong."""
     out = bytearray(b'KCAP' + bytes(12))
-    for length, h, t in shaders:
-        out += bytes(length) + orb(length, h, t) + bytes(8)
+    for size, h, t in shaders:
+        out += code(size) + orb(size - 4, h, t) + bytes(8)
     return bytes(out)
 
 
@@ -38,10 +44,15 @@ class ShaderIndexTest(unittest.TestCase):
         self.assertEqual(refs[0].offset, 16)
         self.assertEqual(counts.headers, 2)
 
+    def test_start_is_found_by_the_marker_not_by_length(self):
+        blob = b'KCAP' + bytes(12) + code(64) + orb(40, 0x77, 0)
+        refs = list(si.scan_stream(io.BytesIO(blob), len(blob), si.ScanCounts()))
+        self.assertEqual([(r.offset, r.size) for r in refs], [(16, 64)])
+
     def test_inconsistent_and_truncated_headers(self):
-        blob = bytes(8) + orb(4096, 5)             # code span would start before the file
-        blob += orb(0, 6)                          # empty
-        blob += orb(10, 7)                         # not dword sized
+        blob = bytes(8) + orb(4096, 5)             # no code before it
+        blob += orb(0, 6)                          # no code start
+        blob += struct.pack('<II', si.CODE_MARKER, 5) + bytes(8) + orb(16, 7)  # literal points elsewhere
         blob += si.SIGNATURE + bytes(5)            # cut by EOF
         counts = si.ScanCounts()
         self.assertEqual(list(si.scan_stream(io.BytesIO(blob), len(blob), counts)), [])
@@ -68,7 +79,9 @@ class ShaderIndexTest(unittest.TestCase):
             con = si.open_index(db)
             path, off, size, stage, n_occ, _ = si.find_shader(con, big)
             self.assertEqual((path, size, stage, n_occ), ('a.xpps', 16, 'VS', 2))
-            self.assertEqual(len(si.read_shader(root, path, off, size)), 16)
+            data = si.read_shader(root, path, off, size)
+            self.assertEqual(len(data), 16)
+            self.assertEqual(struct.unpack_from('<I', data)[0], si.CODE_MARKER)
             self.assertIsNone(si.find_shader(con, 0x99))
             known = {si.from_signed(r[0]) for r in con.execute('SELECT hash FROM shaders')}
             self.assertEqual(known, {big, 0x22})

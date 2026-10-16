@@ -12,6 +12,8 @@ from pathlib import Path
 
 import backports_table
 from presets_current import CURRENT
+from presets_amd import AMD
+from presets_view import REC1, SECO
 
 # ------------------------------------------------------------------------------------- presets
 # Keys a preset sets (anything a preset does not list goes back to the default of the table).
@@ -20,12 +22,15 @@ PRESET_ITEMS = ('menu:fps_limit', 'menu:frames_queued', 'menu:fsr1', 'menu:rcas'
                 'TLG_ASYNC_SHADERS', 'TLG_STALE_READBACK', 'TLG_DEFERRED_READBACK', 'TLG_BACKGROUND_WARMUP')
 # Full presets (presets_current.py) also set keys the plain ones never touch (GPU accuracy, read-ahead,
 # write merge, draw distance...): those keys are applied, and compared, only for the preset that lists them.
-FULL_PRESETS = {CURRENT['id']: CURRENT}
+FULL_PRESETS = {p['id']: p for p in (REC1, CURRENT, AMD, SECO)}
 # Defaults of the launcher settings a full preset may set (infamous_run.DEFAULT_SETTINGS; a test keeps them equal).
 SETTING_DEFAULTS = {'vsync': True, 'gpu_readbacks': '2', 'eager_readback': False, 'write_merge': True}
 # id, settings overrides, item overrides (values as strings; unlisted = default)
 PRESETS = (
+    (REC1['id'], REC1['settings'], REC1['items']),
     (CURRENT['id'], CURRENT['settings'], CURRENT['items']),
+    (AMD['id'], AMD['settings'], AMD['items']),
+    (SECO['id'], SECO['settings'], SECO['items']),
     ('performance', {'vsync': False}, {'menu:frames_queued': '2', 'menu:fsr1': '1', 'TLG_STALE_READBACK': '1'}),
     ('balanced', {}, {}),
     ('quality', {}, {'menu:fsr1': '1'}),
@@ -38,20 +43,43 @@ def item_by_id(item_id):
     return next(i for i in backports_table.ITEMS if i.id == item_id)
 
 
+def _full_targets(overrides, items):
+    """Targets of a full preset: the plain keys plus every key the preset lists."""
+    settings = {'vsync': overrides.get('vsync', True)}
+    stored = {item_id: backports_table.normalize(item_by_id(item_id), items.get(item_id))
+              for item_id in PRESET_ITEMS}
+    settings.update(overrides)
+    for item_id, value in items.items():
+        stored[item_id] = backports_table.normalize(item_by_id(item_id), value)
+    return settings, stored
+
+
 def preset_targets(preset_id):
     """({settings key: value}, {item id: stored value or None}) for a preset: every key a preset
     can set, so applying one also undoes what another set."""
     _, overrides, items = next(p for p in PRESETS if p[0] == preset_id)
-    settings = {'vsync': overrides.get('vsync', True)}
-    stored = {}
-    for item_id in PRESET_ITEMS:
-        stored[item_id] = backports_table.normalize(item_by_id(item_id), items.get(item_id))
     if preset_id in FULL_PRESETS:      # only a full preset owns the extra keys
-        for key, value in overrides.items():
-            settings[key] = value
-        for item_id, value in items.items():
-            stored[item_id] = backports_table.normalize(item_by_id(item_id), value)
-    return settings, stored
+        return _full_targets(overrides, items)
+    stored = {item_id: backports_table.normalize(item_by_id(item_id), items.get(item_id))
+              for item_id in PRESET_ITEMS}
+    return {'vsync': overrides.get('vsync', True)}, stored
+
+
+def custom_targets(preset):
+    """The targets of a preset that is not in PRESETS (an imported file, see preset_share.py): it is
+    applied as a full preset. `preset` has the layout of presets_current.CURRENT."""
+    return _full_targets(preset.get('settings', {}), preset.get('items', {}))
+
+
+def apply_targets(settings, states, targets):
+    """Puts the targets of a preset into the launcher settings and the fix states (in place); the
+    caller saves them (Backend._save_fixes in Qt, tlg_run.save_experimental in Tk)."""
+    settings.update(targets[0])
+    states.update(targets[1])
+
+
+def same_setting(key, current, wanted):
+    return _same_setting(key, current, wanted)
 
 
 def _same_setting(key, current, wanted):

@@ -39,7 +39,8 @@ def tk_text():
         import infamous_launcher
         return dict(infamous_launcher.TEXT)
     except Exception:  # tkinter missing in a slim Python
-        return dict(tlg_run.TEXT)
+        import preset_share
+        return {**preset_share.TEXT, **tlg_run.TEXT}
 
 
 def system_is_portuguese():
@@ -98,7 +99,7 @@ _GROUP_OF = {
     'TLG_ASYNC_SHADERS': 'perf', 'TLG_DEFERRED_READBACK': 'perf', 'TLG_STALE_READBACK': 'perf',
     'TLG_BACKGROUND_WARMUP': 'perf',
     'BP09': 'tex', 'BP10': 'tex', 'TLG_BLOCK1D': 'tex', 'TLG_BC_TINY': 'tex', 'TLG_NO_MSAA': 'tex',
-    'BP06': 'exp', 'TLG_RFL_ALL': 'exp', 'TLG_PIPELINE_BINARIES': 'exp',
+    'BP06': 'exp', 'TLG_RFL_ALL': 'exp', 'TLG_PIPELINE_BINARIES': 'exp', 'TLG_VERBOSE_LOG': 'exp',
 }
 
 
@@ -230,7 +231,8 @@ def game_state(settings, problems=None):
     return ('bad' if tlg_run.blocking(game_problems) else 'ok'), game_problems, not port_missing
 
 
-def compute_chips(settings, t, gpu='checking', pad=None, problems=None, states=None, cache_bytes=None):
+def compute_chips(settings, t, gpu='checking', pad=None, problems=None, states=None, cache_bytes=None,
+                  measure_cache=True):
     """The state chips of the Home screen: [{'text', 'level': ok|warn|bad}] and whether all is ready.
     gpu: 'checking' | None | (name, vulkan); pad: name or None."""
     chips = []
@@ -253,12 +255,16 @@ def compute_chips(settings, t, gpu='checking', pad=None, problems=None, states=N
     states = tlg_run.experimental_states(settings) if states is None else states
     n = backports_table.changes(states)
     chips.append((t('chip_profile_rec') if n == 0 else t('chip_profile_custom', n=n), 'ok' if n == 0 else 'warn'))
-    if cache_bytes is None:
+    if cache_bytes is None and not measure_cache:
+        chips.append((t('chip_cache_checking'), 'ok'))
+    elif cache_bytes is None:
         try:
             cache_bytes = tlg_run.shader_cache_size(settings)
         except Exception:
             cache_bytes = 0
-    if cache_bytes:
+    if cache_bytes is None:
+        pass
+    elif cache_bytes:
         chips.append((t('chip_cache', size=shader_cache.human_size(cache_bytes)), 'warn' if cache_bytes > 2 ** 30 else 'ok'))
     else:
         chips.append((t('chip_cache_empty'), 'ok'))

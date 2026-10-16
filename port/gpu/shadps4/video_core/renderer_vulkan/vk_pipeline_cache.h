@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <shared_mutex>
 #include <variant>
 #include <boost/container/static_vector.hpp>
@@ -16,6 +17,7 @@
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "video_core/renderer_vulkan/vk_resource_pool.h"
 #include "video_core/renderer_vulkan/vk_async_compiler.h"
+#include "video_core/renderer_vulkan/vk_precompile.h"
 
 template <>
 struct std::hash<vk::ShaderModule> {
@@ -82,6 +84,8 @@ struct Program {
     /// tlg: at 16, 32, 64... permutations, logs which key fields differ between the last two
     /// (a field that changes every draw makes the list, and every lookup, grow without end).
     void LogPermutationGrowth() const;
+    /// tlg: the pending compilation is the program's first: `info` is not translated yet.
+    [[nodiscard]] bool PendingInitial() const;
 
     void InsertPermut(vk::ShaderModule module, Shader::StageSpecialization&& spec,
                       size_t perm_idx) {
@@ -109,6 +113,8 @@ namespace Vulkan {
 /// (PipelineCache::sel); draw-preparation workers use their own with their register copies.
 struct PipelineSelection {
     const AmdGpu::Regs* regs{};
+    /// tlg: compute registers for this selection (precompiler); null: the current queue's.
+    const AmdGpu::ComputeProgram* cs_regs{};
     std::array<Shader::RuntimeInfo, MaxShaderStages> runtime_infos{};
     std::array<const Shader::Info*, MaxShaderStages> infos{};
     std::array<vk::ShaderModule, MaxShaderStages> modules{};
@@ -176,6 +182,16 @@ public:
 
     const ComputePipeline* GetComputePipeline();
 
+    /// tlg: first-run shader compilation (vk_precompile.cpp): compiles the shaders and
+    /// pipelines of every record as a draw/dispatch with those registers would, and saves them
+    /// to the shader cache. Before the game starts, on the thread that owns the cache.
+    Precompile::Result Precompile(const std::vector<Precompile::Record>& records,
+                                  const std::function<void(u32 done, u32 total)>& progress);
+    /// tlg: the first start's compilation: the job file when this cache has not compiled it
+    /// yet (or a crash interrupted it). `start(total)` before the first record; false: nothing to do.
+    bool PrecompileFirstStart(const std::function<void(u32 total)>& start,
+                              const std::function<void(u32 done, u32 total)>& progress);
+
     using Result = std::tuple<const Shader::Info*, vk::ShaderModule,
                               std::optional<Shader::Gcn::FetchShaderData>, u64>;
     Result GetProgram(PipelineSelection& sel, Shader::HwStage stage, Shader::SwStage l_stage,
@@ -206,6 +222,14 @@ private:
     bool SaveDriverCacheUnchecked();
     void SeedWorkerCaches();
     bool CheckCacheProfile();
+    /// tlg: without TLG_ASYNC_WAIT_MS, a draw waits up to 4 ms for its pipeline build (precompiled
+    /// caches: the shaders are ready and the driver has the pipeline cached).
+    void UseDefaultPipelineWait();
+    /// tlg: reads every cached permutation of a program not in program_cache yet (precompiled
+    /// caches load programs when the game first uses them instead of all at the start).
+    bool LoadProgramFromCache(u64 hash);
+    /// tlg: index for a new permutation of `program`: past every index the cache on disk holds.
+    size_t NewPermutationIndex(const Program& program, u64 hash) const;
     struct BackgroundWarmup;
     struct WarmStage;
     void ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data);
@@ -216,6 +240,7 @@ private:
     bool RefreshGraphicsKey(PipelineSelection& sel);
     bool RefreshGraphicsStages(PipelineSelection& sel);
     bool RefreshComputeKey();
+    bool RefreshComputeKey(PipelineSelection& selection, ComputePipelineKey& key);
 
     void DumpShader(std::span<const u32> code, u64 hash, Shader::HwStage stage, size_t perm_idx,
                     std::string_view ext);
@@ -256,10 +281,20 @@ private:
     BackgroundWarmup* background = nullptr;
     tsl::robin_map<GraphicsPipelineKey, std::shared_ptr<AsyncGraphicsCompilation>> pending_graphics;
     tsl::robin_map<size_t, std::unique_ptr<Program>> program_cache;
+    /// tlg: per program hash, one past the highest permutation index of the .spv files on disk.
+    /// A permutation compiled in game takes an index from here, never one that a cached
+    /// permutation not yet loaded (background warm-up) already names: its .meta would be
+    /// overwritten with another specialization, and the .key files that name it would build
+    /// their pipelines with the wrong shader in the next session. Filled by CheckCacheProfile.
+    std::unordered_map<u64, size_t> next_permutation;
+    /// tlg: precompiled cache: programs load on first use (LoadProgramFromCache), not at the start.
+    bool lazy_programs = false;
+    std::unordered_set<u64> lazy_tried;
     std::vector<Program*> pending_programs;
     /// tlg: exclusive for program/permutation insertions, shared for worker lookups.
     std::shared_mutex programs_mutex;
     u64 prepared_hits = 0, prepared_misses = 0;
+    u64 lazy_loaded_programs = 0, lazy_loaded_permutations = 0;
     const PreparedDraw* used_prepared = nullptr;
     tsl::robin_map<ComputePipelineKey, std::unique_ptr<ComputePipeline>> compute_pipelines;
     tsl::robin_map<GraphicsPipelineKey, std::unique_ptr<GraphicsPipeline>> graphics_pipelines;

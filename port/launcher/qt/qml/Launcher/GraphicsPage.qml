@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import Launcher
 
 Item {
@@ -41,25 +42,44 @@ Item {
                            font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold }
                 }
             }
-            Row {
-                id: presetRow
-                width: parent.width; spacing: 12
+            // A grid that wraps: 4 cards per line on a wide window, fewer on a narrow one; every card of
+            // the grid gets the height of the tallest, so the lines stay even whatever the text.
+            Grid {
+                id: presetGrid
+                width: parent.width
+                columns: width >= 860 ? 4 : (width >= 560 ? 3 : 2)
+                spacing: 12
+                readonly property real cardWidth: (width - (columns - 1) * spacing) / columns
+                property real cardHeight: 150
+                function refit() {
+                    var tallest = 150
+                    for (var i = 0; i < presetCards.count; ++i) {
+                        var card = presetCards.itemAt(i)
+                        if (card) tallest = Math.max(tallest, card.need)
+                    }
+                    cardHeight = tallest
+                }
                 Repeater {
+                    id: presetCards
                     model: Graphics.presets
+                    onItemAdded: presetGrid.refit()
                     Rectangle {
                         readonly property bool hot: presetMouse.containsMouse
-                        width: (presetRow.width - 3 * presetRow.spacing) / 4; height: 150; radius: 12
+                        readonly property real need: presetCol.implicitHeight + 26
+                        onNeedChanged: presetGrid.refit()
+                        width: presetGrid.cardWidth; height: presetGrid.cardHeight; radius: 12
                         color: modelData.active ? Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.10) : hot ? Theme.navHover : Theme.card
                         border.width: modelData.active ? 2 : 1
                         border.color: modelData.active ? page.accent : hot ? Theme.ghostLineHover : Theme.cardLine
                         Column {
+                            id: presetCol
                             x: 14; y: 13; width: parent.width - 28; spacing: 7
-                            Row {
-                                spacing: 8
+                            Flow {
+                                width: parent.width; spacing: 8
                                 Text { text: modelData.label; color: "#fff"; font.family: Theme.fontDisplay; font.variableAxes: ({ "wght": 800 }); font.pixelSize: 20
                                        font.weight: Font.ExtraBold; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.8
-                                       anchors.verticalCenter: parent.verticalCenter }
-                                Tag { visible: modelData.standard; text: Theme.tr("gfx_preset_standard"); tone: "good"; anchors.verticalCenter: parent.verticalCenter }
+                                       width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
+                                Tag { visible: modelData.standard; text: Theme.tr("gfx_preset_standard"); tone: "good" }
                             }
                             Text { width: parent.width; text: modelData.what; wrapMode: Text.WordWrap; color: Theme.textDim
                                    font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.3; lineHeightMode: Text.ProportionalHeight }
@@ -72,6 +92,13 @@ Item {
                 }
             }
             NoteBar { text: Theme.tr("gfx_preset_note"); bar: page.accent }
+            Row {
+                spacing: 10
+                GhostButton { compact: true; text: Theme.tr("ps_export"); onClicked: { nameField.text = Graphics.exportName; whatField.text = ""; exportCard.visible = true } }
+                GhostButton { compact: true; text: Theme.tr("ps_import"); onClicked: openJson.open() }
+            }
+            NoteBar { visible: Graphics.shareMessage !== ""; text: Graphics.shareMessage
+                      bar: Graphics.shareTone === "good" ? Theme.ok : Theme.bad; textColor: Theme.textSoft }
 
             // ---- the options ------------------------------------------------------------------
             Column {
@@ -111,6 +138,87 @@ Item {
                     }
                 }
             }
+
+            // ---- Windows Defender exclusion of the cache folder (Windows only) ---------------------------------
+            Rectangle {
+                visible: Graphics.defenderShown
+                width: parent.width; height: visible ? defCol.implicitHeight + 36 : 0
+                radius: 14; color: Theme.card; border.width: 1; border.color: Theme.cardLine
+                Column {
+                    id: defCol
+                    x: 18; y: 18; width: parent.width - 36; spacing: 10
+                    Text { text: Theme.tr("defender_title"); color: "#fff"; font.family: Theme.fontText; font.pixelSize: 17; font.weight: Font.DemiBold }
+                    Text { width: parent.width; text: Theme.tr("defender_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
+                           font.family: Theme.fontText; font.pixelSize: 13; lineHeight: 1.35; lineHeightMode: Text.ProportionalHeight }
+                    NoteBar { visible: Graphics.defenderDone && Graphics.defenderMessage === ""
+                              text: Backend.tf("defender_done", {"folder": Graphics.defenderFolderText}); bar: Theme.ok; textColor: Theme.textSoft }
+                    NoteBar { visible: Graphics.defenderMessage !== ""; text: Graphics.defenderMessage; textColor: Theme.textSoft
+                              bar: Graphics.defenderTone === "good" ? Theme.ok : (Graphics.defenderTone === "bad" ? Theme.bad : page.accent) }
+                    GhostButton { compact: true; enabled: !Graphics.defenderBusy
+                                  text: Graphics.defenderDone ? Theme.tr("defender_again") : Theme.tr("defender_button")
+                                  onClicked: Graphics.addDefenderExclusion() }
+                }
+            }
         }
+    }
+
+    ConfirmCard { anchors.fill: parent; target: Graphics }
+
+    // ---- export: name and description, then the file dialog ----------------------------------------------
+    Rectangle {
+        id: exportCard
+        anchors.fill: parent; visible: false
+        color: Qt.rgba(0, 0, 0, 0.62)
+        MouseArea { anchors.fill: parent }
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(600, parent.width - 72); height: exportCol.implicitHeight + 48
+            radius: 14; color: Theme.card; border.width: 1; border.color: Theme.ghostLineHover
+            Column {
+                id: exportCol
+                x: 24; y: 24; width: parent.width - 48; spacing: 12
+                Text { width: parent.width; text: Theme.tr("ps_export_title"); color: "#fff"; wrapMode: Text.WordWrap
+                       font.family: Theme.fontDisplay; font.variableAxes: ({ "wght": 800 }); font.pixelSize: 28; font.weight: Font.ExtraBold
+                       font.capitalization: Font.AllUppercase; font.letterSpacing: 1.4 }
+                Text { width: parent.width; text: Theme.tr("ps_export_hint"); color: Theme.textSoft; wrapMode: Text.WordWrap
+                       font.family: Theme.fontText; font.pixelSize: 14; lineHeight: 1.35; lineHeightMode: Text.ProportionalHeight }
+                Text { text: Theme.tr("ps_name"); color: Theme.textDim; font.family: Theme.fontText; font.pixelSize: 13 }
+                TextField {
+                    id: nameField
+                    width: parent.width; color: "#fff"; selectByMouse: true; maximumLength: 80
+                    selectionColor: page.accent; selectedTextColor: "#00131a"
+                    font.family: Theme.fontText; font.pixelSize: 14; leftPadding: 12; rightPadding: 12; topPadding: 9; bottomPadding: 9
+                    background: Rectangle { radius: 8; color: Theme.chip; border.width: 1; border.color: nameField.activeFocus ? page.accent : Theme.ghostLine }
+                }
+                Text { text: Theme.tr("ps_what"); color: Theme.textDim; font.family: Theme.fontText; font.pixelSize: 13 }
+                TextField {
+                    id: whatField
+                    width: parent.width; color: "#fff"; selectByMouse: true; maximumLength: 300
+                    selectionColor: page.accent; selectedTextColor: "#00131a"
+                    font.family: Theme.fontText; font.pixelSize: 14; leftPadding: 12; rightPadding: 12; topPadding: 9; bottomPadding: 9
+                    background: Rectangle { radius: 8; color: Theme.chip; border.width: 1; border.color: whatField.activeFocus ? page.accent : Theme.ghostLine }
+                }
+                Flow {
+                    width: parent.width; spacing: 10; topPadding: 6
+                    GhostButton { tone: "primary"; text: Theme.tr("ps_choose_file")
+                                  onClicked: { exportCard.visible = false; saveJson.currentFile = saveJson.currentFolder + "/" + Graphics.exportFile; saveJson.open() } }
+                    GhostButton { text: Theme.tr("ps_cancel"); onClicked: exportCard.visible = false }
+                }
+            }
+        }
+    }
+    FileDialog {
+        id: openJson
+        title: Theme.tr("ps_open_title")
+        nameFilters: [Theme.tr("ps_filter"), "*"]
+        onAccepted: Graphics.importPreset(selectedFile.toString())
+    }
+    FileDialog {
+        id: saveJson
+        title: Theme.tr("ps_save_title")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: [Theme.tr("ps_filter")]
+        onAccepted: Graphics.exportPreset(nameField.text, whatField.text, selectedFile.toString())
     }
 }

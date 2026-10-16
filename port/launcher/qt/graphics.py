@@ -5,11 +5,13 @@ switches, VRAM budget) and tlg.ini through the same table and the same save path
 screen (Backend.setFix -> infamous_run.save_experimental). It adds no key of its own."""
 import threading
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
-from . import gfxlogic, logic
+from . import gfxlogic, logic, report
 from .logic import backports_table, shader_cache, tlg_run
 from .rowsmodel import RowsModel
+import defender  # noqa: E402  (launcher/defender.py)
+import preset_share  # noqa: E402  (launcher/preset_share.py; logic put the folder on sys.path)
 
 # (id, kind, live) of the options kept in settings.json. live: also in the Insert menu.
 SETTING_ROWS = {
@@ -19,6 +21,8 @@ SETTING_ROWS = {
     's:gpu_readbacks': ('gpu_readbacks', 'combo', False),
     's:eager_readback': ('eager_readback', 'switch', False),
     's:write_merge': ('write_merge', 'switch', False),
+    's:precompile_shaders': ('precompile_shaders', 'switch', False),
+    's:close_on_play': ('close_on_play', 'switch', True),
     's:vram_budget_mb': ('vram_budget_mb', 'slider', False),
 }
 DISPLAY_MODES = ('Windowed', 'Borderless', 'Fullscreen')
@@ -28,7 +32,8 @@ SECTIONS = (
     ('gfx_sec_rate', ('menu:fps_limit', 'menu:frames_queued')),
     ('gfx_sec_view', tuple(i.id for i in backports_table.MENU if i.tab == 'View')),
     ('gfx_sec_gpu', ('TLG_ASYNC_SHADERS', 'TLG_BACKGROUND_WARMUP', 's:gpu_readbacks', 's:eager_readback',
-                     's:write_merge', 'TLG_DEFERRED_READBACK', 'TLG_STALE_READBACK')),
+                     's:write_merge', 'TLG_DEFERRED_READBACK', 'TLG_STALE_READBACK', 's:precompile_shaders',
+                     's:close_on_play')),
     ('gfx_sec_vram', ('s:vram_budget_mb',)),
     ('gfx_sec_overlay', ('s:show_fps',) + OVERLAY_IDS),
 )
@@ -37,8 +42,10 @@ STEPS = {'menu:overlay_scale': 10, 's:vram_budget_mb': 200}
 
 class Graphics(QObject):
     changed = Signal()
+    defenderFinished = Signal(str)   # defender.OK | CANCELLED | FAILED, from the prompt's thread
     vramFound = Signal(object)
     scrollRequested = Signal(int)   # used by the screenshot tool
+    dialogChanged = Signal()
 
     def __init__(self, backend, probes=None):
         """probes: optional callables replacing the slow/system ones (tests, screenshots):
@@ -52,10 +59,16 @@ class Graphics(QObject):
         self._confirm = False
         self._cache = 0
         self._msg, self._tone = '', 'info'
+        self._def_busy, self._def_msg, self._def_tone = False, '', 'info'
+        self._share_msg, self._share_tone = '', 'info'
+        self._dialog, self._handlers = {}, {}
+        self._imported = None      # (profile name, targets) of the last imported file
         self.vramFound.connect(self._on_vram)
+        self.defenderFinished.connect(self._on_defender)
         backend.profileChanged.connect(self.rebuild)
         backend.langChanged.connect(self.rebuild)
         backend.saves.changed.connect(self.changed)
+        backend.cacheMeasured.connect(self._on_cache_measured)
         self.rebuild()
 
     # -- helpers ------------------------------------------------------------------------------------
@@ -180,9 +193,10 @@ class Graphics(QObject):
 
     @Slot(str)
     def applyPreset(self, preset_id):
-        settings, stored = gfxlogic.preset_targets(preset_id)
-        self.settings.update(settings)
-        self.backend.fix_states.update(stored)
+        self._apply_targets(gfxlogic.preset_targets(preset_id))
+
+    def _apply_targets(self, targets):
+        gfxlogic.apply_targets(self.settings, self.backend.fix_states, targets)
         self.backend._save_fixes()               # tlg.ini + settings.json (one write)
         self.backend.fixes.refresh_all()
         self.backend.refresh()                   # chips; profileChanged -> rebuild
@@ -204,10 +218,111 @@ class Graphics(QObject):
         return [{'id': pid, 'label': self.t('gfx_preset_' + pid), 'what': self.t('gfx_preset_%s_what' % pid),
                  'active': pid == current, 'standard': pid == gfxlogic.DEFAULT_PRESET} for pid, _, _ in gfxlogic.PRESETS]
 
+    def _imported_name(self):
+        """The profile name of the imported file while the options still equal it."""
+        if not self._imported:
+            return ''
+        name, (settings, stored) = self._imported
+        same = all(gfxlogic.same_setting(k, self.settings.get(k), v) for k, v in settings.items()) and \
+            all(self.backend.fix_states.get(i) == v for i, v in stored.items())
+        return name if same else ''
+
     @Property(str, notify=changed)
     def presetText(self):
         current = gfxlogic.matching_preset(self.settings, self.backend.fix_states)
-        return self.t('gfx_preset_now', name=self.t('gfx_preset_' + current)) if current else self.t('gfx_preset_custom')
+        if current:
+            return self.t('gfx_preset_now', name=self.t('gfx_preset_' + current))
+        name = self._imported_name()
+        return self.t('ps_profile_imported', name=name) if name else self.t('gfx_preset_custom')
+
+    # -- share: export and import a configuration file -------------------------------------------------------
+    @Property(str, notify=changed)
+    def exportName(self):
+        """The name the export dialog starts with: the current profile."""
+        current = gfxlogic.matching_preset(self.settings, self.backend.fix_states)
+        return self.t('gfx_preset_' + current) if current else self._imported_name()
+
+    @Property(str, notify=changed)
+    def exportFile(self):
+        return preset_share.default_filename(self.exportName)
+
+    @Property(str, notify=changed)
+    def shareMessage(self):
+        return self._share_msg
+
+    @Property(str, notify=changed)
+    def shareTone(self):
+        return self._share_tone
+
+    def _port_version(self):
+        if 'version' in self.probes:
+            return self.probes['version']()
+        try:
+            return report.current_version((tlg_run.PORT_DIR, tlg_run.REPO_DIR), tlg_run.LOG_DIR)
+        except Exception:
+            return ''
+
+    @staticmethod
+    def _local(url):
+        return QUrl(url).toLocalFile() if str(url).startswith('file:') else str(url)
+
+    @Slot(str, str, str)
+    def exportPreset(self, name, what, url):
+        path = self._local(url)
+        if not path:
+            return
+        preset = preset_share.export_preset(self.settings, self.backend.fix_states, name, what, self._port_version())
+        try:
+            final = preset_share.write_preset(preset, path)
+        except (OSError, ValueError) as error:
+            self._share_msg, self._share_tone = self.t('ps_export_failed', detail=str(error)), 'bad'
+        else:
+            self._share_msg, self._share_tone = self.t('ps_exported', path=str(final)), 'good'
+        self.changed.emit()
+
+    @Slot(str)
+    def importPreset(self, url):
+        path = self._local(url)
+        if not path:
+            return
+        preset, problems = preset_share.read_preset(path)
+        title = self.t('ps_import_title')
+        close = [('close', self.t('ps_close'), 'ghost')]
+        if preset is None:
+            self._ask(title, '', close, {}, [preset_share.problem_text(p, self.t) for p in problems])
+            return
+        changes = preset_share.diff(preset, self.settings, self.backend.fix_states)
+        body, lines = preset_share.summary_lines(preset, problems, changes, self.t, self.backend.t_.pt())
+        if not changes:
+            self._ask(title, body, close, {}, lines)
+            return
+        self._ask(title, body, [('apply', self.t('ps_apply'), 'primary'), ('cancel', self.t('ps_cancel'), 'ghost')],
+                  {'apply': lambda: self._apply_imported(preset, len(changes))}, lines)
+
+    def _apply_imported(self, preset, count):
+        targets = gfxlogic.custom_targets(preset)
+        self._imported = (preset['profile'], targets)
+        self._apply_targets(targets)
+        self._share_msg, self._share_tone = self.t('ps_imported', name=preset['profile'], n=count), 'good'
+        self.changed.emit()
+
+    def _ask(self, title, body, buttons, handlers, lines=()):
+        self._handlers = handlers
+        self._dialog = {'open': True, 'title': title, 'body': body, 'lines': list(lines),
+                        'buttons': [{'id': i, 'label': l, 'tone': t} for i, l, t in buttons]}
+        self.dialogChanged.emit()
+
+    @Property('QVariantMap', notify=dialogChanged)
+    def dialog(self):
+        return self._dialog
+
+    @Slot(str)
+    def answer(self, button):
+        handler = self._handlers.get(button)
+        self._dialog, self._handlers = {}, {}
+        self.dialogChanged.emit()
+        if handler:
+            handler()
 
     @Property(QObject, constant=True)
     def rows(self):
@@ -246,15 +361,14 @@ class Graphics(QObject):
 
     # -- shader cache ----------------------------------------------------------------------------------------
     def read_cache_bytes(self):
-        if 'cache' in self.backend.probes:
-            return self.backend.probes['cache']()
-        try:
-            return tlg_run.shader_cache_size(self.settings)
-        except Exception:
-            return 0
+        return self.backend.cache_bytes()   # measured off the UI thread (Backend.measure_cache)
 
     def cache_bytes(self):
         return self._cache
+
+    def _on_cache_measured(self, _size):
+        self._cache = self.read_cache_bytes()
+        self.changed.emit()
 
     @Property(str, notify=changed)
     def cacheText(self):
@@ -284,6 +398,75 @@ class Graphics(QObject):
     @Property(str, notify=changed)
     def messageTone(self):
         return self._tone
+
+    # -- Windows Defender exclusion of the cache folder (defender.py) ----------------------------------------
+    def defender_folder(self):
+        return tlg_run.gpu_user_dir() / 'cache'
+
+    @Property(bool, notify=changed)
+    def defenderShown(self):
+        return self.probes['defender_shown']() if 'defender_shown' in self.probes else defender.supported()
+
+    @Property(bool, notify=changed)
+    def defenderDone(self):
+        return defender.is_marked(self.settings, self.defender_folder())
+
+    @Property(bool, notify=changed)
+    def defenderBusy(self):
+        return self._def_busy
+
+    @Property(str, notify=changed)
+    def defenderFolderText(self):
+        return str(self.defender_folder())
+
+    @Property(str, notify=changed)
+    def defenderMessage(self):
+        return self._def_msg
+
+    @Property(str, notify=changed)
+    def defenderTone(self):
+        return self._def_tone
+
+    def auto_defender(self):
+        """At start (Windows): asks once per cache folder. A No or a refusal is remembered, so the
+        Windows prompt does not come back at every start; the card's button asks again."""
+        folder = str(self.defender_folder())
+        if (not self.defenderShown or self.defenderDone or self._def_busy
+                or self.settings.get('defender_asked') == folder):
+            return
+        self.addDefenderExclusion()
+
+    @Slot()
+    def addDefenderExclusion(self):
+        """Windows shows its administrator prompt; the launcher waits for the answer off the UI thread."""
+        if self._def_busy:
+            return
+        self._def_busy, self._def_msg = True, self.t('defender_waiting')
+        self._def_tone = 'info'
+        self.changed.emit()
+        folder = self.defender_folder()
+        add = self.probes.get('defender') or defender.add_exclusion
+
+        def work():
+            try:
+                result = add(folder)
+            except Exception:
+                result = defender.FAILED
+            self.defenderFinished.emit(result)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_defender(self, result):
+        self._def_busy = False
+        self.settings['defender_asked'] = str(self.defender_folder())
+        if result == defender.OK:
+            self.settings['defender_excluded'] = str(self.defender_folder())
+            self._def_msg, self._def_tone = self.t('defender_ok'), 'good'
+        elif result == defender.CANCELLED:
+            self._def_msg, self._def_tone = self.t('defender_cancelled'), 'info'
+        else:
+            self._def_msg, self._def_tone = self.t('defender_failed'), 'bad'
+        tlg_run.save_settings(self.settings)
+        self.changed.emit()
 
     @Slot()
     def askClear(self):

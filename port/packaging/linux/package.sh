@@ -19,7 +19,7 @@ out/pyenv/bin/python -m pip install -q --disable-pip-version-check pyinstaller i
 # and iced-x86 for scripts/isa_rewrite.py (CPUs without MOVBE/BMI1/LZCNT).
 hidden=()
 for module in argparse base64 collections hashlib json re shutil struct tempfile xml.etree.ElementTree \
-              urllib.request runpy iced_x86; do
+              urllib.request runpy sqlite3 mmap multiprocessing multiprocessing.pool dataclasses array bisect random time typing iced_x86; do
     hidden+=("$module")
 done
 # packaging/launcher.spec freezes both launchers into one folder (shared libraries) and trims Qt.
@@ -47,6 +47,9 @@ ldd out/tlg-probe out/gpu/libtlggpu.so | awk '/=> \// {print $1, $3}' | sort -u 
 done
 # SDL3 loads its video/audio backends at run time from the player's system: nothing else to copy.
 cp -r scripts "$dest/"
+# The shader list generator (scripts/build_jobs.py imports it from ../tools): plain files, like scripts/.
+mkdir -p "$dest/tools"
+cp -r tools/xpps "$dest/tools/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
 # The release name (vYYYY.MM.DD-<commit>, as the CI publishes it): the launcher shows it and compares it with the latest release.

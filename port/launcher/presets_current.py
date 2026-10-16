@@ -2,7 +2,8 @@
 """The "currently recommended" preset: the settings the maintainer plays with (2026-10-16).
 
 A full preset: besides the switches the four plain presets set (qt/gfxlogic.py), it also sets GPU
-accuracy, read-ahead, write merge and the draw-distance values. The plain presets leave those alone.
+accuracy, read-ahead and write merge. The plain presets leave those alone. Draw distance and LOD are never
+changed: the preset lists them at the game's native values, so applying it puts them back to native.
 Left out on purpose (they depend on the machine): the VRAM budget, window mode, languages, and the
 AMD workarounds (BLOCK1D, BC_TINY, NO_MSAA), which stay on "Automatic".
 """
@@ -10,24 +11,29 @@ AMD workarounds (BLOCK1D, BC_TINY, NO_MSAA), which stay on "Automatic".
 CURRENT = {
     'id': 'current',
     'exported': '2026-10-16',
-    'names': {'en': 'CURRENTLY RECOMMENDED', 'pt': 'RECOMENDADA ATUALMENTE'},
+    'names': {'en': 'RECOMMENDED 2', 'pt': 'RECOMENDADO 2'},
     'what': {
-        'en': 'The maintainer\'s own setup: exact GPU reads (Precise), read-ahead off, FSR 1 on, shorter draw '
-              'distance with sharper textures, and the driver pipeline cache. Changes GPU accuracy too.',
+        'en': 'The maintainer\'s own setup: exact GPU reads (Precise), read-ahead off, no FSR 1 or sharpening, '
+              'and the driver pipeline cache. Changes GPU accuracy too.',
         'pt': 'A configuração do próprio autor: leituras exatas da GPU (Preciso), leitura adiantada desligada, '
-              'FSR 1 ligado, alcance de visão menor com texturas mais nítidas e o cache de pipelines do driver. '
+              'sem FSR 1 nem nitidez e o cache de pipelines do driver. '
               'Também muda a precisão da GPU.',
     },
     # launcher settings (settings.json): keys the plain presets do not touch, plus VSync
     'settings': {'vsync': True, 'gpu_readbacks': '2', 'eager_readback': False, 'write_merge': True},
     # table items (backports_table.py ids), values as stored strings; a value equal to the default is "off the list"
     'items': {
-        'menu:fsr1': '1',
-        'menu:lod_scale': '0.6',
-        'menu:region_lod': '0',
-        'menu:region_fade': '0.8',
-        'menu:far_clip': '1418000',
-        'menu:mip_lod_bias': '1.25',
+        'menu:fsr1': '0',   # FSR 1 and sharpening off (2026-10-16): listed so that applying the preset turns them off
+        'menu:rcas': '0',
+        # draw distance and LOD stay native: listed with the game's own values (the defaults), so applying
+        # this preset also sends them back to native if they were changed (lod_bands has no launcher item)
+        'menu:lod_scale': '1',
+        'menu:region_lod': '1',
+        'menu:region_fade': '1',
+        'menu:near_clip': '10',
+        'menu:far_clip': '10000000',
+        'menu:mip_lod_bias': '0',
+        'BP06': '1',        # the default; listed so that leaving the AMD preset turns it back on
         'BP07': '1',
         'BP08': '1',
     },

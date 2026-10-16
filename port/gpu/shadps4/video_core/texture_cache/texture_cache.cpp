@@ -1806,23 +1806,27 @@ void TextureCache::GarbageCollectImages() {
         ticks_to_destroy = std::min(ticks_to_destroy, gc_tick);
         num_deletions = aggresive ? 40 : pressured ? 20 : 10;
     };
+    // tlg (bloodborne_pc 0.3): an image that cannot go now moves to the back of the queue and
+    // costs no deletion. Before, it used up the pass's budget and stayed at the front: with the
+    // oldest images all GPU-written tiled targets, nothing was ever freed again and VRAM grew
+    // with every area visited. A pass also stops after looking at 256 images.
+    u32 visited = 0;
     const auto clean_up = [&](ImageId image_id) {
-        if (num_deletions == 0) {
+        if (num_deletions == 0 || ++visited > 256) {
             return true;
         }
-        --num_deletions;
         auto& image = slot_images[image_id];
         ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                          ReadbackSource::CacheCleanup);
         const bool download = image.SafeToDownload();
         const bool tiled = image.info.IsTiled();
-        if (tiled && download) {
-            // This is a workaround for now. We can't handle non-linear image downloads.
+        if ((tiled && download) || (download && !pressured)) {
+            // Tiled: we can't handle non-linear image downloads yet. Otherwise a download
+            // waits for memory pressure.
+            lru_cache.Touch(image.lru_id, gc_tick);
             return false;
         }
-        if (download && !pressured) {
-            return false;
-        }
+        --num_deletions;
         if (download) {
             // tlg: synchronously, while the image still protects its pages. A deferred
             // write-back landed after FreeImage had unprotected them, over whatever the game
@@ -1853,6 +1857,7 @@ void TextureCache::GarbageCollectImages() {
     if (total_used_memory >= critical_gc_memory) {
         // If we are still over the critical limit, run an aggressive GC
         configure(true);
+        visited = 0;
         lru_cache.ForEachItemBelow(gc_tick - ticks_to_destroy, clean_up);
     }
     // tlg: evictions under memory pressure, at most every 5 s (TLG_FRAME_STATS or not).
