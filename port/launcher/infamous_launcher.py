@@ -21,8 +21,13 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
+import logtail  # noqa: E402
 import precompile  # noqa: E402
 import preset_share  # noqa: E402
+
+LOG_LINES = 500           # lines the log panel keeps
+LOG_POLL_MS = 1000        # how often the game's log file is read
+CLOSE_DELAY_MS = 2000     # 'Close the launcher when the game starts': wait after the start
 
 TEXT = {
     'title': ('inFAMOUS Second Son — PC', 'inFAMOUS Second Son — PC'),
@@ -115,6 +120,7 @@ TEXT = {
     'occlusion': ('Light glare (occlusion)', 'Brilho das luzes (oclusão)'),
     'occlusion_hint': ('How much of a light the game counts as visible. 3 (recommended) keeps the headlight glow from showing through characters; 0 is the old behaviour. Applies on the next start.',
                        'Quanto de uma luz o jogo conta como visível. 3 (recomendado) evita o brilho dos faróis aparecer por cima dos personagens; 0 é o comportamento antigo. Vale na próxima partida.'),
+    'close_on_play': ('Close the launcher when the game starts', 'Fechar o launcher ao abrir o jogo'),
     'verbose_log': ('Detailed log', 'Log detalhado'),
     'verbose_log_hint': ('For problem reports: the log records much more (files, controller, audio, GPU with time and thread). It gets large and the game may run a little slower. Applies on the next start.',
                          'Para relatar problemas: o log registra muito mais (arquivos, controle, áudio, GPU com horário e thread). Ele fica grande e o jogo pode ficar um pouco mais lento. Vale na próxima partida.'),
@@ -170,6 +176,7 @@ class Launcher:
         self.root = root
         self.settings = tlg_run.load_settings()
         self.process = None
+        self.tail = None
         self.precompiler = precompile.Precompiler()
         self.starting = False    # Play pressed, game not yet running (preparing / making the shader list)
         self._jobs_step = {}
@@ -282,6 +289,7 @@ class Launcher:
         self.check(video, 6, 'eager_readback')
         self.check(video, 7, 'write_merge')
         self.check(video, 8, 'precompile_shaders')
+        self.check(video, 9, 'close_on_play')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -752,12 +760,8 @@ class Launcher:
             self.lines.put(('error', str(error)))
             return
         self.lines.put(f"{self.t('running')} {log}")
-        with open(log, 'w', encoding='utf-8') as out:
-            for line in self.process.stdout:
-                out.write(line)
-                out.flush()
-                self.lines.put(line.rstrip('\n'))
-        code = self.process.wait()
+        self.lines.put(('started', log))
+        code = self.process.wait()   # the game writes its own log file; here only the exit code
         self.process = None
         self.lines.put(('ended', code))
 
@@ -765,9 +769,12 @@ class Launcher:
         try:
             while True:
                 item = self.lines.get_nowait()
-                if isinstance(item, tuple):
+                if isinstance(item, tuple) and item[0] == 'started':
+                    self.start_tail(item[1])
+                elif isinstance(item, tuple):
                     kind, value = item
                     self.starting = False
+                    self.stop_tail()
                     if kind == 'stopped':
                         pass
                     elif kind == 'error':
@@ -784,10 +791,38 @@ class Launcher:
             pass
         self.root.after(100, self.pump)
 
+    def start_tail(self, log):
+        """Follow the game's log file once a second; optionally close the launcher soon after."""
+        self.tail = logtail.LogTail(log, LOG_LINES)
+        self.root.after(LOG_POLL_MS, self.tail_tick)
+        if self.settings.get('close_on_play'):
+            self.root.after(CLOSE_DELAY_MS, self.quit)
+
+    def stop_tail(self):
+        if self.tail is not None:
+            self.show_lines(self.tail.poll(final=True))
+            self.tail = None
+
+    def tail_tick(self):
+        if self.tail is not None:
+            self.show_lines(self.tail.poll())
+            self.root.after(LOG_POLL_MS, self.tail_tick)
+
+    def show_lines(self, lines):
+        """New log lines in one go: a single insert and a single scroll per tick."""
+        if not lines:
+            return
+        self.log.configure(state='normal')
+        self.log.insert('end', '\n'.join(lines) + '\n')
+        extra = int(self.log.index('end-1c').split('.')[0]) - LOG_LINES
+        if extra > 0:
+            self.log.delete('1.0', f'{extra + 1}.0')
+        self.log.see('end')
+        self.log.configure(state='disabled')
+
     def quit(self):
+        # The game is an independent process: closing the launcher does not close it.
         self.precompiler.cancel()
-        if self.process:
-            self.process.terminate()
         self.root.destroy()
 
 
