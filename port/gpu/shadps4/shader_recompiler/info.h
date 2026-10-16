@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <span>
 #include <vector>
 #include <boost/container/static_vector.hpp>
@@ -237,10 +238,20 @@ struct Info : InfoPersistent {
         bnd.user_data += ud_mask.NumRegs();
     }
 
+    /// tlg: the shader precompiler has no guest memory: it gives the flattened user data it
+    /// rebuilt from the game files, and RefreshFlatBuf copies that instead of walking the
+    /// resource tables (the translation then sees the values a draw would have).
+    static inline thread_local std::span<const u32> replay_flat{};
+
     void RefreshFlatBuf() {
         flattened_ud_buf.resize(srt_info.flattened_bufsize_dw);
         ASSERT(user_data.size() <= NUM_USER_DATA_REGS);
         std::memcpy(flattened_ud_buf.data(), user_data.data(), user_data.size_bytes());
+        if (!replay_flat.empty()) {
+            const size_t n = std::min(replay_flat.size(), flattened_ud_buf.size());
+            std::memcpy(flattened_ud_buf.data(), replay_flat.data(), n * sizeof(u32));
+            return;
+        }
         if (srt_info.walker_func) {
             srt_info.walker_func(user_data.data(), flattened_ud_buf.data());
         }

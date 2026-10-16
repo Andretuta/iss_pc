@@ -384,6 +384,13 @@ add_executable(recompiler-fixes-test EXCLUDE_FROM_ALL ../tests/test_recompiler_f
 target_include_directories(recompiler-fixes-test PRIVATE shim shadps4 third_party/gcn/include)
 target_compile_options(recompiler-fixes-test PRIVATE -UNDEBUG -fPIC)
 target_link_libraries(recompiler-fixes-test PRIVATE tlggpu)
+# tlg: first-run shader compilation, gate G4.1: translates a shader cache again from its .meta
+# files alone and compares the SPIR-V (local tool: needs the player's game files).
+add_executable(shader-replay EXCLUDE_FROM_ALL ../tests/shader_replay.cpp
+    ../tests/test_gpu_runtime_stubs.cpp)
+target_include_directories(shader-replay PRIVATE . shim shadps4 third_party/gcn/include)
+target_compile_options(shader-replay PRIVATE -UNDEBUG -fPIC)
+target_link_libraries(shader-replay PRIVATE tlggpu)
 add_executable(pass-census-test EXCLUDE_FROM_ALL ../tests/test_pass_census.cpp)
 target_compile_options(pass-census-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(pass-census-test PRIVATE shadps4)

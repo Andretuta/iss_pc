@@ -59,6 +59,10 @@ u32 CurrentShaderBinaryVersion() {
 }
 } // namespace
 
+u32 ShaderBinaryVersionForCache() {
+    return CurrentShaderBinaryVersion();
+}
+
 namespace PipelineBinaryCache {
 bool ValidKey(const Key& key) {
     return !key.empty() && key.size() <= VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR;

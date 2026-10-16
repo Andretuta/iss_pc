@@ -18,6 +18,8 @@ typedef struct {
 void tlggpu_register_kernel(void);
 /* Creates window, Vulkan device, presenter and GPU command processor. */
 int tlggpu_init(const TlgGpuConfig *config);
+/* The settings and game identity of tlggpu_init, without a window (shader precompiler). */
+void tlggpu_init_headless(const TlgGpuConfig *config);
 /* Function for an imported NID ("NID#lib#mod"), or 0 when the GPU library does not provide it. */
 uintptr_t tlggpu_resolve(const char *scoped_nid);
 /* Called first by the loader's SIGSEGV handler: 1 when a GPU page-tracking fault was handled. */
