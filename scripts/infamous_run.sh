@@ -29,7 +29,7 @@ fi
 mkdir -p "$port/user" "$port/out/logs"
 log=$port/out/logs/infamous-$(date +%Y%m%d-%H%M%S).log
 ln -sfn "$log" "$port/out/last_run.log"
-export ISS_PIPELINE_BINARIES=0 ISS_READBACKS=${ISS_READBACKS:-2} ISS_EAGER_READBACK=${ISS_EAGER_READBACK:-1} ISS_WRITE_MERGE=${ISS_WRITE_MERGE:-1} ISS_GC_BUDGET_MB=${ISS_GC_BUDGET_MB:-3500} ISS_UPSCALER=off ISS_JITTER=0 \
+export ISS_PIPELINE_BINARIES=0 ISS_READBACKS=${ISS_READBACKS:-2} ISS_EAGER_READBACK=${ISS_EAGER_READBACK:-0} ISS_WRITE_MERGE=${ISS_WRITE_MERGE:-1} ISS_GC_BUDGET_MB=${ISS_GC_BUDGET_MB:-3500} ISS_UPSCALER=off ISS_JITTER=0 \
        ISS_OBJECT_MOTION=0 ISS_FRAME_STATS=1 ISS_LANGUAGE=${ISS_LANGUAGE:-1}
 pad=$port/out/pad_input.txt; : > "$pad"; export ISS_PAD_FILE=$pad
 if [[ -n $shots ]]; then

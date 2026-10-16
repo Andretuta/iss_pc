@@ -110,7 +110,7 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 3500,  # 5600 runs out of VRAM loading the first level (RTX 2060, 6 GB)
     'stick_deadzone': 10,    # percent; runtime_pad.c ISS_STICK_DEADZONE
-    'eager_readback': True,  # ISS_EAGER_READBACK: copy GPU results the game reads back at each fence
+    'eager_readback': False,  # ISS_EAGER_READBACK: copy GPU results the game reads back at each fence
     'write_merge': True,     # ISS_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'deferred_readback': True,  # ISS_DEFERRED_READBACK: the game thread waits for its own GPU reads
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
@@ -122,12 +122,22 @@ def config_path():
     return base / 'infamous-launcher' / 'settings.json'
 
 
+# Bumped when a default changes in a way that must reach players who already saved settings.
+# rev 2: eager_readback went off by default (it made smoke and glow flicker in precise mode).
+SETTINGS_REV = 2
+
+
 def load_settings():
     settings = dict(DEFAULT_SETTINGS)
+    saved = {}
     try:
-        settings.update(json.loads(config_path().read_text(encoding='utf-8')))
+        saved = json.loads(config_path().read_text(encoding='utf-8'))
+        settings.update(saved)
     except (OSError, ValueError):
         pass
+    if saved and saved.get('settings_rev', 1) < 2:
+        settings['eager_readback'] = False
+    settings['settings_rev'] = SETTINGS_REV
     return settings
 
 
@@ -534,7 +544,7 @@ def build_env(settings, extra=None):
         env.setdefault(key, value)  # explicit ISS_* in the environment always win
     env['ISS_GC_BUDGET_MB'] = os.environ.get('ISS_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
     env['ISS_READBACKS'] = os.environ.get('ISS_READBACKS', str(settings.get('gpu_readbacks', '2')))
-    env['ISS_EAGER_READBACK'] = os.environ.get('ISS_EAGER_READBACK', '1' if settings.get('eager_readback', True) else '0')
+    env['ISS_EAGER_READBACK'] = os.environ.get('ISS_EAGER_READBACK', '1' if settings.get('eager_readback', False) else '0')
     env['ISS_WRITE_MERGE'] = os.environ.get('ISS_WRITE_MERGE', '1' if settings.get('write_merge', True) else '0')
     env['ISS_DEFERRED_READBACK'] = os.environ.get('ISS_DEFERRED_READBACK', '1' if settings.get('deferred_readback', True) else '0')
     env['ISS_STICK_DEADZONE'] = os.environ.get('ISS_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
