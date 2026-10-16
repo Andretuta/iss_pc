@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // tlg: first-run shader compilation (see vk_precompile.h).
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <set>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include "common/assert.h"
 #include "common/assert_scope.h"
+#include "common/thread.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
 #include "video_core/amdgpu/regs.h"
@@ -25,6 +31,7 @@
 #include <fmt/format.h>
 #include "common/path_util.h"
 #include "video_core/cache_storage.h"
+#include "tlg_threads.h"
 
 namespace Vulkan::Precompile {
 
@@ -462,6 +469,110 @@ bool PipelineCache::PrecompileFirstStart(const std::function<void(u32 total)>& s
     return true;
 }
 
+namespace {
+/// One pipeline for the build threads: copies of what the translator chose for a record, and the
+/// record's guest code (the vertex fetch shader is read again while the pipeline is built).
+struct BuildJob {
+    u32 record = 0;
+    bool compute = false;
+    std::unique_ptr<Arena> arena;
+    std::unordered_map<u64, std::vector<u32>> flats;
+    PipelineSelection selection{};
+    std::array<std::unique_ptr<Shader::Info>, MaxShaderStages> infos;
+    std::array<std::vector<u32>, MaxShaderStages> user_data;
+    ComputePipelineKey compute_key{};
+    u64 graphics_hash = 0;
+    GraphicsPipeline::SerializationSupport graphics_data{};
+    ComputePipeline::SerializationSupport compute_data{};
+    std::string error; ///< empty: built
+};
+
+/// The threads that build pipelines while the GPU thread translates the next records: building
+/// a pipeline is the driver compiling it, most of the first start's time, and it runs on every
+/// core. At most `limit` jobs wait or run, so their copies stay small.
+class BuildPool {
+public:
+    BuildPool(unsigned count, size_t limit_, std::function<void(BuildJob&, unsigned)> build_)
+        : limit{limit_}, build{std::move(build_)} {
+        for (unsigned i = 0; i < count; ++i) {
+            threads.emplace_back([this, i] { Work(i); });
+        }
+    }
+    ~BuildPool() {
+        Finish();
+    }
+
+    void Submit(std::unique_ptr<BuildJob> job) {
+        std::unique_lock lock{mutex};
+        space.wait(lock, [&] { return queued.size() + running < limit; });
+        queued.push_back(std::move(job));
+        work.notify_one();
+    }
+    std::vector<std::unique_ptr<BuildJob>> TakeDone() {
+        std::scoped_lock lock{mutex};
+        return std::exchange(done, {});
+    }
+    void Finish() {
+        {
+            std::scoped_lock lock{mutex};
+            stopping = true;
+        }
+        work.notify_all();
+        for (auto& thread : threads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    }
+
+private:
+    void Work(unsigned index) {
+        Common::SetCurrentThreadName(("tlg:Precompile" + std::to_string(index)).c_str());
+        for (;;) {
+            std::unique_ptr<BuildJob> job;
+            {
+                std::unique_lock lock{mutex};
+                work.wait(lock, [&] { return stopping || !queued.empty(); });
+                if (queued.empty()) {
+                    return;
+                }
+                job = std::move(queued.front());
+                queued.pop_front();
+                ++running;
+            }
+            build(*job, index);
+            {
+                std::scoped_lock lock{mutex};
+                --running;
+                done.push_back(std::move(job));
+            }
+            space.notify_one();
+        }
+    }
+
+    const size_t limit;
+    std::function<void(BuildJob&, unsigned)> build;
+    std::mutex mutex;
+    std::condition_variable work, space;
+    std::deque<std::unique_ptr<BuildJob>> queued;
+    std::vector<std::unique_ptr<BuildJob>> done;
+    size_t running = 0;
+    bool stopping = false;
+    std::vector<std::thread> threads;
+};
+
+/// Build threads: TLG_PRECOMPILE_THREADS (ISS_PRECOMPILE_THREADS), else every hardware thread but
+/// the GPU thread's. 0 builds on the GPU thread, as before.
+unsigned BuildThreads() {
+    for (const char* name : {"ISS_PRECOMPILE_THREADS", "TLG_PRECOMPILE_THREADS"}) {
+        if (const char* value = std::getenv(name); value && *value) {
+            return u32(std::strtoul(value, nullptr, 10));
+        }
+    }
+    return std::max(1u, TlgThreads::Available() - 1);
+}
+} // namespace
+
 Precompile::Result PipelineCache::Precompile(
     const std::vector<Precompile::Record>& records,
     const std::function<void(u32 done, u32 total)>& progress) {
@@ -471,38 +582,130 @@ Precompile::Result PipelineCache::Precompile(
     CheckCacheProfile();
     auto regs = std::make_unique<AmdGpu::Regs>();
     AmdGpu::ComputeProgram cs{};
-    std::unordered_map<u64, std::vector<u32>> flats;
     // Each pipeline is built (the driver caches it), saved, and released: the game builds it again
     // when it needs it. Keeping all of them took ~7 GiB with the whole game's job file.
     std::unordered_set<u64> built_graphics, built_compute;
     const auto started = std::chrono::steady_clock::now();
-    for (const auto& record : records) {
-        ++result.records;
-        if (progress) {
-            progress(result.records - 1, u32(records.size()));
+
+    // Translation (GCN to SPIR-V, the shader cache) stays on this thread, in record order; the
+    // driver builds the pipelines on the build threads, each into its own pipeline cache.
+    const unsigned threads = BuildThreads();
+    std::vector<vk::UniquePipelineCache> caches;
+    for (unsigned i = 0; i < threads; ++i) {
+        auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
+        if (cache_result != vk::Result::eSuccess) {
+            break;
         }
-        Arena arena;
-        flats.clear();
+        if (instance.GetDevice().mergePipelineCaches(*cache, *pipeline_cache) != vk::Result::eSuccess) {
+            break;
+        }
+        caches.push_back(std::move(cache));
+    }
+    const auto build = [this, &caches](BuildJob& job, unsigned index) {
+        Shader::Info::replay_flats = &job.flats;
+        try {
+            const Common::ScopedAssertThrows recoverable;
+            auto& cache = caches.empty() ? *pipeline_cache : *caches[index];
+            auto& s = job.selection;
+            if (job.compute) {
+                ComputePipeline pipeline{instance, scheduler, desc_heap, profile, cache,
+                                         job.compute_key, *s.infos[0], s.modules[0],
+                                         job.compute_data, false, nullptr};
+            } else {
+                GraphicsPipeline pipeline{instance, scheduler, desc_heap, profile, s.graphics_key,
+                                          cache, s.infos, s.runtime_infos, s.fetch_shader,
+                                          s.modules, job.graphics_data, false};
+            }
+        } catch (const std::exception& e) {
+            job.error = e.what();
+            if (job.error.empty()) {
+                job.error = "unknown error";
+            }
+        }
+        Shader::Info::replay_flats = nullptr;
+    };
+    std::optional<BuildPool> pool;
+    if (!caches.empty()) {
+        pool.emplace(u32(caches.size()), caches.size() * 4, build);
+    }
+    std::printf("Precompile: building pipelines on %zu threads\n", caches.size());
+    std::set<u32> in_flight; // records whose pipeline is being built
+    const auto collect = [&](std::vector<std::unique_ptr<BuildJob>> jobs) {
+        for (auto& job : jobs) {
+            in_flight.erase(job->record);
+            if (!job->error.empty()) {
+                if (result.failed < 20) {
+                    std::printf("Precompile: record %u failed: %s\n", job->record + 1,
+                                job->error.c_str());
+                }
+                ++result.failed;
+            } else if (job->compute) {
+                RegisterPipelineData(job->compute_key, job->compute_data);
+                ++num_new_pipelines;
+                ++result.compute;
+            } else {
+                RegisterPipelineData(job->selection.graphics_key, job->graphics_hash,
+                                     job->graphics_data);
+                ++num_new_pipelines;
+                ++result.graphics;
+            }
+        }
+    };
+    /// The build job of a translated selection: its own copies of the stage infos and user data.
+    const auto make_job = [](u32 record, PipelineSelection& selection,
+                             std::unique_ptr<Arena> arena,
+                             std::unordered_map<u64, std::vector<u32>>& flats) {
+        auto job = std::make_unique<BuildJob>();
+        job->record = record;
+        job->arena = std::move(arena);
+        job->flats = std::move(flats);
+        job->selection = selection;
+        job->selection.regs = nullptr;
+        job->selection.cs_regs = nullptr;
+        for (u32 i = 0; i < MaxShaderStages; ++i) {
+            if (selection.infos[i]) {
+                job->infos[i] = std::make_unique<Shader::Info>(*selection.infos[i]);
+                job->user_data[i].assign(selection.infos[i]->user_data.begin(),
+                                         selection.infos[i]->user_data.end());
+                job->infos[i]->user_data = job->user_data[i];
+                job->selection.infos[i] = job->infos[i].get();
+            }
+        }
+        return job;
+    };
+
+    for (const auto& record : records) {
+        const u32 index = result.records++;
+        if (pool) {
+            collect(pool->TakeDone());
+        }
+        if (progress) {
+            progress(in_flight.empty() ? index : std::min(index, *in_flight.begin()),
+                     u32(records.size()));
+        }
+        auto arena = std::make_unique<Arena>();
+        std::unordered_map<u64, std::vector<u32>> flats;
         for (const auto& stage : record.stages) {
             flats[stage.hash] = stage.flat;
         }
         Shader::Info::replay_flats = &flats;
         PipelineSelection selection{};
         selection.sync_compile = true;
+        std::unique_ptr<BuildJob> job;
         try {
             const Common::ScopedAssertThrows recoverable;
             if (record.kind == 0) {
                 regs->reg_array.fill(0);
-                for (const auto& [index, value] : record.regs) {
-                    if (index < regs->reg_array.size()) {
-                        regs->reg_array[index] = value;
+                for (const auto& [reg, value] : record.regs) {
+                    if (reg < regs->reg_array.size()) {
+                        regs->reg_array[reg] = value;
                     }
                 }
                 for (const auto& stage : record.stages) {
                     auto* program =
                         const_cast<AmdGpu::ShaderProgram*>(regs->ProgramForStage(stage.hw_stage));
                     u64 address{};
-                    PlaceStage(arena, stage, address, program->user_data);
+                    PlaceStage(*arena, stage, address, program->user_data);
                     program->address = address;
                 }
                 selection.regs = regs.get();
@@ -513,27 +716,20 @@ Precompile::Result PipelineCache::Precompile(
                                 selection.graphics_key)).second) {
                     ++result.skipped;
                 } else {
-                    const auto pipeline_hash = std::hash<GraphicsPipelineKey>{}(selection.graphics_key);
-                    GraphicsPipeline::SerializationSupport sdata{};
-                    auto pipeline = std::make_unique<GraphicsPipeline>(
-                        instance, scheduler, desc_heap, profile, selection.graphics_key,
-                        *pipeline_cache, selection.infos, selection.runtime_infos,
-                        selection.fetch_shader, selection.modules, sdata, false);
-                    RegisterPipelineData(selection.graphics_key, pipeline_hash, sdata);
-                    ++num_new_pipelines;
-                    ++result.graphics;
+                    job = make_job(index, selection, std::move(arena), flats);
+                    job->graphics_hash = std::hash<GraphicsPipelineKey>{}(selection.graphics_key);
                 }
             } else {
                 auto* words = reinterpret_cast<u32*>(&cs);
                 std::memset(&cs, 0, sizeof(cs));
-                for (const auto& [index, value] : record.regs) {
-                    if (index < sizeof(cs) / sizeof(u32)) {
-                        words[index] = value;
+                for (const auto& [reg, value] : record.regs) {
+                    if (reg < sizeof(cs) / sizeof(u32)) {
+                        words[reg] = value;
                     }
                 }
                 if (record.stages.size() == 1) {
                     u64 address{};
-                    PlaceStage(arena, record.stages[0], address, cs.user_data);
+                    PlaceStage(*arena, record.stages[0], address, cs.user_data);
                     cs.address = address;
                 }
                 selection.regs = sel.regs;
@@ -545,13 +741,9 @@ Precompile::Result PipelineCache::Precompile(
                            !built_compute.insert(std::hash<ComputePipelineKey>{}(key)).second) {
                     ++result.skipped;
                 } else {
-                    ComputePipeline::SerializationSupport sdata{};
-                    auto pipeline = std::make_unique<ComputePipeline>(
-                        instance, scheduler, desc_heap, profile, *pipeline_cache, key,
-                        *selection.infos[0], selection.modules[0], sdata, false, nullptr);
-                    RegisterPipelineData(key, sdata);
-                    ++num_new_pipelines;
-                    ++result.compute;
+                    job = make_job(index, selection, std::move(arena), flats);
+                    job->compute = true;
+                    job->compute_key = key;
                 }
             }
         } catch (const std::exception& e) {
@@ -561,6 +753,32 @@ Precompile::Result PipelineCache::Precompile(
             ++result.failed;
         }
         Shader::Info::replay_flats = nullptr;
+        if (!job) {
+            continue;
+        }
+        if (pool) {
+            in_flight.insert(index);
+            pool->Submit(std::move(job));
+        } else {
+            build(*job, 0);
+            std::vector<std::unique_ptr<BuildJob>> one;
+            one.push_back(std::move(job));
+            collect(std::move(one));
+        }
+    }
+    if (pool) {
+        pool->Finish();
+        collect(pool->TakeDone());
+        pool.reset();
+        // The pipelines the build threads compiled go into the cache the game saves.
+        std::vector<vk::PipelineCache> sources;
+        for (const auto& cache : caches) {
+            sources.push_back(*cache);
+        }
+        if (instance.GetDevice().mergePipelineCaches(*pipeline_cache, sources) !=
+            vk::Result::eSuccess) {
+            std::printf("Precompile: merging the build threads' pipeline caches failed\n");
+        }
     }
     if (progress) {
         progress(u32(records.size()), u32(records.size()));
