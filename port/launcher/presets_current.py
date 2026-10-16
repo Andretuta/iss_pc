@@ -28,6 +28,7 @@ CURRENT = {
         'menu:region_fade': '0.8',
         'menu:far_clip': '1418000',
         'menu:mip_lod_bias': '1.25',
+        'BP06': '1',        # the default; listed so that leaving the AMD preset turns it back on
         'BP07': '1',
         'BP08': '1',
     },
