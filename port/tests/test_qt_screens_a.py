@@ -404,8 +404,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual('0', row['options'][row['index']]['value'])
 
     def test_a_row_changed_on_the_fixes_screen_shows_here(self):
-        self.backend.setFix('TLG_STALE_READBACK', '0')
-        self.assertFalse(self.graphics.model.get('TLG_STALE_READBACK')['on'])
+        self.backend.setFix('TLG_STALE_READBACK', '1')
+        self.assertTrue(self.graphics.model.get('TLG_STALE_READBACK')['on'])
         self.assertTrue(self.graphics.model.get('TLG_STALE_READBACK')['changed'])
 
     def test_sharpness_strength_is_disabled_without_rcas(self):
@@ -434,12 +434,12 @@ class ControllerTests(unittest.TestCase):
         self.graphics.setValue('s:display_mode', 'Fullscreen')
         self.graphics.setValue('s:vram_budget_mb', '4000')
         self.graphics.setValue('menu:overlay_corner', '3')
-        self.backend.setFix('BP06', '1')
+        self.backend.setFix('BP06', '0')
         self.graphics.applyPreset('ps4')
         saved = self.saved_settings()
         self.assertEqual(('Fullscreen', 4000), (saved['display_mode'], saved['vram_budget_mb']))
         self.assertIn('overlay_corner=3', self.ini_text())
-        self.assertIn('bp06=1', self.ini_text())
+        self.assertIn('bp06=0', self.ini_text())
 
     def test_vram_line_and_suggestion(self):
         self.backend._gpu = ('NVIDIA GeForce RTX 2060', '1.4')

@@ -3,6 +3,7 @@
 #include "tlg_settings.h"
 #include "tlg_orbs.h"
 #include "tlg_graphics.h"
+#include "tlg_view.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -80,6 +81,18 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     }
     if (key == "key_map") {
         v.key_map = value;
+        return;
+    }
+    if (key == "lod_bands") {
+        // Six comma-separated distances; missing or bad entries keep the current value.
+        const char* p = value.c_str();
+        for (auto& band : v.lod_bands) {
+            char* end = nullptr;
+            const float b = std::strtof(p, &end);
+            if (end == p) break;
+            band = TlgView::ClampBand(b);
+            p = *end == ',' ? end + 1 : end;
+        }
         return;
     }
     if (key == "upscaler") {
@@ -166,6 +179,18 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.blue_orb_multiplier = TlgOrbs::ClampMultiplier(f);
     } else if (key == "gold_orb_multiplier") {
         v.gold_orb_multiplier = TlgOrbs::ClampMultiplier(f);
+    } else if (key == "lod_scale") {
+        v.lod_scale = TlgView::ClampLodScale(f);
+    } else if (key == "region_lod") {
+        v.region_lod = TlgView::ClampRegionLod(f);
+    } else if (key == "region_fade") {
+        v.region_fade = TlgView::ClampRegionFade(f);
+    } else if (key == "near_clip") {
+        v.near_clip = TlgView::ClampNearClip(f);
+    } else if (key == "far_clip") {
+        v.far_clip = TlgView::ClampFarClip(f);
+    } else if (key == "mip_lod_bias") {
+        v.mip_lod_bias = TlgView::ClampMipLodBias(f);
     } else if (key == "fsr4_auto_exposure") {
         v.fsr4_auto_exposure = i != 0;
     } else if (key == "fsr4_invert_jitter") {
@@ -223,6 +248,10 @@ void Load() {
         {"TLG_MOUSE", "mouse_enabled"},           {"TLG_MOUSE_SENS", "mouse_sensitivity"},
         {"TLG_MOUSE_INVERT_Y", "mouse_invert_y"}, {"TLG_MOUSE_SMOOTHING", "mouse_smoothing"},
         {"TLG_MOUSE_ACCEL", "mouse_accel"},       {"TLG_MOUSE_DEADZONE", "mouse_deadzone"},
+        {"TLG_LOD_SCALE", "lod_scale"},           {"TLG_LOD_BANDS", "lod_bands"},
+        {"TLG_REGION_LOD", "region_lod"},         {"TLG_REGION_FADE", "region_fade"},
+        {"TLG_NEAR_CLIP", "near_clip"},           {"TLG_FAR_CLIP", "far_clip"},
+        {"TLG_MIP_LOD_BIAS", "mip_lod_bias"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -350,6 +379,12 @@ void Save() {
                  int(v.restart_unconfirmed.load()));
     std::fprintf(file, "sensor_aim=%d\ngraffiti_guide_seen=%d\n", v.sensor_aim.load(),
                  int(v.graffiti_guide_seen.load()));
+    std::fprintf(file,
+                 "lod_scale=%.3f\nregion_lod=%.3f\nregion_fade=%.3f\nnear_clip=%.3f\nfar_clip=%.0f\n"
+                 "mip_lod_bias=%.3f\nlod_bands=%.0f,%.0f,%.0f,%.0f,%.0f,%.0f\n",
+                 v.lod_scale.load(), v.region_lod.load(), v.region_fade.load(), v.near_clip.load(),
+                 v.far_clip.load(), v.mip_lod_bias.load(), v.lod_bands[0].load(), v.lod_bands[1].load(),
+                 v.lod_bands[2].load(), v.lod_bands[3].load(), v.lod_bands[4].load(), v.lod_bands[5].load());
     // Fixes: applied on the next start by the launcher (TLG_BPnn / TLG_<NAME>); only the ones
     // the player or the launcher chose are written.
     for (int n = 0; n < kBackportPrefs; ++n) {

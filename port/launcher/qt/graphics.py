@@ -26,6 +26,7 @@ OVERLAY_IDS = tuple(i.id for i in backports_table.MENU if i.tab == 'Overlay')
 SECTIONS = (
     ('gfx_sec_image', ('s:display_mode', 's:vsync', 'menu:fsr1', 'menu:rcas', 'menu:rcas_strength')),
     ('gfx_sec_rate', ('menu:fps_limit', 'menu:frames_queued')),
+    ('gfx_sec_view', tuple(i.id for i in backports_table.MENU if i.tab == 'View')),
     ('gfx_sec_gpu', ('TLG_ASYNC_SHADERS', 'TLG_BACKGROUND_WARMUP', 's:gpu_readbacks', 's:eager_readback',
                      's:write_merge', 'TLG_DEFERRED_READBACK', 'TLG_STALE_READBACK')),
     ('gfx_sec_vram', ('s:vram_budget_mb',)),
@@ -134,6 +135,12 @@ class Graphics(QObject):
                        value=int(value), valueText=f'{int(value)}{item.unit}')
             if rid == 'menu:rcas_strength':
                 row['disabled'] = backports_table.effective(gfxlogic.item_by_id('menu:rcas'), states) != '1'
+        elif item.vtype == 'float':
+            step = backports_table.FLOAT_STEPS.get(item.key, 0.05)
+            decimals = 0 if step >= 1 else 1 if step >= 0.1 else 2 if step >= 0.01 else 3
+            number = float(value)
+            row.update(control='slider', lo=item.lo, hi=item.hi, step=step, unit=item.unit, value=number,
+                       decimals=decimals, valueText=f'{number:.{decimals}f}{item.unit}')
         elif item.vtype == 'choice':
             options = [(v, t.pair((en, pt)) + (f' ({self.t("exp_default")})' if v == item.default else ''))
                        for v, en, pt in item.choices]

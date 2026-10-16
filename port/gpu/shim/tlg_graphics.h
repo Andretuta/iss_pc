@@ -67,7 +67,7 @@ inline int ParseFramesQueued(int value) {
 }
 /// RCAS strength in percent; invalid values fall back to 75.
 inline int ParseRcasStrength(int value) {
-    return value >= 0 && value <= 100 ? value : 75;
+    return value >= 0 && value <= 100 ? value : 60;
 }
 /// FSR RCAS attenuation for a strength: 0 is the sharpest, 2 the softest.
 inline float RcasAttenuation(int strength) {

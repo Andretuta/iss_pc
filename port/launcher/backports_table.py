@@ -19,7 +19,7 @@ All values are strings, as in the ini: '0'/'1' for on/off.
 from collections import namedtuple
 from pathlib import Path
 
-# group: 'menu' | 'bp' | 'ab'.  vtype: 'bool' | 'choice' | 'int'.
+# group: 'menu' | 'bp' | 'ab'.  vtype: 'bool' | 'choice' | 'int' | 'float'.
 # default: '0'/'1' (bool) or the value text; None = automatic (the GPU backend decides per driver).
 # store: 'ini' (tlg.ini key) or 'launcher' (settings.json, already used by infamous_run.build_env).
 # pass_env: give ISS_<suffix> to the game; False when the game reads the ini key itself (the
@@ -67,8 +67,34 @@ MENU = [
     _menu('Image', 'rcas', 'bool', '1', ('Sharpening (RCAS)', 'Nitidez (RCAS)'),
           ('Sharpens the final image. Needs FSR 1 when the game image is smaller than the window.',
            'Deixa a imagem final mais nítida. Precisa do FSR 1 quando a imagem do jogo é menor que a janela.')),
-    _menu('Image', 'rcas_strength', 'int', '75', ('Sharpening strength', 'Intensidade da nitidez'),
+    _menu('Image', 'rcas_strength', 'int', '60', ('Sharpening strength', 'Intensidade da nitidez'),
           ('How strong the sharpening is.', 'Quão forte é a nitidez.'), lo=0, hi=100, unit='%'),
+    # Draw distance (gpu/shim/tlg_view.h): the in-game menu's sliders; the same ranges.
+    _menu('View', 'lod_scale', 'float', '1', ('LOD distance', 'Distância do LOD'),
+          ('How far objects keep their detailed models (every LOD band). Above 1x costs CPU and GPU; '
+           'the game still lowers it on its own in heavy scenes.',
+           'Até onde os objetos mantêm os modelos detalhados (todas as faixas de LOD). Acima de 1x pesa na CPU e '
+           'na GPU; o jogo ainda reduz sozinho em cenas pesadas.'), lo=0.25, hi=4.0, unit='x'),
+    _menu('View', 'region_lod', 'float', '1', ("Regions' LOD_ADJUST", 'LOD_ADJUST das regiões'),
+          ("How much the map regions' own LOD changes count: 1 as in the game, 0 ignored.",
+           'Quanto contam as mudanças de LOD das regiões do mapa: 1 como no jogo, 0 ignoradas.'), lo=0.0, hi=1.0),
+    _menu('View', 'region_fade', 'float', '1', ("Regions' FADE_DISTANCE", 'FADE_DISTANCE das regiões'),
+          ("Distance over which a region's lighting, haze and LOD settings blend in (multiplier).",
+           'Distância em que a luz, a névoa e o LOD de uma região se misturam ao entrar nela (multiplicador).'),
+          lo=0.25, hi=4.0, unit='x'),
+    _menu('View', 'near_clip', 'float', '10', ('Near clip (NEAR_CLIP)', 'Plano próximo (NEAR_CLIP)'),
+          ('Default near plane of the cameras (the game uses 10). Lower shows objects closer to the camera, '
+           'higher reduces depth flicker far away.',
+           'Plano próximo padrão das câmeras (o jogo usa 10). Menor mostra objetos mais perto da câmera, '
+           'maior reduz o tremido de profundidade ao longe.'), lo=1.0, hi=100.0),
+    _menu('View', 'far_clip', 'float', '10000000', ('Far clip (FAR_CLIP)', 'Plano distante (FAR_CLIP)'),
+          ('Default far plane of the cameras (the game uses 10000000, unlimited). Lower cuts the view.',
+           'Plano distante padrão das câmeras (o jogo usa 10000000, sem limite). Menor corta a visão.'),
+          lo=1000.0, hi=10000000.0),
+    _menu('View', 'mip_lod_bias', 'float', '0', ('Texture LOD bias (MipLodBias)', 'Bias de LOD das texturas (MipLodBias)'),
+          ('Negative: sharper textures at a distance (more shimmer, a little more GPU). Positive: blurrier.',
+           'Negativo: texturas mais nítidas ao longe (mais cintilação, um pouco mais de GPU). Positivo: mais borradas.'),
+          lo=-3.0, hi=3.0),
     _menu('Performance', 'fps_limit', 'choice', '0', ('Frame rate limit', 'Limite de FPS'),
           ('Caps the presented frames. The game runs at 30 FPS (as on PS4).',
            'Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4).'),
@@ -129,7 +155,7 @@ BACKPORTS = [
         ('Saturate keeps NaN values like the PS4 GPU; may fix black or flashing pixels.',
          'O saturate mantém valores NaN como a GPU do PS4; pode corrigir pixels pretos ou piscando.'),
         'shadPS4 #5257'),
-    _bp(6, False, True, False, ('Maximal reconvergence', 'Reconvergência máxima'),
+    _bp(6, True, True, False, ('Maximal reconvergence', 'Reconvergência máxima'),
         ('Asks the driver for strict thread reconvergence in compute shaders; may fix flicker, may fail on some drivers.',
          'Pede ao driver reconvergência estrita de threads nos shaders de compute; pode corrigir flicker, pode falhar em alguns drivers.'),
         'Shadow of the Colossus port 8d84cf7', True),
@@ -155,7 +181,7 @@ BACKPORTS = [
         ('The first instance is counted once in indirect draws; fixes wrong per-instance data.',
          'A first instance é contada uma vez nos draws indiretos; corrige dados por instância errados.'),
         'shadPS4 #5348'),
-    _bp(12, True, True, False, ('Early fragment tests', 'Teste antecipado de fragmento'),
+    _bp(12, False, True, False, ('Early fragment tests', 'Teste antecipado de fragmento'),
         ('Turns on early fragment tests when the game asks for depth/stencil before the pixel shader; '
          'fixes wrong overdraw and, in some scenes, missing or doubled effects.',
          'Liga o teste antecipado de fragmento quando o jogo pede profundidade/stencil antes do pixel shader; '
@@ -201,7 +227,7 @@ DIAGNOSTICS = [
         ('Only the thread that reads GPU results waits, not the whole GPU. Needs "Precise" GPU accuracy.',
          'Só a thread que lê resultados da GPU espera, não a GPU inteira. Precisa da precisão "Preciso".'),
         store='launcher', pass_env=False),
-    _ab('stale_readback', 'TLG_STALE_READBACK', True, False, False, ('Stale readbacks', 'Leituras da GPU com um quadro de atraso'),
+    _ab('stale_readback', 'TLG_STALE_READBACK', False, False, False, ('Stale readbacks', 'Leituras da GPU com um quadro de atraso'),
         ('CPU reads see the last published GPU version instead of waiting (needs deferred readbacks).',
          'A CPU lê a última versão publicada pela GPU em vez de esperar (precisa das leituras adiadas).'),
         pass_env=False),
@@ -259,6 +285,16 @@ def normalize(item, value):
         valid = value in ('0', '1')
     elif item.vtype == 'choice':
         valid = value in [c[0] for c in item.choices]
+    elif item.vtype == 'float':
+        try:
+            number = float(value)
+            valid = item.lo <= number <= item.hi
+        except ValueError:
+            valid = False
+        if valid:
+            if abs(number - float(item.default)) <= 1e-6 * max(1.0, abs(number)):
+                return None
+            value = f'{number:g}' if abs(number) < 1e6 else str(int(round(number)))
     else:
         try:
             valid = item.lo <= int(value) <= item.hi
@@ -266,6 +302,11 @@ def normalize(item, value):
             valid = False
         value = str(int(value)) if valid else value
     return value if valid and value != item.default else None
+
+
+# Slider steps of the 'float' items (launchers).
+FLOAT_STEPS = {'lod_scale': 0.05, 'region_lod': 0.05, 'region_fade': 0.05, 'near_clip': 0.5,
+               'far_clip': 1000.0, 'mip_lod_bias': 0.125}
 
 
 def effective(item, states):

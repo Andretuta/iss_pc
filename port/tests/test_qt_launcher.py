@@ -239,10 +239,10 @@ class BackendTests(unittest.TestCase):
     def test_set_fix_saves_and_profile_follows(self):
         backend, saved = self.make()
         self.assertTrue(backend.profileIsRecommended)
-        backend.setFix('BP06', '1')
-        self.assertEqual('1', saved[-1]['BP06'])
+        backend.setFix('BP06', '0')
+        self.assertEqual('0', saved[-1]['BP06'])
         self.assertFalse(backend.profileIsRecommended)
-        backend.setFix('BP06', '0')            # back to its default: nothing stored
+        backend.setFix('BP06', '1')            # back to its default: nothing stored
         self.assertIsNone(saved[-1]['BP06'])
         self.assertTrue(backend.profileIsRecommended)
 
@@ -340,7 +340,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(['Luzes e efeitos', 'Desempenho', 'Texturas', 'Experimental'], headers)
         bp06 = next(r for r in rows if r.get('id') == 'BP06')
         self.assertEqual('switch', bp06['control'])
-        self.assertFalse(bp06['on'])
+        self.assertTrue(bp06['on'])
         auto = next(r for r in rows if r.get('id') == 'TLG_BLOCK1D')
         self.assertEqual('combo', auto['control'])
 

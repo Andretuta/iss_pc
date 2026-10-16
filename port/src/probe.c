@@ -12,6 +12,7 @@
 #include "cheat_hook.h"
 #include "actor_hook.h"
 #include "damage_hook.h"
+#include "view_hook.h"
 #include "gpu/tlggpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
@@ -702,6 +703,44 @@ static void install_stat_multipliers(const char *app0, Segment *segments, uint64
     printf("Multipliers: damage %s, green/blue/gold orbs %s\n", damage ? "ready" : "unavailable",
            pickup ? "ready" : "unavailable");
 }
+extern uintptr_t tlg_view_region_params(void);
+extern uintptr_t tlg_view_fade_inverse(void);
+extern void tlg_view_attach(unsigned char *guest_image);
+
+/* Draw distance, LOD and clip planes (src/view_hook.h): the menu's values reach the game's data
+ * through tlg_view_attach; the regions' LOD_ADJUST and FADE_DISTANCE go through four stubs. */
+static void install_view_tuning(Segment *segments, uint64_t count, uint64_t size) {
+    if (!mapped(segments, count, TLG_VIEW_LOD_TABLE, TLG_VIEW_LOD_ROWS * TLG_VIEW_LOD_STRIDE) ||
+        !mapped(segments, count, TLG_VIEW_BANDS, 4 * TLG_VIEW_BAND_COUNT) ||
+        !mapped(segments, count, TLG_VIEW_NEAR_CLIP, 8) ||
+        !mapped(segments, count, tlg_view_region_sites[1], sizeof(tlg_view_region_code)) ||
+        !tlg_view_signature_match(image, size)) {
+        return; /* another game or build: silent, like the other hooks of other games */
+    }
+    unsigned char *stubs = allocate(page_size);
+    const uint32_t *sites[2] = {tlg_view_region_sites, tlg_view_fade_sites};
+    for (unsigned kind = 0; kind < 2; ++kind) {
+        for (unsigned i = 0; i < 2; ++i) {
+            const uint32_t at = sites[kind][i];
+            unsigned char *stub = stubs + (kind * 2 + i) * 128;
+            const int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at + 5);
+            if (delta < INT32_MIN || delta > INT32_MAX) {
+                printf("Draw distance: unavailable (hook outside relative-jump range)\n");
+                return;
+            }
+            const uintptr_t resume = (uintptr_t)(image + at + TLG_VIEW_SITE_LENGTH);
+            if (kind == 0) tlg_view_build_region_stub(stub, tlg_view_region_params(), resume);
+            else tlg_view_build_fade_stub(stub, tlg_view_fade_inverse(), resume);
+        }
+    }
+    protect(stubs, page_size, 5);
+    for (unsigned kind = 0; kind < 2; ++kind)
+        for (unsigned i = 0; i < 2; ++i)
+            install_jump(sites[kind][i], TLG_VIEW_SITE_LENGTH, stubs + (kind * 2 + i) * 128);
+    tlg_view_attach(image);
+    printf("Draw distance: ready (LOD scale, LOD bands, region LOD_ADJUST and FADE_DISTANCE, near/far clip)\n");
+}
+
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
  * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
  * function pointers): the patch holds the address at the patches' base, rebased here. */
@@ -1188,6 +1227,7 @@ int main(int argc, char **argv) {
     if (gpu_enabled) install_cheats(app0, segments, ns, size);
     if (gpu_enabled) install_actor_watch(app0, segments, ns, size);
     if (gpu_enabled) install_stat_multipliers(app0, segments, ns, size);
+    if (gpu_enabled) install_view_tuning(segments, ns, size);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

@@ -452,7 +452,7 @@ add_executable(upscaler-support-test EXCLUDE_FROM_ALL ../tests/test_upscaler_sup
 target_include_directories(upscaler-support-test PRIVATE shim)
 target_compile_options(upscaler-support-test PRIVATE -UNDEBUG)
 add_executable(orb-multiplier-test EXCLUDE_FROM_ALL ../tests/test_orb_multiplier.cpp
-    shim/tlg_orbs.cpp shim/tlg_settings.cpp)
+    shim/tlg_orbs.cpp shim/tlg_settings.cpp shim/tlg_view.cpp)
 target_include_directories(orb-multiplier-test PRIVATE shim)
 target_compile_options(orb-multiplier-test PRIVATE -UNDEBUG)
 add_executable(stat-multipliers-test EXCLUDE_FROM_ALL ../tests/test_stat_multipliers.cpp

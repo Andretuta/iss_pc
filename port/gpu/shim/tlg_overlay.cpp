@@ -280,10 +280,11 @@ void MultiplierRow(const char* label, std::atomic<float>& value, const char* hel
     ImGui::PopID();
 }
 
-void FloatRow(const char* label, std::atomic<float>& value, float lo, float hi, const char* format, const char* help) {
+void FloatRow(const char* label, std::atomic<float>& value, float lo, float hi, const char* format, const char* help,
+              ImGuiSliderFlags flags = 0) {
     Row(label);
     float v = value;
-    if (ImGui::SliderFloat("##value", &v, lo, hi, format, ImGuiSliderFlags_AlwaysClamp)) {
+    if (ImGui::SliderFloat("##value", &v, lo, hi, format, ImGuiSliderFlags_AlwaysClamp | flags)) {
         Store(value, std::clamp(v, lo, hi), true);
     }
     Help(help);
@@ -380,6 +381,52 @@ void ImageTab() {
         ImGui::BeginDisabled(!s.rcas || rcas_blocked);
         SliderRow(TL("Sharpening strength", "Intensidade da nitidez"), s.rcas_strength, 0, 100, "%d%%", TL("How strong the sharpening is.", "Quão forte é a nitidez."));
         ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Draw distance and detail", "Distância de visão e detalhe"));
+    if (BeginRows("##view")) {
+        ImGui::BeginDisabled(!s.view_supported);
+        FloatRow(TL("LOD distance", "Distância do LOD"), s.lod_scale, 0.25f, 4.0f, "%.2fx",
+                 s.view_supported ? TL("How far objects keep their detailed models (every LOD band). Above 1x costs CPU and GPU; "
+                                       "the game still lowers it on its own in heavy scenes.",
+                                       "Até onde os objetos mantêm os modelos detalhados (todas as faixas de LOD). Acima de 1x pesa na CPU e na GPU; "
+                                       "o jogo ainda reduz sozinho em cenas pesadas.")
+                                  : TL(Unsupported, "Indisponível: versão do jogo ou assinatura do código diferente."));
+        FloatRow(TL("Regions' LOD_ADJUST", "LOD_ADJUST das regiões"), s.region_lod, 0.0f, 1.0f, "%.2f",
+                 TL("How much the map regions' own LOD changes count: 1 as in the game, 0 ignored.",
+                    "Quanto contam as mudanças de LOD das regiões do mapa: 1 como no jogo, 0 ignoradas."));
+        FloatRow(TL("Regions' FADE_DISTANCE", "FADE_DISTANCE das regiões"), s.region_fade, 0.25f, 4.0f, "%.2fx",
+                 TL("Distance over which a region's lighting, haze and LOD settings blend in (multiplier).",
+                    "Distância em que a luz, a névoa e o LOD de uma região se misturam ao entrar nela (multiplicador)."));
+        FloatRow(TL("Near clip (NEAR_CLIP)", "Plano próximo (NEAR_CLIP)"), s.near_clip, 1.0f, 100.0f, "%.1f",
+                 TL("Default near plane of the cameras (the game uses 10). Lower shows objects closer to the camera, "
+                    "higher reduces depth flicker far away. Applies to the next camera (load, cutscene).",
+                    "Plano próximo padrão das câmeras (o jogo usa 10). Menor mostra objetos mais perto da câmera, "
+                    "maior reduz o tremido de profundidade ao longe. Vale na próxima câmera (carregamento, cena)."));
+        FloatRow(TL("Far clip (FAR_CLIP)", "Plano distante (FAR_CLIP)"), s.far_clip, 1000.0f, 1.0e7f, "%.0f",
+                 TL("Default far plane of the cameras (the game uses 10000000, unlimited). Lower cuts the view; "
+                    "applies to the next camera.",
+                    "Plano distante padrão das câmeras (o jogo usa 10000000, sem limite). Menor corta a visão; "
+                    "vale na próxima câmera."),
+                 ImGuiSliderFlags_Logarithmic);
+        ImGui::EndDisabled();
+        FloatRow(TL("Texture LOD bias (MipLodBias)", "Bias de LOD das texturas (MipLodBias)"), s.mip_lod_bias, -3.0f, 3.0f,
+                 "%+.2f",
+                 TL("Negative: sharper textures at a distance (more shimmer, a little more GPU). Positive: blurrier.",
+                    "Negativo: texturas mais nítidas ao longe (mais cintilação, um pouco mais de GPU). Positivo: mais borradas."));
+        Row(TL("Restore the game's values", "Voltar aos valores do jogo"));
+        if (ImGui::SmallButton(TL("Restore", "Restaurar"))) {
+            s.lod_scale = 1.0f;
+            s.region_lod = 1.0f;
+            s.region_fade = 1.0f;
+            s.near_clip = 10.0f;
+            s.far_clip = 1.0e7f;
+            s.mip_lod_bias = 0.0f;
+            const float bands[6] = {400.0f, 750.0f, 1500.0f, 3500.0f, 6000.0f, 15000.0f};
+            for (int b = 0; b < 6; ++b) s.lod_bands[b] = bands[b];
+            dirty = true;
+        }
+        ImGui::PopID();
         ImGui::EndTable();
     }
     ImGui::SeparatorText(TL("Information", "Informações"));

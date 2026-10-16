@@ -81,6 +81,10 @@ enum : std::uint64_t {
     /// Image uploads and frees wait only for readback copies that share bytes with the image, not
     /// just a page (gow3_pc #386; only with stale readbacks; this bit switches it off live).
     ExactReadbackWaits = 1ull << 61,
+    /// GetProgram takes the variant of the previous lookup without building the specialization
+    /// when its inputs are unchanged (i3-pc 0120115; only with TLG_VARIANT_REUSE=1 or =check; this
+    /// bit switches it off live).
+    VariantReuse = 1ull << 62,
     // Bits 20-29 are used as raw debug toggles by the camera/object motion and the upscaler.
 };
 inline bool Disabled(std::uint64_t bit) {

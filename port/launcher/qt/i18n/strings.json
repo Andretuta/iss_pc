@@ -28,6 +28,7 @@
   "gfx_preset_note": {"en": "A preset only changes the options listed below that it needs; the window mode, the VRAM budget, GPU accuracy and the overlay stay as you set them.", "pt": "Uma predefinição só mexe nas opções abaixo de que precisa; o modo de janela, o orçamento de VRAM, a precisão da GPU e o overlay ficam como você deixou."},
   "gfx_sec_image": {"en": "Window and image", "pt": "Janela e imagem"},
   "gfx_sec_rate": {"en": "Frame rate", "pt": "Taxa de quadros"},
+  "gfx_sec_view": {"en": "Draw distance and detail", "pt": "Distância de visão e detalhe"},
   "gfx_sec_gpu": {"en": "GPU and shaders", "pt": "GPU e shaders"},
   "gfx_sec_vram": {"en": "Video memory (VRAM)", "pt": "Memória de vídeo (VRAM)"},
   "gfx_sec_overlay": {"en": "Performance overlay", "pt": "Overlay de desempenho"},

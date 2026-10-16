@@ -55,6 +55,15 @@ struct Program {
     Shader::Info info;
     ModuleList modules{};
     size_t last_used = 0; ///< tlg: permutation of the previous lookup, compared first
+    /// tlg (i3-pc 0120115): the inputs of the last variant match. A draw that brings the same
+    /// ones again takes the same variant without building its specialization (GetProgram).
+    struct LastMatch {
+        size_t perm_idx = SIZE_MAX;
+        std::vector<u32> flat_buf;
+        Shader::RuntimeInfo runtime_info{};
+        Shader::Backend::Bindings start{};
+        boost::container::small_vector<std::array<u32, 4>, 16> vs_sharps;
+    } last_match;
     /// tlg: `info` as translated, for draw-preparation workers (they must not read `info`,
     /// whose user data the GPU thread rewrites every draw). Guarded by programs_mutex.
     std::unique_ptr<Shader::Info> info_template;
