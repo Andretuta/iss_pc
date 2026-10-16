@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <atomic>
+#include <string_view>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -1913,6 +1914,73 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
     info.pgm_base = params.Base(); // Needs to be actualized for inline cbuffer address fixup
     info.user_data = params.user_data;
     info.RefreshFlatBuf();
+
+    // tlg (i3-pc 0120115): the specialization depends only on the flattened user data (which holds
+    // every register, so the fetch shader address too), the runtime info, the first bindings and,
+    // for a vertex shader, the vertex buffer descriptors its fetch shader reads from guest memory.
+    // Tessellation stages also read constants from memory: never reused. TLG_VARIANT_REUSE=1
+    // turns this on; =check also builds the specialization on every hit and logs a mismatch.
+    static const int reuse_mode = [] {
+        const char* value = std::getenv("TLG_VARIANT_REUSE");
+        return !value ? 0 : (std::string_view{value} == "check" ? 2 : (value[0] == '1' ? 1 : 0));
+    }();
+    static std::atomic<u64> reuse_hits{0}, reuse_misses{0}, reuse_mismatches{0};
+    auto& last = program->last_match;
+    const bool reusable = reuse_mode != 0 && !TlgToggle::Disabled(TlgToggle::VariantReuse) &&
+                          sw_stage != SwStage::TessellationControl &&
+                          sw_stage != SwStage::TessellationEval;
+    const auto vs_sharps_match = [&](bool store) {
+        const auto& fetch = program->modules[last.perm_idx].spec.fetch_shader_data;
+        if (!fetch) {
+            if (store) {
+                last.vs_sharps.clear();
+            }
+            return store || last.vs_sharps.empty();
+        }
+        if (store) {
+            last.vs_sharps.clear();
+        } else if (last.vs_sharps.size() != fetch->attributes.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < fetch->attributes.size(); ++i) {
+            const auto sharp = fetch->attributes[i].GetSharp(info);
+            std::array<u32, 4> words;
+            static_assert(sizeof(sharp) == sizeof(words));
+            std::memcpy(words.data(), &sharp, sizeof(words));
+            if (store) {
+                last.vs_sharps.push_back(words);
+            } else if (last.vs_sharps[i] != words) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (reusable && last.perm_idx < program->modules.size() && last.start == binding &&
+        last.runtime_info == runtime_info && last.flat_buf == info.flattened_ud_buf &&
+        vs_sharps_match(false)) {
+        auto& hit = program->modules[last.perm_idx];
+        if (reuse_mode == 2) {
+            const auto check = Shader::StageSpecialization(info, runtime_info, profile, binding);
+            if (!(check == hit.spec)) {
+                if (reuse_mismatches.fetch_add(1) < 16) {
+                    LOG_ERROR(Render_Vulkan,
+                              "tlg: variant reuse of shader {:#x} perm {} differs from a fresh "
+                              "specialization",
+                              params.hash, last.perm_idx);
+                }
+            }
+        }
+        ++reuse_hits;
+        program->last_used = last.perm_idx;
+        info.AddBindings(binding);
+        return std::make_tuple(&program->info, hit.module, hit.spec.fetch_shader_data,
+                               HashCombine(params.hash, last.perm_idx));
+    }
+    if (reusable && ((++reuse_misses) & 0xffff) == 0) {
+        LOG_INFO(Render_Vulkan, "tlg: variant reuse: {} hits, {} misses, {} mismatches",
+                 reuse_hits.load(), reuse_misses.load(), reuse_mismatches.load());
+    }
+    const auto start_binding = binding;
     auto spec = Shader::StageSpecialization(info, runtime_info, profile, binding);
 
     size_t perm_idx = program->modules.size();
@@ -1964,6 +2032,13 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         module = it->module;
         perm_idx = std::distance(program->modules.begin(), it);
         perm_hash = HashCombine(params.hash, perm_idx);
+    }
+    if (reusable && perm_idx < program->modules.size()) {
+        last.perm_idx = perm_idx;
+        last.flat_buf = info.flattened_ud_buf;
+        last.runtime_info = runtime_info;
+        last.start = start_binding;
+        vs_sharps_match(true);
     }
     return std::make_tuple(&program->info, module,
                            program->modules[perm_idx].spec.fetch_shader_data, perm_hash);
