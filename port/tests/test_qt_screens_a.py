@@ -264,10 +264,10 @@ VkPhysicalDeviceMemoryProperties:
         settings, stored = gfxlogic.preset_targets('current')
         self.assertEqual(('2', False, True), (settings['gpu_readbacks'], settings['eager_readback'],
                                               settings['write_merge']))
-        self.assertEqual(('1', '0.6', '0', '0.8', '1418000', '1.25', '1', '1'),
-                         tuple(stored[k] for k in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod',
-                                                   'menu:region_fade', 'menu:far_clip', 'menu:mip_lod_bias',
-                                                   'BP07', 'BP08')))
+        self.assertEqual(('1', '1', '1'), tuple(stored[k] for k in ('menu:fsr1', 'BP07', 'BP08')))
+        for key in ('menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:near_clip', 'menu:far_clip',
+                    'menu:mip_lod_bias'):                      # draw distance and LOD: always native (nothing stored)
+            self.assertIsNone(stored[key], key)
         self.assertIsNone(stored['BP06'])      # on is the default
         self.assertIsNone(stored['menu:fps_limit'])
         for preset_id in ('performance', 'balanced', 'quality', 'ps4'):
@@ -294,8 +294,8 @@ VkPhysicalDeviceMemoryProperties:
         self.assertEqual(('1', '1', '1'), (amd['TLG_BLOCK1D'], amd['TLG_BC_TINY'], amd['TLG_NO_MSAA']))
         self.assertNotIn('TLG_BLOCK1D', current)                # the current preset leaves the AMD workarounds alone
         self.assertIsNone(amd.get('BP09'))                      # BP09 does not fix the RX 580 crash: not part of it
-        for key in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:far_clip',
-                    'menu:mip_lod_bias', 'BP07'):                # the rest is the currently recommended setup
+        for key in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:near_clip',
+                    'menu:far_clip', 'menu:mip_lod_bias', 'BP07'):                # the rest is the currently recommended setup
             self.assertEqual(current[key], amd[key], key)
         s, st = gfxlogic.preset_targets('amd')
         self.assertEqual('amd', gfxlogic.matching_preset(s, st))
@@ -487,20 +487,30 @@ class ControllerTests(unittest.TestCase):
         saved = self.saved_settings()
         self.assertEqual(('2', False, True), (saved['gpu_readbacks'], saved['eager_readback'], saved['write_merge']))
         ini = self.ini_text()
-        for line in ('fsr1=1', 'lod_scale=0.6', 'region_lod=0', 'region_fade=0.8', 'far_clip=1418000',
-                     'mip_lod_bias=1.25', 'bp07=1', 'bp08=1'):
+        for line in ('fsr1=1', 'bp07=1', 'bp08=1'):
             self.assertIn(line, ini)
+        for key in ('lod_scale', 'region_lod', 'region_fade', 'near_clip', 'far_clip', 'mip_lod_bias', 'lod_bands'):
+            self.assertNotIn(key + '=', ini)
         self.assertIn('current', self.graphics.presetText.lower())
         self.graphics.applyPreset('balanced')
         ini = self.ini_text()
         self.assertNotIn('fsr1=1', ini)
-        self.assertIn('lod_scale=0.6', ini)        # a plain preset leaves the draw distance alone
         self.assertIn('bp07=1', ini)
+
+    def test_applying_a_full_preset_sends_a_changed_draw_distance_back_to_native(self):
+        for preset in ('current', 'amd'):
+            self.graphics.setValue('menu:lod_scale', '0.6')
+            self.graphics.setValue('menu:far_clip', '1418000')
+            self.assertIn('lod_scale=0.6', self.ini_text())
+            self.graphics.applyPreset(preset)
+            ini = self.ini_text()
+            for key in ('lod_scale', 'far_clip'):
+                self.assertNotIn(key + '=', ini, preset)
 
     def test_applying_the_amd_preset_and_going_back_to_the_current_one(self):
         self.graphics.applyPreset('amd')
         ini = self.ini_text()
-        for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'fsr1=1', 'lod_scale=0.6', 'bp07=1'):
+        for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'fsr1=1', 'bp07=1'):
             self.assertIn(line, ini)
         self.assertNotIn('bp08', ini)                  # off is its default: nothing stored
         self.assertIn('amd', self.graphics.presetText.lower())
