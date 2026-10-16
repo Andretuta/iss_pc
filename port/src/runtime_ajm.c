@@ -448,6 +448,7 @@ static ABI int32_t ajm_initialize(int64_t reserved, uint32_t *out) {
         pthread_mutex_unlock(&lock);
         if (!contexts[i]) return ERR_OUT_OF_RESOURCES;
         *out=i; puts("Runtime: Ajm context initialized (ATRAC9 via LibAtrac9, MP3 via FFmpeg)");
+        if (runtime_verbose()) printf("Verbose: Ajm context %u created\n",i);
         return 0;
     }
     pthread_mutex_unlock(&lock);
@@ -469,6 +470,7 @@ static ABI int32_t ajm_module_register(uint32_t id, uint32_t codec, int64_t rese
     int32_t r=!c ? ERR_INVALID_CONTEXT : c->registered[codec] ? ERR_ALREADY_REGISTERED : 0;
     if (!r) c->registered[codec]=1;
     pthread_mutex_unlock(&lock);
+    if (runtime_verbose()) printf("Verbose: Ajm context %u register codec %u -> %#x\n",id,codec,(unsigned)r);
     return r;
 }
 static ABI int32_t ajm_module_unregister(uint32_t id, uint32_t codec) {
@@ -501,6 +503,11 @@ static ABI int32_t ajm_instance_create(uint32_t id, uint32_t codec, uint64_t fla
         *out=i|(codec<<14); r=0; break;
     }
     pthread_mutex_unlock(&lock);
+    if (runtime_verbose()) {
+        static unsigned created;
+        const unsigned n=__atomic_fetch_add(&created,1,__ATOMIC_RELAXED);
+        if (r || n<64 || !(n%500)) printf("Verbose: Ajm instance create #%u context %u codec %u flags %#llx -> %#x\n",n,id,codec,(unsigned long long)flags,(unsigned)r);
+    }
     return r;
 }
 static ABI int32_t ajm_instance_destroy(uint32_t id, uint32_t instance) {
@@ -536,6 +543,7 @@ static ABI int32_t ajm_batch_start(uint32_t id, unsigned char *buffer, uint32_t 
         }
         run_job(c,payload(chunk.word),&job);
     }
+    if (runtime_verbose() && (batches_run<16 || !(batches_run%5000))) printf("Verbose: Ajm batch #%zu started (%u bytes, context %u)\n",batches_run,size,id);
     batches[slot]=(Batch){1,(int)id,0};
     ++batches_run;
     *out=(uint32_t)slot+1;
