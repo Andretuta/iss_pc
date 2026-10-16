@@ -264,7 +264,7 @@ VkPhysicalDeviceMemoryProperties:
         settings, stored = gfxlogic.preset_targets('current')
         self.assertEqual(('2', False, True), (settings['gpu_readbacks'], settings['eager_readback'],
                                               settings['write_merge']))
-        self.assertEqual((None, '0', '1', '1'), tuple(stored[k] for k in ('menu:fsr1', 'menu:rcas', 'BP07', 'BP08')))   # no FSR 1, no sharpening
+        self.assertEqual((None, '0', '1', None), tuple(stored[k] for k in ('menu:fsr1', 'menu:rcas', 'BP07', 'BP08')))   # no FSR 1, no sharpening; BP08 on is the default
         for key in ('menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:near_clip', 'menu:far_clip',
                     'menu:mip_lod_bias'):                      # draw distance and LOD: always native (nothing stored)
             self.assertIsNone(stored[key], key)
@@ -289,8 +289,8 @@ VkPhysicalDeviceMemoryProperties:
                                               settings['write_merge']))
         self.assertEqual('0', amd['BP06'])                      # suspected on AMD (RX 7600, driver 26.8.1)
         self.assertIsNone(current['BP06'])                      # the default (on): listed, so leaving AMD restores it
-        self.assertIsNone(amd['BP08'])                          # off is the default
-        self.assertEqual('1', current['BP08'])
+        self.assertEqual('0', amd['BP08'])                      # on is the default (2026-10-16): off is stored
+        self.assertIsNone(current['BP08'])
         self.assertEqual(('1', '1', '1'), (amd['TLG_BLOCK1D'], amd['TLG_BC_TINY'], amd['TLG_NO_MSAA']))
         self.assertNotIn('TLG_BLOCK1D', current)                # the current preset leaves the AMD workarounds alone
         self.assertIsNone(amd.get('BP09'))                      # BP09 does not fix the RX 580 crash: not part of it
@@ -504,8 +504,9 @@ class ControllerTests(unittest.TestCase):
         saved = self.saved_settings()
         self.assertEqual(('2', False, True), (saved['gpu_readbacks'], saved['eager_readback'], saved['write_merge']))
         ini = self.ini_text()
-        for line in ('rcas=0', 'bp07=1', 'bp08=1'):
+        for line in ('rcas=0', 'bp07=1'):
             self.assertIn(line, ini)
+        self.assertNotIn('bp08', ini)                 # on is its default: nothing stored
         self.assertNotIn('fsr1=1', ini)
         for key in ('lod_scale', 'region_lod', 'region_fade', 'near_clip', 'far_clip', 'mip_lod_bias', 'lod_bands'):
             self.assertNotIn(key + '=', ini)
@@ -530,12 +531,12 @@ class ControllerTests(unittest.TestCase):
         ini = self.ini_text()
         for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'rcas=0', 'bp07=1'):
             self.assertIn(line, ini)
-        self.assertNotIn('bp08', ini)                  # off is its default: nothing stored
+        self.assertIn('bp08=0', ini)                   # the AMD preset turns it off
         self.assertIn('amd', self.graphics.presetText.lower())
         self.graphics.applyPreset('current')
         ini = self.ini_text()
         self.assertNotIn('bp06', ini)                  # back to the default (on)
-        self.assertIn('bp08=1', ini)
+        self.assertNotIn('bp08', ini)                  # back to the default (on): nothing stored
         self.assertIn('block1d=1', ini)                # the current preset leaves the AMD workarounds as they are
 
     def test_presets_leave_other_choices_alone(self):

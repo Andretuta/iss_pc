@@ -55,7 +55,7 @@ inline constexpr std::array<Entry, static_cast<std::size_t>(Id::Count)> kEntries
     {"BP05", "TLG_BP05", true, true, "saturate maps NaN to 0 like DX10_CLAMP (NClamp)", "shadPS4 #5257"},
     {"BP06", "TLG_BP06", true, true, "VK_KHR_shader_maximal_reconvergence in compute", "SotC 8d84cf7"},
     {"BP07", "TLG_BP07", false, false, "async compile never skips full-screen/indirect draws", "bbport 10baf9d"},
-    {"BP08", "TLG_BP08", false, false, "persist the driver VkPipelineCache blob", "Mrsuss b972798, 0xCydral bdb9769"},
+    {"BP08", "TLG_BP08", true, false, "persist the driver VkPipelineCache blob", "Mrsuss b972798, 0xCydral bdb9769"},
     {"BP09", "TLG_BP09", false, true, "every 1D image as 2D with height 1", "CTR d26bcb2"},
     {"BP10", "TLG_BP10", true, false, "barriers for vertex/index/indirect buffers", "shadPS4 #5262"},
     {"BP11", "TLG_BP11", true, true, "firstInstance counted once in indirect draws", "shadPS4 #5348"},
