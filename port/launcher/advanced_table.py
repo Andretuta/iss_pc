@@ -116,7 +116,7 @@ _ROWS = (
      ('Experimental (i3-pc 0120115): a draw whose inputs match the previous draw of the same shader skips building its lookup key. "With check" also builds it and logs a mismatch, to test.',
       'Experimental (i3-pc 0120115): um draw cujas entradas coincidem com o draw anterior do mesmo shader pula a montagem da chave de busca. "Com verificação" também monta a chave e registra qualquer diferença, para testar.'),
      {'choices': (('0', 'Off', 'Desligado'), ('1', 'On', 'Ligado'), ('check', 'On, with check', 'Ligado, com verificação'))}),
-    ('read', 'HEAP_WARM', 'bool', '0', ('Upload big heaps ahead of time', 'Subir heaps grandes antes da hora'),
+    ('read', 'HEAP_WARM', 'bool', '1', ('Upload big heaps ahead of time', 'Subir heaps grandes antes da hora'),
      ('Experimental (i3-pc 25f247c): buffers of 256 MB or more that the game bound whole before are uploaded 16 MB per submission from the start, so the first bind does not freeze for seconds. Takes effect from the second session.',
       'Experimental (i3-pc 25f247c): buffers de 256 MB ou mais que o jogo já ligou inteiros são enviados 16 MB por submissão desde o início, para o primeiro bind não congelar por segundos. Vale a partir da segunda sessão.'), {}),
     ('sync', 'INDIRECT_CHECK', 'bool', '1', ('Check indirect draw arguments', 'Conferir os argumentos de draws indiretos'),

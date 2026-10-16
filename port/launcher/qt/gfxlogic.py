@@ -19,11 +19,10 @@ PRESET_ITEMS = ('menu:fps_limit', 'menu:frames_queued', 'menu:fsr1', 'menu:rcas'
                 'TLG_ASYNC_SHADERS', 'TLG_STALE_READBACK', 'TLG_DEFERRED_READBACK', 'TLG_BACKGROUND_WARMUP')
 # id, settings overrides, item overrides (values as strings; unlisted = default)
 PRESETS = (
-    ('performance', {'vsync': False}, {'menu:frames_queued': '2', 'menu:fsr1': '1'}),
+    ('performance', {'vsync': False}, {'menu:frames_queued': '2', 'menu:fsr1': '1', 'TLG_STALE_READBACK': '1'}),
     ('balanced', {}, {}),
-    ('quality', {}, {'menu:fsr1': '1', 'TLG_STALE_READBACK': '0'}),
-    ('ps4', {}, {'menu:fps_limit': '30', 'menu:fsr1': '0', 'menu:rcas': '0',
-                 'TLG_STALE_READBACK': '0'}),
+    ('quality', {}, {'menu:fsr1': '1'}),
+    ('ps4', {}, {'menu:fps_limit': '30', 'menu:fsr1': '0', 'menu:rcas': '0'}),
 )
 DEFAULT_PRESET = 'balanced'
 

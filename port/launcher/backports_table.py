@@ -67,7 +67,7 @@ MENU = [
     _menu('Image', 'rcas', 'bool', '1', ('Sharpening (RCAS)', 'Nitidez (RCAS)'),
           ('Sharpens the final image. Needs FSR 1 when the game image is smaller than the window.',
            'Deixa a imagem final mais nítida. Precisa do FSR 1 quando a imagem do jogo é menor que a janela.')),
-    _menu('Image', 'rcas_strength', 'int', '75', ('Sharpening strength', 'Intensidade da nitidez'),
+    _menu('Image', 'rcas_strength', 'int', '60', ('Sharpening strength', 'Intensidade da nitidez'),
           ('How strong the sharpening is.', 'Quão forte é a nitidez.'), lo=0, hi=100, unit='%'),
     # Draw distance (gpu/shim/tlg_view.h): the in-game menu's sliders; the same ranges.
     _menu('View', 'lod_scale', 'float', '1', ('LOD distance', 'Distância do LOD'),
@@ -155,7 +155,7 @@ BACKPORTS = [
         ('Saturate keeps NaN values like the PS4 GPU; may fix black or flashing pixels.',
          'O saturate mantém valores NaN como a GPU do PS4; pode corrigir pixels pretos ou piscando.'),
         'shadPS4 #5257'),
-    _bp(6, False, True, False, ('Maximal reconvergence', 'Reconvergência máxima'),
+    _bp(6, True, True, False, ('Maximal reconvergence', 'Reconvergência máxima'),
         ('Asks the driver for strict thread reconvergence in compute shaders; may fix flicker, may fail on some drivers.',
          'Pede ao driver reconvergência estrita de threads nos shaders de compute; pode corrigir flicker, pode falhar em alguns drivers.'),
         'Shadow of the Colossus port 8d84cf7', True),
@@ -181,7 +181,7 @@ BACKPORTS = [
         ('The first instance is counted once in indirect draws; fixes wrong per-instance data.',
          'A first instance é contada uma vez nos draws indiretos; corrige dados por instância errados.'),
         'shadPS4 #5348'),
-    _bp(12, True, True, False, ('Early fragment tests', 'Teste antecipado de fragmento'),
+    _bp(12, False, True, False, ('Early fragment tests', 'Teste antecipado de fragmento'),
         ('Turns on early fragment tests when the game asks for depth/stencil before the pixel shader; '
          'fixes wrong overdraw and, in some scenes, missing or doubled effects.',
          'Liga o teste antecipado de fragmento quando o jogo pede profundidade/stencil antes do pixel shader; '
@@ -227,7 +227,7 @@ DIAGNOSTICS = [
         ('Only the thread that reads GPU results waits, not the whole GPU. Needs "Precise" GPU accuracy.',
          'Só a thread que lê resultados da GPU espera, não a GPU inteira. Precisa da precisão "Preciso".'),
         store='launcher', pass_env=False),
-    _ab('stale_readback', 'TLG_STALE_READBACK', True, False, False, ('Stale readbacks', 'Leituras da GPU com um quadro de atraso'),
+    _ab('stale_readback', 'TLG_STALE_READBACK', False, False, False, ('Stale readbacks', 'Leituras da GPU com um quadro de atraso'),
         ('CPU reads see the last published GPU version instead of waiting (needs deferred readbacks).',
          'A CPU lê a última versão publicada pela GPU em vez de esperar (precisa das leituras adiadas).'),
         pass_env=False),

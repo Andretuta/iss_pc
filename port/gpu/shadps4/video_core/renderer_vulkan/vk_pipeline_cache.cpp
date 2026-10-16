@@ -1960,13 +1960,14 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         vs_sharps_match(false)) {
         auto& hit = program->modules[last.perm_idx];
         if (reuse_mode == 2) {
+            // The lookup below compares stored == fresh (the operator is not symmetric).
             const auto check = Shader::StageSpecialization(info, runtime_info, profile, binding);
-            if (!(check == hit.spec)) {
+            if (!(hit.spec == check)) {
                 if (reuse_mismatches.fetch_add(1) < 16) {
                     LOG_ERROR(Render_Vulkan,
                               "tlg: variant reuse of shader {:#x} perm {} differs from a fresh "
-                              "specialization",
-                              params.hash, last.perm_idx);
+                              "specialization: {}",
+                              params.hash, last.perm_idx, DescribeSpecDiff(check, hit.spec));
                 }
             }
         }

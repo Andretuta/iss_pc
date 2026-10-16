@@ -78,7 +78,7 @@ struct Values {
     std::atomic<bool> async_shaders{true};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
-    std::atomic<int> rcas_strength{75};
+    std::atomic<int> rcas_strength{60};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
     /// image is smaller than the window).
     std::atomic<bool> rcas_applied{false};
@@ -89,7 +89,7 @@ struct Values {
     std::atomic<int> render_resolution{0};
     std::atomic<int> engine_fps{120};
     std::atomic<bool> deferred_readback{true};
-    std::atomic<bool> stale_readback{true};
+    std::atomic<bool> stale_readback{false};
     /// Set before an "Apply and restart"; cleared once the new launch shows the game. run.py
     /// restores the previous startup options when a launch never cleared it.
     std::atomic<bool> restart_unconfirmed{false};
@@ -97,7 +97,7 @@ struct Values {
     /// The engine rate this launch really runs at (run.py's TLG_ENGINE_FPS): 60 when the frame
     /// rate patch does not apply to this game build.
     std::atomic<int> applied_engine_fps{120};
-    bool startup_deferred_readback = true, startup_stale_readback = true;
+    bool startup_deferred_readback = true, startup_stale_readback = false;
     // FSR 4 checks (menu): the provider's auto exposure, the jitter sign it is given.
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};

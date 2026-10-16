@@ -54,7 +54,7 @@ class BackportsTableTest(unittest.TestCase):
         for item in t.BACKPORTS:
             self.assertTrue(all(item.name) and all(item.what) and item.source, item.id)
         risky = {i.id for i in t.BACKPORTS if i.risky}
-        self.assertEqual(risky, {i.id for i in t.BACKPORTS if i.default == '0'})
+        self.assertEqual(risky, {'BP06', 'BP07', 'BP08', 'BP09'})   # experimental, whatever their default
 
     def test_diagnostic_names_exist_in_sources(self):
         text = repo_text()
@@ -101,27 +101,27 @@ class StatesTest(unittest.TestCase):
         self.assertTrue(all(v is None for v in t.ini_updates(states).values()))
 
     def test_value_equal_to_default_is_dropped(self):
-        states = t.read_states({'bp01': '1', 'bp06': '0', 'overlay_corner': '1', 'rcas_strength': '75'})
+        states = t.read_states({'bp01': '1', 'bp06': '1', 'bp12': '0', 'overlay_corner': '1', 'rcas_strength': '60'})
         self.assertTrue(all(v is None for v in states.values()))
 
     def test_changes_become_env_and_ini(self):
-        states = t.read_states({'bp01': '0', 'bp06': '1', 'overlay_corner': '3', 'rcas_strength': '999',
+        states = t.read_states({'bp01': '0', 'bp06': '0', 'overlay_corner': '3', 'rcas_strength': '999',
                                 'wqm': '0', 'pipeline_binaries': '1'})
         self.assertEqual(states['BP01'], '0')
-        self.assertEqual(states['BP06'], '1')
+        self.assertEqual(states['BP06'], '0')
         self.assertIsNone(states['menu:rcas_strength'])  # out of range: ignored
-        self.assertEqual(t.environment(states), {'ISS_BP01': '0', 'ISS_BP06': '1', 'ISS_WQM': '0',
+        self.assertEqual(t.environment(states), {'ISS_BP01': '0', 'ISS_BP06': '0', 'ISS_WQM': '0',
                                                  'ISS_PIPELINE_BINARIES': '1'})
         self.assertEqual(t.environment(states, {'TLG_BP01': '1', 'ISS_WQM': '1'}),
-                         {'ISS_BP06': '1', 'ISS_PIPELINE_BINARIES': '1'})
+                         {'ISS_BP06': '0', 'ISS_PIPELINE_BINARIES': '1'})
         ini = t.ini_updates(states)
         self.assertEqual((ini['bp01'], ini['overlay_corner'], ini['bp02']), ('0', '3', None))
 
     def test_previous_release_turns_default_on_off(self):
         states = t.previous_release(t.read_states({}))
         env = t.environment(states)
-        self.assertEqual(sorted(env), [f'ISS_BP{n:02d}' for n in (1, 2, 3, 4, 5, 10, 11, 12)])
-        self.assertEqual(set(env.values()), {'0'})  # BP06-09 are already off: no variable
+        self.assertEqual(sorted(env), [f'ISS_BP{n:02d}' for n in (1, 2, 3, 4, 5, 6, 10, 11)])
+        self.assertEqual(set(env.values()), {'0'})  # BP07-09 and BP12 are already off: no variable
         self.assertEqual(t.environment(t.defaults(states)), {})
 
     def test_write_ini_sets_and_removes_keeping_other_lines(self):
@@ -138,12 +138,12 @@ class RecommendedTest(unittest.TestCase):
         self.assertEqual(t.changes(states), 0)
         self.assertEqual(t.environment(states), {})
         rec = {i.id for i in t.ITEMS if t.is_recommended(i)}
-        self.assertTrue({f'BP{n:02d}' for n in (1, 2, 3, 4, 5, 10, 11, 12)} <= rec)
-        self.assertFalse(rec & {f'BP{n:02d}' for n in (6, 7, 8, 9)})
+        self.assertTrue({f'BP{n:02d}' for n in (1, 2, 3, 4, 5, 6, 10, 11)} <= rec)
+        self.assertFalse(rec & {f'BP{n:02d}' for n in (7, 8, 9, 12)})
         self.assertNotIn('TLG_PIPELINE_BINARIES', rec)
 
     def test_profile_counts_changes_but_not_menu_preferences(self):
-        states = t.read_states({'bp01': '0', 'bp06': '1', 'overlay_corner': '3'})
+        states = t.read_states({'bp01': '0', 'bp06': '0', 'overlay_corner': '3'})
         self.assertEqual(t.changes(states), 2)
         self.assertEqual(t.changes(t.previous_release(t.read_states({}))), 8)
         self.assertEqual(t.changes(t.defaults(states)), 0)
@@ -170,9 +170,9 @@ class LaunchEnvTest(unittest.TestCase):
                 settings = dict(run.DEFAULT_SETTINGS)
                 env = run.build_env(settings)
                 self.assertFalse([k for k in env if k.startswith('ISS_BP')])
-                (Path(folder) / 'tlg.ini').write_text('bp01=0\nbp06=1\n', encoding='utf-8')
+                (Path(folder) / 'tlg.ini').write_text('bp01=0\nbp06=0\n', encoding='utf-8')
                 env = run.build_env(settings)
-                self.assertEqual((env['ISS_BP01'], env['ISS_BP06']), ('0', '1'))
+                self.assertEqual((env['ISS_BP01'], env['ISS_BP06']), ('0', '0'))
                 self.assertFalse([k for k in env if k.startswith('ISS_BP') and k not in ('ISS_BP01', 'ISS_BP06')])
             finally:
                 os.environ.clear()

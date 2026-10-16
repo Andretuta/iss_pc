@@ -1866,7 +1866,7 @@ void Rasterizer::Finish() {
 // in the frame of the first bind (a freeze of 2 to 3 seconds). The ranges are remembered per title
 // (heap_binds.txt in the game cache) and, in later sessions, uploaded a slice per submission until
 // the game binds them, so the first bind finds only what was written since. Uploading early is
-// sound: a later write marks the pages again. TLG_HEAP_WARM=1 turns it on.
+// sound: a later write marks the pages again. On; TLG_HEAP_WARM=0 turns it off.
 namespace {
 constexpr u64 HugeBindSize = 256ull << 20;
 constexpr u64 HugeWarmSlice = 16ull << 20;
@@ -1881,7 +1881,7 @@ struct HugeBind {
 bool HugeWarmEnabled() {
     static const bool enabled = [] {
         const char* value = std::getenv("TLG_HEAP_WARM");
-        return value && value[0] == '1';
+        return !value || value[0] != '0';
     }();
     return enabled;
 }
