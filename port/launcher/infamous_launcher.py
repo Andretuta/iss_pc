@@ -112,6 +112,9 @@ TEXT = {
     'occlusion': ('Light glare (occlusion)', 'Brilho das luzes (oclusão)'),
     'occlusion_hint': ('How much of a light the game counts as visible. 3 (recommended) keeps the headlight glow from showing through characters; 0 is the old behaviour. Applies on the next start.',
                        'Quanto de uma luz o jogo conta como visível. 3 (recomendado) evita o brilho dos faróis aparecer por cima dos personagens; 0 é o comportamento antigo. Vale na próxima partida.'),
+    'verbose_log': ('Detailed log', 'Log detalhado'),
+    'verbose_log_hint': ('For problem reports: the log records much more (files, controller, audio, GPU with time and thread). It gets large and the game may run a little slower. Applies on the next start.',
+                         'Para relatar problemas: o log registra muito mais (arquivos, controle, áudio, GPU com horário e thread). Ele fica grande e o jogo pode ficar um pouco mais lento. Vale na próxima partida.'),
     'exp_auto': ('Automatic', 'Automático'),
     'exp_on': ('On', 'Ligado'),
     'exp_off': ('Off', 'Desligado'),
@@ -293,6 +296,18 @@ class Launcher:
         occ_combo.bind('<<ComboboxSelected>>',
                        lambda _, o=occ_options, b=occ_combo, i=occ_item: self.exp_set(i, o[b.current()][0]))
         ttk.Label(occ_box, text=self.t('occlusion_hint'), foreground='#777', wraplength=360,
+                  justify='left').grid(row=1, column=0, sticky='w', pady=(6, 0))
+
+        # Detailed log, right under the light glare box (same file/env path as the other switches).
+        log_item = next(i for i in backports_table.ITEMS if i.key == 'verbose_log')
+        log_box = ttk.LabelFrame(middle, text=self.t('verbose_log'), padding=8)
+        log_box.grid(sticky='ew', pady=(8, 0))
+        log_box.columnconfigure(0, weight=1)
+        log_var = tk.BooleanVar(value=backports_table.effective(log_item, self.exp_states) == '1')
+        ttk.Checkbutton(log_box, text=self.t('verbose_log'), variable=log_var,
+                        command=lambda v=log_var, i=log_item: self.exp_set(i, '1' if v.get() else '0')
+                        ).grid(row=0, column=0, sticky='w')
+        ttk.Label(log_box, text=self.t('verbose_log_hint'), foreground='#777', wraplength=360,
                   justify='left').grid(row=1, column=0, sticky='w', pady=(6, 0))
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)

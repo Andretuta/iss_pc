@@ -175,6 +175,21 @@ Item {
                 Text { width: parent.width; text: Theme.tr("occlusion_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
                        font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.25; lineHeightMode: Text.ProportionalHeight }
             }
+            Column {   // detailed log (ISS_VERBOSE_LOG), right under the light glare selector
+                width: parent.width; spacing: 6
+                Row {
+                    spacing: 12
+                    Text { text: Theme.tr("verbose_log"); color: Theme.textMuted; font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold
+                           anchors.verticalCenter: parent.verticalCenter }
+                    Toggle {
+                        accent: page.accent
+                        checked: Backend.verboseLog
+                        onToggled: (v) => Backend.setVerboseLog(v)
+                    }
+                }
+                Text { width: parent.width; text: Theme.tr("verbose_log_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
+                       font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.25; lineHeightMode: Text.ProportionalHeight }
+            }
             Item {
                 visible: Backend.showFirstRun || Backend.notice !== ""
                 width: parent.width; height: warnText.implicitHeight

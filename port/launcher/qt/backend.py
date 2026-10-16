@@ -493,6 +493,18 @@ class Backend(QObject):
     def setOcclusion(self, value):
         self.setFix(self._occlusion_item().id, value)
 
+    def _verbose_log_item(self):
+        return next(i for i in backports_table.ITEMS if i.key == 'verbose_log')
+
+    @Property(bool, notify=profileChanged)
+    def verboseLog(self):
+        """The "Detailed log" switch on the Home screen, under the light glare selector."""
+        return backports_table.effective(self._verbose_log_item(), self.fix_states) == '1'
+
+    @Slot(bool)
+    def setVerboseLog(self, on):
+        self.setFix(self._verbose_log_item().id, '1' if on else '0')
+
     # -- game language (voice and text; the interface language above is separate) ---------------
     @Property('QVariantList', notify=langChanged)
     def gameLanguageOptions(self):
