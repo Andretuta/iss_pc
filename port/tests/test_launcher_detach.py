@@ -205,8 +205,8 @@ class BackendTests(unittest.TestCase):
             backend._on_finished(0)               # the last, unfinished line is kept at the end
             self.assertIn('partial', backend._log)
 
-    def test_option_is_off_by_default(self):
-        self.assertIs(False, infamous_run.DEFAULT_SETTINGS['close_on_play'])
+    def test_option_is_on_by_default(self):
+        self.assertIs(True, infamous_run.DEFAULT_SETTINGS['close_on_play'])
         self.assertEqual('Close the launcher when the game starts', self.make().t_('close_on_play'))
         self.assertEqual('Fechar o launcher ao abrir o jogo', self.make(ui_language='pt_BR').t_('close_on_play'))
 
@@ -218,7 +218,7 @@ class BackendTests(unittest.TestCase):
         return backend, timer
 
     def test_option_off_keeps_the_launcher_open(self):
-        _, timer = self.started()
+        _, timer = self.started(close_on_play=False)
         timer.singleShot.assert_not_called()
 
     def test_option_on_closes_the_launcher_after_about_two_seconds(self):

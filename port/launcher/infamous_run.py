@@ -116,7 +116,7 @@ DEFAULT_SETTINGS = {
     'write_merge': True,     # ISS_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'deferred_readback': True,  # ISS_DEFERRED_READBACK: the game thread waits for its own GPU reads
     'precompile_shaders': True,  # launcher: make the shader jobs list before the game starts (precompile.py)
-    'close_on_play': False,  # launcher: close the launcher window about 2 s after the game starts
+    'close_on_play': True,  # launcher: close about 2 s after the game starts (an open launcher cost ~30% FPS in CPU-bound scenes)
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 

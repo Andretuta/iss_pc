@@ -21,7 +21,7 @@ SETTING_ROWS = {
     's:eager_readback': ('eager_readback', 'switch', False),
     's:write_merge': ('write_merge', 'switch', False),
     's:precompile_shaders': ('precompile_shaders', 'switch', False),
-    's:close_on_play': ('close_on_play', 'switch', False),
+    's:close_on_play': ('close_on_play', 'switch', True),
     's:vram_budget_mb': ('vram_budget_mb', 'slider', False),
 }
 DISPLAY_MODES = ('Windowed', 'Borderless', 'Fullscreen')
