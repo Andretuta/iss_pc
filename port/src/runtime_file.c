@@ -335,11 +335,11 @@ static void log_io_problem(const char *what,const char *detail,int64_t n,int err
  * after a short read or EFAULT: with precise readbacks the GPU tracker can protect a page again
  * between touch_for_write and the kernel copy, which then stops early without an error. The
  * game treats a short texture read as fatal (JsTex.cpp ASSERT readSize == sizeAlign.m_size). */
-#ifdef _WIN32
-/* Windows: the kernel copy into a GPU-protected guest page fails (ERROR_NOACCESS) instead of
- * faulting to our handler, and touching the pages first is not enough: the GPU can protect them
- * again before the copy (seen under Wine: 64 retries in a row, then a short read). Read into a
- * host buffer instead and copy in user mode, where every fault goes through the handler. */
+/* The kernel copy into a GPU-protected guest page fails (ERROR_NOACCESS on Windows, EFAULT on
+ * Linux) instead of faulting to our handler, and touching the pages first is not enough: the GPU
+ * can protect them again before the copy (Wine: 64 retries in a row, then a short read; Linux
+ * with precise readbacks: 'gave up after 64 retries' on streaming reads, 2026-10-15). Read into
+ * a host buffer instead and copy in user mode, where every fault goes through the handler. */
 enum { BOUNCE_BYTES=4u<<20 };
 static ssize_t bounce_read(int h,unsigned char *at,uint64_t size,int64_t offset) {
     static _Thread_local unsigned char *bounce;
@@ -349,22 +349,16 @@ static ssize_t bounce_read(int h,unsigned char *at,uint64_t size,int64_t offset)
     if (n>0) memcpy(at,bounce,(size_t)n);
     return n;
 }
-#endif
 static ssize_t full_io(int h,void *buffer,uint64_t size,int64_t offset) {
     unsigned char *at=buffer;
     uint64_t done=0;
     int stalls=0;
     for (; done<size && stalls<64;) {
-#ifdef _WIN32
         ssize_t n=bounce_read(h,at+done,size-done,offset<0 ? -1 : offset+(int64_t)done);
-        if (n==-2) {
+        if (n==-2) {   /* no bounce buffer (out of memory): read straight into the guest */
             touch_for_write(at+done,size-done);
             n=offset<0 ? host_read(h,at+done,size-done) : pread(h,at+done,size-done,offset+(int64_t)done);
         }
-#else
-        touch_for_write(at+done,size-done);
-        ssize_t n=offset<0 ? host_read(h,at+done,size-done) : pread(h,at+done,size-done,offset+(int64_t)done);
-#endif
         if (n<0) {
             if (errno==EINTR || errno==EFAULT) { ++stalls; continue; }
             if (done) log_read_problem("io (error after a partial read)",h,size,offset,(ssize_t)done,errno);
