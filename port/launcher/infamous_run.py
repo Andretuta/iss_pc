@@ -113,6 +113,7 @@ DEFAULT_SETTINGS = {
     'eager_readback': False,  # ISS_EAGER_READBACK: copy GPU results the game reads back at each fence
     'write_merge': True,     # ISS_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'deferred_readback': True,  # ISS_DEFERRED_READBACK: the game thread waits for its own GPU reads
+    'precompile_shaders': True,  # launcher: make the shader jobs list before the game starts (precompile.py)
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 

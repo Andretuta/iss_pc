@@ -7,6 +7,7 @@ game through infamous_run.py (the same code path as run_infamous.sh) and shows i
 Settings live in ~/.config/infamous-launcher/settings.json (%APPDATA% on Windows).
 """
 import locale
+import multiprocessing
 import os
 from pathlib import Path
 import queue
@@ -20,6 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
+import precompile  # noqa: E402
 
 TEXT = {
     'title': ('inFAMOUS Second Son — PC', 'inFAMOUS Second Son — PC'),
@@ -130,6 +132,7 @@ TEXT = {
     'exp_previous_hint': ('"Like the previous release" writes bp01=0 ... for every fix that is on by default (the same as starting with TLG_BACKPORTS=0); the boxes show it, and you can turn single ones back on.', '"Como a release anterior" grava bp01=0 ... em todas as correções que vêm ligadas (é o mesmo que iniciar com TLG_BACKPORTS=0); as caixas mostram isso e você pode religar uma a uma.'),
     'exp_close': ('Close', 'Fechar'),
 }
+TEXT.update(precompile.TEXT)   # shader list texts: one table for both launchers
 TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
@@ -165,6 +168,9 @@ class Launcher:
         self.root = root
         self.settings = tlg_run.load_settings()
         self.process = None
+        self.precompiler = precompile.Precompiler()
+        self.starting = False    # Play pressed, game not yet running (preparing / making the shader list)
+        self._jobs_step = {}
         self.lines = queue.Queue()
         self.build()
         self.root.after(100, self.pump)
@@ -273,6 +279,7 @@ class Launcher:
         self.combo(video, 5, 'gpu_readbacks', ['0', '1', '2'], lambda k: self.t('readbacks_' + k))
         self.check(video, 6, 'eager_readback')
         self.check(video, 7, 'write_merge')
+        self.check(video, 8, 'precompile_shaders')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -409,14 +416,14 @@ class Launcher:
         if not tlg_run.blocking(problems):
             texts.append(self.t('ready'))
         self.status.configure(text='\n'.join(texts), foreground='#b00020' if problems else '#555')
-        self.play_button.configure(state='disabled' if tlg_run.blocking(problems) or self.process else 'normal')
+        self.play_button.configure(state='disabled' if tlg_run.blocking(problems) or self.process or self.starting else 'normal')
         reported = tuple(problems)
         if reported != getattr(self, 'reported', ()):  # each new problem also goes to the log once
             self.reported = reported
             for (key, _), text in zip(problems, texts):
                 if key in tlg_run.TEXT:
                     self.append(text)
-        self.cache_button.configure(state='disabled' if self.process else 'normal')
+        self.cache_button.configure(state='disabled' if self.process or self.starting else 'normal')
 
     def browse(self, key):
         path = filedialog.askdirectory(initialdir=self.vars[key].get() or str(Path.home()))
@@ -432,7 +439,7 @@ class Launcher:
 
     def clear_cache(self):
         """Clear shader cache: asks first, never while the game runs; shows how much was freed."""
-        if self.process:
+        if self.process or self.starting:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
         size = tlg_run.shader_cache_size(self.settings)
@@ -651,18 +658,35 @@ class Launcher:
         self.log.configure(state='disabled')
 
     def play(self):
-        if self.process:
+        if self.process or self.starting:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
+        self.starting = True
         self.changed()
         self.append(self.t('preparing'))
         self.play_button.configure(state='disabled')
         self.cache_button.configure(state='disabled')
+        self.precompiler = precompile.Precompiler()
         threading.Thread(target=self.run_game, daemon=True).start()
+
+    def jobs_progress(self, phase, n, total):
+        """A line in the log every 25% of a generator phase (the log has no progress bar)."""
+        step = (4 * n // total) if total else 0
+        if step > self._jobs_step.get(phase, 0):
+            self._jobs_step[phase] = step
+            if n < total:
+                self.lines.put(f'  {precompile.message(precompile.PHASE_TEXT.get(phase, "jobs_phase_other"), self.settings, phase=phase)} {100 * n // total}%')
 
     def run_game(self):
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lines.put(line))
+            self._jobs_step = {}
+            outcome = precompile.prepare_jobs(self.settings, log=lambda line: self.lines.put(line),
+                                              progress=self.jobs_progress, precompiler=self.precompiler)
+            if outcome == 'cancelled':   # window closed in the middle: do not start the game
+                self.lines.put(self.t('jobs_cancelled'))
+                self.lines.put(('stopped', None))
+                return
             self.process, log = tlg_run.launch(self.settings)
         except tlg_run.GameError as error:  # a problem with the game files, in the launcher's language
             text = self.t(error.key, detail=error.detail)
@@ -689,7 +713,10 @@ class Launcher:
                 item = self.lines.get_nowait()
                 if isinstance(item, tuple):
                     kind, value = item
-                    if kind == 'error':
+                    self.starting = False
+                    if kind == 'stopped':
+                        pass
+                    elif kind == 'error':
                         messagebox.showerror(self.t('error'), value)
                     else:
                         message = self.t('ended' if value in (0, -15) else 'crashed', code=value)
@@ -704,6 +731,7 @@ class Launcher:
         self.root.after(100, self.pump)
 
     def quit(self):
+        self.precompiler.cancel()
         if self.process:
             self.process.terminate()
         self.root.destroy()
@@ -712,6 +740,7 @@ class Launcher:
 def main():
     # Packaged executable roles: --script <file> runs a preparation script, --play starts the
     # game with the saved settings and no launcher window (shortcuts, Steam).
+    multiprocessing.freeze_support()   # packaged: the shader list generator starts worker processes (re-runs this exe)
     args = sys.argv[1:]
     if args[:1] == ['--script'] and len(args) > 1:
         sys.exit(tlg_run.run_script(args[1:]))

@@ -13,6 +13,7 @@ from .support import Support
 from .updates import Updates
 from .logic import backports_table, tlg_run
 import advanced_table  # noqa: E402
+import precompile  # noqa: E402
 
 URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g',
         'sponsor': 'https://github.com/sponsors/HayatoG'}
@@ -141,6 +142,7 @@ class Backend(QObject):
     gameLanguageChanged = Signal()
     gpuFound = Signal(object)
     lineReceived = Signal(str)
+    jobsProgress = Signal(str, int, int)   # shader list: phase, done, total (from the play thread)
     finished = Signal(int)
     message = Signal(str)
     guideChanged = Signal()
@@ -169,6 +171,9 @@ class Backend(QObject):
         self.advanced = FixesModel(self, 'adv')
         self.gpuFound.connect(self._on_gpu)
         self.lineReceived.connect(self._on_line)
+        self.jobsProgress.connect(self._on_jobs_progress)
+        self.precompiler = precompile.Precompiler()
+        self._jobs = None        # (phase, done, total) while the shader list is being made
         self.finished.connect(self._on_finished)
         self.refresh()
         self.saves = Saves(self, self.probes.get('saves'))
@@ -290,6 +295,8 @@ class Backend(QObject):
 
     @Property(str, notify=stateChanged)
     def playSubtitle(self):
+        if self._jobs:
+            return self.jobsText
         if self._play_state == 'launching':
             return self.t_('play_launching')
         if self._play_state == 'running':
@@ -297,6 +304,27 @@ class Backend(QObject):
         if not self.canPlay:
             return self.t_('play_blocked')
         return self.t_('play_continue', save=self._save) if self._save else self.t_('play_new')
+
+    @Property(str, notify=stateChanged)
+    def jobsText(self):
+        """'Indexing the game files… 42%' while the generator runs, else ''."""
+        if not self._jobs:
+            return ''
+        phase, done, total = self._jobs
+        text = precompile.message(precompile.PHASE_TEXT.get(phase, 'jobs_phase_other'), self.settings, phase=phase)
+        return f'{text} {100 * done // total}%' if total else text
+
+    @Property(float, notify=stateChanged)
+    def jobsProgressValue(self):
+        """0..1 of the generator's current phase, -1 when it is not running."""
+        if not self._jobs:
+            return -1.0
+        _, done, total = self._jobs
+        return min(1.0, done / total) if total else 0.0
+
+    def _on_jobs_progress(self, phase, done, total):
+        self._jobs = (phase, done, total)
+        self.stateChanged.emit()
 
     @Property(bool, notify=stateChanged)
     def canPlay(self):
@@ -371,6 +399,7 @@ class Backend(QObject):
             backports_table.mark_notice_seen(self.settings)
             tlg_run.save_settings(self.settings)
         self._play_state = 'launching'
+        self.precompiler = precompile.Precompiler()
         self._log = [self.t_('preparing')]
         self.logChanged.emit()
         self.stateChanged.emit()
@@ -379,12 +408,21 @@ class Backend(QObject):
     def _run_game(self):
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lineReceived.emit(line))
+            outcome = precompile.prepare_jobs(self.settings, log=lambda line: self.lineReceived.emit(line),
+                                              progress=lambda *args: self.jobsProgress.emit(*args),
+                                              precompiler=self.precompiler)
+            self._jobs = None
+            if outcome == 'cancelled':   # window closed or Quit in the middle: no half file, no game
+                self.lineReceived.emit(self.t_('jobs_cancelled'))
+                self.finished.emit(-1000)
+                return
             self.process, log = tlg_run.launch(self.settings)
         except tlg_run.GameError as error:
             self.lineReceived.emit(self.t_(error.key, detail=error.detail))
             self.finished.emit(-1000)
             return
         except Exception as error:  # shown to the player; the launcher keeps running
+            self._jobs = None
             self.lineReceived.emit(str(error))
             self.finished.emit(-1000)
             return
@@ -415,6 +453,7 @@ class Backend(QObject):
         self.refresh()
 
     def shutdown(self):
+        self.precompiler.cancel()
         if self.process:
             self.process.terminate()
 
