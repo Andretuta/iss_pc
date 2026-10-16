@@ -39,7 +39,8 @@ def tk_text():
         import infamous_launcher
         return dict(infamous_launcher.TEXT)
     except Exception:  # tkinter missing in a slim Python
-        return dict(tlg_run.TEXT)
+        import preset_share
+        return {**preset_share.TEXT, **tlg_run.TEXT}
 
 
 def system_is_portuguese():

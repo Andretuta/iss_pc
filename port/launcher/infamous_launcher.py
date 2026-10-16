@@ -16,12 +16,13 @@ import sys
 import threading
 import webbrowser
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
 import precompile  # noqa: E402
+import preset_share  # noqa: E402
 
 TEXT = {
     'title': ('inFAMOUS Second Son — PC', 'inFAMOUS Second Son — PC'),
@@ -132,6 +133,7 @@ TEXT = {
     'exp_previous_hint': ('"Like the previous release" writes bp01=0 ... for every fix that is on by default (the same as starting with TLG_BACKPORTS=0); the boxes show it, and you can turn single ones back on.', '"Como a release anterior" grava bp01=0 ... em todas as correções que vêm ligadas (é o mesmo que iniciar com TLG_BACKPORTS=0); as caixas mostram isso e você pode religar uma a uma.'),
     'exp_close': ('Close', 'Fechar'),
 }
+TEXT.update(preset_share.TEXT)   # export / import of configuration files
 TEXT.update(precompile.TEXT)   # shader list texts: one table for both launchers
 TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
@@ -519,6 +521,56 @@ class Launcher:
         self.exp_save()
         self.build_experimental()
 
+    def exp_port_version(self):
+        try:
+            from qt import report
+            return report.current_version((tlg_run.PORT_DIR, tlg_run.REPO_DIR), tlg_run.LOG_DIR)
+        except Exception:
+            return ''
+
+    def exp_export(self):
+        parent = getattr(self, 'exp_window', None) or self.root
+        name = simpledialog.askstring(self.t('ps_export_title'), self.t('ps_name'), parent=parent)
+        if name is None:
+            return
+        what = simpledialog.askstring(self.t('ps_export_title'), self.t('ps_what'), parent=parent) or ''
+        path = filedialog.asksaveasfilename(parent=parent, title=self.t('ps_save_title'), defaultextension='.json',
+                                            initialfile=preset_share.default_filename(name),
+                                            filetypes=[(self.t('ps_filter'), '*.json')])
+        if not path:
+            return
+        preset = preset_share.export_preset(self.settings, self.exp_states, name, what, self.exp_port_version())
+        try:
+            final = preset_share.write_preset(preset, path)
+        except OSError as error:
+            messagebox.showerror(self.t('ps_export_title'), self.t('ps_export_failed', detail=str(error)), parent=parent)
+            return
+        messagebox.showinfo(self.t('ps_export_title'), self.t('ps_exported', path=str(final)), parent=parent)
+
+    def exp_import(self):
+        parent = getattr(self, 'exp_window', None) or self.root
+        path = filedialog.askopenfilename(parent=parent, title=self.t('ps_open_title'),
+                                          filetypes=[(self.t('ps_filter'), '*.json'), ('*', '*')])
+        if not path:
+            return
+        title = self.t('ps_import_title')
+        preset, problems = preset_share.read_preset(path)
+        if preset is None:
+            messagebox.showerror(title, '\n'.join(preset_share.problem_text(p, self.t) for p in problems), parent=parent)
+            return
+        changes = preset_share.diff(preset, self.settings, self.exp_states)
+        body, lines = preset_share.summary_lines(preset, problems, changes, self.t, self.pt())
+        text = '\n'.join([body, ''] + ['• ' + line for line in lines])
+        if not changes:
+            messagebox.showinfo(title, text, parent=parent)
+            return
+        if not messagebox.askyesno(title, text + '\n\n' + self.t('ps_apply') + '?', parent=parent):
+            return
+        preset_share.apply_preset(preset, self.settings, self.exp_states)
+        self.exp_save()
+        self.build_experimental()
+        messagebox.showinfo(title, self.t('ps_imported', name=preset['profile'], n=len(changes)), parent=parent)
+
     def scrolled(self, parent):
         canvas = tk.Canvas(parent, highlightthickness=0, height=400)
         bar = ttk.Scrollbar(parent, command=canvas.yview)
@@ -572,6 +624,8 @@ class Launcher:
         ttk.Button(buttons, text=self.t('exp_previous'), command=lambda: self.exp_reset('previous')).pack(side='left')
         ttk.Button(buttons, text=self.t('exp_defaults'), command=lambda: self.exp_reset('defaults')).pack(
             side='left', padx=8)
+        ttk.Button(buttons, text=self.t('ps_export'), command=self.exp_export).pack(side='left')
+        ttk.Button(buttons, text=self.t('ps_import'), command=self.exp_import).pack(side='left', padx=8)
 
     def exp_tags(self, item):
         tags = [self.t('exp_live') if item.live else self.t('exp_restart')]
