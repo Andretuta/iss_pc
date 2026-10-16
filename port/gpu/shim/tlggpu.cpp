@@ -143,7 +143,15 @@ void MemoryManager::CopySparseMemory(VAddr source, u8* dest, u64 size) {
 }
 bool MemoryManager::TryWriteBacking(void* address, const void* data, u64 size) {
     TlgWriteLog::Note(reinterpret_cast<uintptr_t>(address), data, size, TlgWriteLog::Backing);
-    return runtime_memory_write_backing(reinterpret_cast<uintptr_t>(address), data, size) != 0;
+    const bool written =
+        runtime_memory_write_backing(reinterpret_cast<uintptr_t>(address), data, size) != 0;
+    // tlg (gow3_pc #331): the write skipped page tracking, so textures over it must reload.
+    // Fence and label writes (<= 8 bytes) never hold texels and are left out: each one would send
+    // every texture binding through the locked path.
+    if (written && rasterizer && size > 8) {
+        rasterizer->GetTextureCache().NoteBackingWrite(reinterpret_cast<VAddr>(address), size);
+    }
+    return written;
 }
 void AddressSpace::Protect(VAddr virtual_addr, u64 size, MemoryPermission perms) {
     TlgStats::Timer timer{TlgStats::t_protect};
