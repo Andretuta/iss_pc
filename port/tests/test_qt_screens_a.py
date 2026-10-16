@@ -254,7 +254,7 @@ VkPhysicalDeviceMemoryProperties:
             for item_id, value in items.items():       # a value the table accepts (not silently dropped)
                 item = gfxlogic.item_by_id(item_id)
                 self.assertIn(value, [item.default] + [c[0] for c in item.choices] + ['0', '1'], item_id)
-        self.assertEqual(('current', 'performance', 'balanced', 'quality', 'ps4'),
+        self.assertEqual(('current', 'amd', 'performance', 'balanced', 'quality', 'ps4'),
                          tuple(p[0] for p in gfxlogic.PRESETS))
 
     def test_current_preset_is_the_maintainers_setup_and_plain_presets_leave_its_keys_alone(self):
@@ -268,6 +268,7 @@ VkPhysicalDeviceMemoryProperties:
                          tuple(stored[k] for k in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod',
                                                    'menu:region_fade', 'menu:far_clip', 'menu:mip_lod_bias',
                                                    'BP07', 'BP08')))
+        self.assertIsNone(stored['BP06'])      # on is the default
         self.assertIsNone(stored['menu:fps_limit'])
         for preset_id in ('performance', 'balanced', 'quality', 'ps4'):
             plain_settings, plain_items = gfxlogic.preset_targets(preset_id)
@@ -279,6 +280,29 @@ VkPhysicalDeviceMemoryProperties:
         self.assertEqual('balanced', gfxlogic.matching_preset(base_settings, base_items))
         self.assertEqual('current', gfxlogic.matching_preset(settings, stored))
         self.assertNotEqual('current', gfxlogic.matching_preset(settings, dict(stored, **{'menu:lod_scale': '0.5'})))
+
+    def test_the_amd_preset_is_the_current_one_with_the_safest_choices_for_amd(self):
+        _, current = gfxlogic.preset_targets('current')
+        settings, amd = gfxlogic.preset_targets('amd')
+        _, current_settings = gfxlogic.preset_targets('current')
+        self.assertEqual(('2', False, True), (settings['gpu_readbacks'], settings['eager_readback'],
+                                              settings['write_merge']))
+        self.assertEqual('0', amd['BP06'])                      # suspected on AMD (RX 7600, driver 26.8.1)
+        self.assertIsNone(current['BP06'])                      # the default (on): listed, so leaving AMD restores it
+        self.assertIsNone(amd['BP08'])                          # off is the default
+        self.assertEqual('1', current['BP08'])
+        self.assertEqual(('1', '1', '1'), (amd['TLG_BLOCK1D'], amd['TLG_BC_TINY'], amd['TLG_NO_MSAA']))
+        self.assertNotIn('TLG_BLOCK1D', current)                # the current preset leaves the AMD workarounds alone
+        self.assertIsNone(amd.get('BP09'))                      # BP09 does not fix the RX 580 crash: not part of it
+        for key in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:far_clip',
+                    'menu:mip_lod_bias', 'BP07'):                # the rest is the currently recommended setup
+            self.assertEqual(current[key], amd[key], key)
+        s, st = gfxlogic.preset_targets('amd')
+        self.assertEqual('amd', gfxlogic.matching_preset(s, st))
+        s, st = gfxlogic.preset_targets('current')
+        self.assertEqual('current', gfxlogic.matching_preset(s, st))
+        # the maintainer's own state (AMD workarounds explicit on a non-AMD PC) still reads as "current"
+        self.assertEqual('current', gfxlogic.matching_preset(s, dict(st, TLG_BLOCK1D='1', TLG_BC_TINY='1', TLG_NO_MSAA='1')))
 
     def test_balanced_is_the_default_and_ps4_is_30fps_without_fsr(self):
         settings, stored = gfxlogic.preset_targets('balanced')
@@ -472,6 +496,19 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn('fsr1=1', ini)
         self.assertIn('lod_scale=0.6', ini)        # a plain preset leaves the draw distance alone
         self.assertIn('bp07=1', ini)
+
+    def test_applying_the_amd_preset_and_going_back_to_the_current_one(self):
+        self.graphics.applyPreset('amd')
+        ini = self.ini_text()
+        for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'fsr1=1', 'lod_scale=0.6', 'bp07=1'):
+            self.assertIn(line, ini)
+        self.assertNotIn('bp08', ini)                  # off is its default: nothing stored
+        self.assertIn('amd', self.graphics.presetText.lower())
+        self.graphics.applyPreset('current')
+        ini = self.ini_text()
+        self.assertNotIn('bp06', ini)                  # back to the default (on)
+        self.assertIn('bp08=1', ini)
+        self.assertIn('block1d=1', ini)                # the current preset leaves the AMD workarounds as they are
 
     def test_presets_leave_other_choices_alone(self):
         self.graphics.setValue('s:display_mode', 'Fullscreen')
