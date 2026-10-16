@@ -96,6 +96,14 @@ Item {
                                font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.DemiBold
                                color: Backend.canPlay ? "#160a04" : "#8a6a5a" }
                     }
+                    Rectangle {   // shader list progress (first start): thin bar along the button's bottom edge
+                        visible: Backend.jobsProgressValue >= 0
+                        x: 24; width: playBtn.width - 48; height: 4; radius: 2
+                        anchors.bottom: parent.bottom; anchors.bottomMargin: 8
+                        color: "#5a3a2a"
+                        Rectangle { width: parent.width * Math.max(0, Backend.jobsProgressValue); height: parent.height
+                                    radius: 2; color: "#160a04" }
+                    }
                     MouseArea { id: playMouse; anchors.fill: parent; hoverEnabled: true
                                 enabled: Backend.canPlay; cursorShape: Qt.PointingHandCursor; onClicked: Backend.play() }
                     Accessible.role: Accessible.Button

@@ -19,6 +19,7 @@ SETTING_ROWS = {
     's:gpu_readbacks': ('gpu_readbacks', 'combo', False),
     's:eager_readback': ('eager_readback', 'switch', False),
     's:write_merge': ('write_merge', 'switch', False),
+    's:precompile_shaders': ('precompile_shaders', 'switch', False),
     's:vram_budget_mb': ('vram_budget_mb', 'slider', False),
 }
 DISPLAY_MODES = ('Windowed', 'Borderless', 'Fullscreen')
@@ -28,7 +29,7 @@ SECTIONS = (
     ('gfx_sec_rate', ('menu:fps_limit', 'menu:frames_queued')),
     ('gfx_sec_view', tuple(i.id for i in backports_table.MENU if i.tab == 'View')),
     ('gfx_sec_gpu', ('TLG_ASYNC_SHADERS', 'TLG_BACKGROUND_WARMUP', 's:gpu_readbacks', 's:eager_readback',
-                     's:write_merge', 'TLG_DEFERRED_READBACK', 'TLG_STALE_READBACK')),
+                     's:write_merge', 'TLG_DEFERRED_READBACK', 'TLG_STALE_READBACK', 's:precompile_shaders')),
     ('gfx_sec_vram', ('s:vram_budget_mb',)),
     ('gfx_sec_overlay', ('s:show_fps',) + OVERLAY_IDS),
 )

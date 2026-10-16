@@ -29,7 +29,7 @@ fi
 out/pyenv/Scripts/python.exe -m pip install -q --disable-pip-version-check pyinstaller iced-x86==1.21.0 "$PORT_QT_PACKAGE"
 hidden=()
 for module in argparse base64 collections hashlib json re shutil struct tempfile xml.etree.ElementTree \
-              urllib.request runpy ctypes.wintypes msvcrt iced_x86; do
+              urllib.request runpy sqlite3 mmap multiprocessing multiprocessing.pool dataclasses array bisect random time typing ctypes.wintypes msvcrt iced_x86; do
     hidden+=("$module")
 done
 # One folder, two launchers sharing their libraries; native Windows paths go to the spec in the
@@ -71,6 +71,9 @@ while ((${#queue[@]})); do
 done
 echo "Packaged $(find "$dest/out" -maxdepth 1 -iname '*.dll' | wc -l) DLLs from /clang64/bin"
 cp -r scripts "$dest/"
+# The shader list generator (scripts/build_jobs.py imports it from ../tools): plain files, like scripts/.
+mkdir -p "$dest/tools"
+cp -r tools/xpps "$dest/tools/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
 # The release name (vYYYY.MM.DD-<commit>, as the CI publishes it): the launcher shows it and compares it with the latest release.
