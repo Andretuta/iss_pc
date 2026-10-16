@@ -76,5 +76,14 @@ struct Result {
     u32 records = 0, graphics = 0, compute = 0, failed = 0, skipped = 0;
 };
 
+/// The job file of this game: TLG_PRECOMPILE_JOBS, else <gpu user>/cache/<serial>-jobs.bin
+/// (the launcher writes it from the game files; it outlives cache rebuilds).
+std::filesystem::path JobFile();
+/// Files in the shader cache folder (Clear removes them with the cache): `done` says which
+/// job file was compiled into this cache; `progress` the last record started, so a crash in
+/// one record resumes after it instead of failing again at every start.
+inline constexpr const char* DoneFile = "precompiled.txt";
+inline constexpr const char* ProgressFile = "precompile-progress.txt";
+
 } // namespace Precompile
 } // namespace Vulkan

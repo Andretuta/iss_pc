@@ -18,6 +18,11 @@
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_precompile.h"
+#include "common/elf_info.h"
+#include "core/emulator_settings.h"
+#include <fmt/format.h>
+#include "common/path_util.h"
+#include "video_core/cache_storage.h"
 
 namespace Vulkan::Precompile {
 
@@ -221,6 +226,14 @@ void CaptureCompute(const PipelineSelection& sel, const AmdGpu::ComputeProgram& 
           record);
 }
 
+std::filesystem::path JobFile() {
+    if (const char* path = std::getenv("TLG_PRECOMPILE_JOBS"); path && *path) {
+        return path;
+    }
+    return Common::FS::GetUserPath(Common::FS::PathType::CacheDir) /
+           (std::string{Common::ElfInfo::Instance().GameSerial()} + "-jobs.bin");
+}
+
 bool ReadJobs(const std::filesystem::path& path, std::vector<Record>& records) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -339,6 +352,72 @@ void PlaceStage(Arena& arena, const Precompile::Stage& stage, u64& address,
 }
 
 } // namespace
+
+namespace {
+std::string ReadSmallFile(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    return std::string{std::istreambuf_iterator<char>(in), {}};
+}
+void WriteSmallFile(const std::filesystem::path& path, const std::string& text) {
+    auto temp = path;
+    temp += ".tmp";
+    {
+        std::ofstream out(temp, std::ios::trunc);
+        out << text;
+    }
+    std::error_code ec;
+    std::filesystem::rename(temp, path, ec);
+}
+} // namespace
+
+bool PipelineCache::PrecompileFirstStart(const std::function<void(u32 total)>& start,
+                                         const std::function<void(u32 done, u32 total)>& progress) {
+    const auto jobs = Precompile::JobFile();
+    std::error_code ec;
+    if (!std::filesystem::exists(jobs, ec) || !EmulatorSettings.IsPipelineCacheEnabled() ||
+        EmulatorSettings.IsPipelineCacheArchived()) {
+        return false;
+    }
+    CheckCacheProfile(); // opens the cache; a rebuilt one has lost its done file too
+    const auto folder = Storage::GameCacheDir();
+    const auto size = std::filesystem::file_size(jobs, ec);
+    const auto stamp = std::filesystem::last_write_time(jobs, ec).time_since_epoch().count();
+    const std::string fingerprint =
+        fmt::format("{} {} {}\n", size, stamp, ShaderBinaryVersionForCache());
+    if (ReadSmallFile(folder / Precompile::DoneFile) == fingerprint) {
+        return false;
+    }
+    std::vector<Precompile::Record> records;
+    if (!Precompile::ReadJobs(jobs, records)) {
+        return false;
+    }
+    // A record that crashed the last start is skipped (it compiles in game, as before).
+    size_t first = 0;
+    if (const auto text = ReadSmallFile(folder / Precompile::ProgressFile); !text.empty()) {
+        const auto split = text.find('|');
+        if (split != std::string::npos && text.substr(split + 1) == fingerprint) {
+            first = std::strtoull(text.c_str(), nullptr, 10) + 1;
+            std::printf("Precompile: the last start stopped in record %zu: resuming after it\n",
+                        first - 1);
+        }
+    }
+    if (first >= records.size()) {
+        WriteSmallFile(folder / Precompile::DoneFile, fingerprint);
+        return false;
+    }
+    records.erase(records.begin(), records.begin() + first);
+    start(u32(records.size()));
+    const auto progress_path = folder / Precompile::ProgressFile;
+    Precompile(records, [&](u32 done, u32 total) {
+        if (done < total) {
+            WriteSmallFile(progress_path, fmt::format("{}|{}", first + done, fingerprint));
+        }
+        progress(done, total);
+    });
+    WriteSmallFile(folder / Precompile::DoneFile, fingerprint);
+    std::filesystem::remove(progress_path, ec);
+    return true;
+}
 
 Precompile::Result PipelineCache::Precompile(
     const std::vector<Precompile::Record>& records,

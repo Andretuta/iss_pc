@@ -186,6 +186,10 @@ public:
     /// to the shader cache. Before the game starts, on the thread that owns the cache.
     Precompile::Result Precompile(const std::vector<Precompile::Record>& records,
                                   const std::function<void(u32 done, u32 total)>& progress);
+    /// tlg: the first start's compilation: the job file when this cache has not compiled it
+    /// yet (or a crash interrupted it). `start(total)` before the first record; false: nothing to do.
+    bool PrecompileFirstStart(const std::function<void(u32 total)>& start,
+                              const std::function<void(u32 done, u32 total)>& progress);
 
     using Result = std::tuple<const Shader::Info*, vk::ShaderModule,
                               std::optional<Shader::Gcn::FetchShaderData>, u64>;

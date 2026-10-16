@@ -68,6 +68,8 @@ std::atomic<bool> menu_open{false};
 bool r3_down = false, l2_down = false;
 std::atomic<bool> loading{false};
 std::atomic<u32> loading_done{0}, loading_total{0};
+std::atomic<bool> loading_compile{false}; // first-run shader compilation (SetLoadingCompile)
+std::chrono::steady_clock::time_point loading_compile_started{};
 std::atomic<u32> background_done{0}, background_total{0};
 bool dirty = false; // settings changed while open: saved on close
 int requested_tab = -1; // switch on the next frame (L1/R1, Q/E, menu opened)
@@ -1419,8 +1421,11 @@ void LoadingScreen() {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
     const u32 done = loading_done, total = loading_total;
+    const bool compile = loading_compile;
     ImGui::SetWindowFontScale(1.6f);
-    ImGui::TextUnformatted(total ? "Loading shader cache..." : "Preparing graphics...");
+    ImGui::TextUnformatted(compile ? TL("Compiling shaders...", "Compilando shaders...")
+                           : total ? TL("Loading shader cache...", "Carregando o cache de shaders...")
+                                   : TL("Preparing graphics...", "Preparando os gráficos..."));
     ImGui::SetWindowFontScale(1.0f);
     if (total) {
         char count[64];
@@ -1428,7 +1433,21 @@ void LoadingScreen() {
                       u32(u64(done) * 100 / total));
         ImGui::ProgressBar(float(done) / float(total), ImVec2(-1.0f, 0.0f), count);
     }
-    ImGui::TextDisabled("The first start after an update takes longer.");
+    if (compile && total && done > 0 && done < total) {
+        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                                             loading_compile_started)
+                                   .count();
+        const u32 left = u32(elapsed * double(total - done) / double(done)) + 1;
+        ImGui::Text(TL("About %u:%02u left", "Faltam cerca de %u:%02u"), left / 60, left % 60);
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", compile ? TL("Only on the first start on this computer and after updates: "
+                                           "then the game runs without compiling shaders.",
+                                           "Só na primeira abertura neste computador e depois de "
+                                           "atualizações: depois o jogo roda sem compilar shaders.")
+                                      : TL("The first start after an update takes longer.",
+                                           "A primeira abertura depois de uma atualização demora mais."));
+    ImGui::PopTextWrapPos();
     ImGui::End();
 }
 
@@ -1901,6 +1920,13 @@ void ConfirmRestart() {
 void SetBackgroundLoading(u32 done, u32 total) {
     background_done = done;
     background_total = total;
+}
+
+void SetLoadingCompile(bool compile) {
+    if (compile && !loading_compile) {
+        loading_compile_started = std::chrono::steady_clock::now();
+    }
+    loading_compile = compile;
 }
 
 void SetLoading(bool active, u32 done, u32 total) {

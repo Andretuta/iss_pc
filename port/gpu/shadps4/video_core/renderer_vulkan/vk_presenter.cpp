@@ -156,15 +156,17 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
     pp_pass.Create(device, swapchain.GetSurfaceFormat().format);
     TlgOverlay::Init(instance, swapchain.GetSurfaceFormat().format, num_images);
 
-    // tlg: first-run shader compilation (vk_precompile.h): the jobs of TLG_PRECOMPILE_JOBS are
-    // compiled before the game starts, behind the loading screen.
-    if (const char* jobs = std::getenv("TLG_PRECOMPILE_JOBS"); jobs && *jobs) {
-        std::vector<Precompile::Record> records;
-        if (Precompile::ReadJobs(jobs, records)) {
-            TlgOverlay::SetLoading(true, 0, u32(records.size()));
-            PresentLoadingFrame();
-            auto last = std::chrono::steady_clock::now();
-            rasterizer->GetPipelineCache().Precompile(records, [&](u32 done, u32 total) {
+    // tlg: first-run shader compilation (vk_precompile.h): the job file the launcher wrote from
+    // the game files compiles once per cache, behind the loading screen, before the game starts.
+    {
+        auto last = std::chrono::steady_clock::now();
+        const bool compiled = rasterizer->GetPipelineCache().PrecompileFirstStart(
+            [&](u32 total) {
+                TlgOverlay::SetLoadingCompile(true);
+                TlgOverlay::SetLoading(true, 0, total);
+                PresentLoadingFrame();
+            },
+            [&](u32 done, u32 total) {
                 const auto now = std::chrono::steady_clock::now();
                 if (now - last < std::chrono::milliseconds(250) && done != total) {
                     return;
@@ -173,6 +175,8 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
                 TlgOverlay::SetLoading(true, done, total);
                 PresentLoadingFrame();
             });
+        if (compiled) {
+            TlgOverlay::SetLoadingCompile(false);
             TlgOverlay::SetLoading(false, 0, 0);
         }
     }
