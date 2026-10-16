@@ -97,6 +97,7 @@ TEXT = {
     'exp_bp_note': ('Fixes taken from other PS4 ports and from shadPS4. Those tagged "experimental" are off by default: turn them on only to test.', 'Correções tiradas de outros ports de PS4 e do shadPS4. As marcadas como "experimental" vêm desligadas: ligue só para testar.'),
     'exp_ab_note': ('Switches for finding which change causes a problem. Defaults are what the port uses. "Automatic" lets the GPU code decide for your driver.', 'Chaves para descobrir qual mudança causa um problema. Os padrões são os que o port usa. "Automático" deixa o código da GPU decidir para o seu driver.'),
     'exp_tab_Image': ('Image', 'Imagem'),
+    'exp_tab_View': ('Draw distance and detail', 'Distância de visão e detalhe'),
     'exp_tab_Performance': ('Performance', 'Desempenho'),
     'exp_tab_Controls': ('Controls', 'Controle'),
     'exp_tab_Overlay': ('Overlay', 'Overlay'),
@@ -573,7 +574,22 @@ class Launcher:
                 row=0, column=0, sticky='w')
         else:
             ttk.Label(row, text=label).grid(row=0, column=0, sticky='w')
-            if item.vtype == 'int':
+            if item.vtype == 'float':
+                fvar = tk.DoubleVar(value=float(value))
+
+                def fcommit(_=None, item=item, var=fvar):
+                    try:
+                        self.exp_set(item, str(var.get()))
+                    except tk.TclError:
+                        pass
+                fspin = ttk.Spinbox(row, from_=item.lo, to=item.hi, textvariable=fvar, width=10,
+                                    increment=backports_table.FLOAT_STEPS.get(item.key, 0.05), command=fcommit)
+                fspin.grid(row=0, column=1, padx=6)
+                fspin.bind('<FocusOut>', fcommit)
+                fspin.bind('<Return>', fcommit)
+                ttk.Label(row, text=f'{item.unit} ({self.t("exp_default")}: {item.default}{item.unit})',
+                          foreground='#777').grid(row=0, column=2, sticky='w')
+            elif item.vtype == 'int':
                 var = tk.IntVar(value=int(value))
 
                 def commit(_=None, item=item, var=var):
