@@ -256,6 +256,9 @@ VkPhysicalDeviceMemoryProperties:
         settings, stored = gfxlogic.preset_targets('balanced')
         self.assertEqual({'vsync': True}, settings)
         self.assertTrue(all(v is None for v in stored.values()))
+        for preset_id in ('performance', 'balanced', 'quality', 'ps4'):  # background shader compile is never undone by a preset
+            _, items = gfxlogic.preset_targets(preset_id)
+            self.assertIsNone(items['TLG_ASYNC_SHADERS'], preset_id)
         _, ps4 = gfxlogic.preset_targets('ps4')
         self.assertEqual('30', ps4['menu:fps_limit'])
         self.assertIsNone(ps4['menu:fsr1'])           # off is the default
@@ -280,6 +283,19 @@ class StringsTests(unittest.TestCase):
         tk = logic.tk_text()
         for key in (k for k in self.used_keys() if not k.endswith('_')):
             self.assertTrue(key in STRINGS or key in tk, key)
+
+    def test_eager_readback_is_off_by_default_and_migrated_once(self):
+        import infamous_run
+        self.assertFalse(infamous_run.DEFAULT_SETTINGS['eager_readback'])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'settings.json'
+            with mock.patch.object(infamous_run, 'config_path', lambda: path):
+                path.write_text(json.dumps({'eager_readback': True}))   # saved before the default changed
+                settings = infamous_run.load_settings()
+                self.assertFalse(settings['eager_readback'])
+                settings['eager_readback'] = True                        # the player turns it back on
+                infamous_run.save_settings(settings)
+                self.assertTrue(infamous_run.load_settings()['eager_readback'])
 
     def test_built_keys_exist(self):
         for pid, _, _ in gfxlogic.PRESETS:

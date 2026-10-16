@@ -766,7 +766,12 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
             return false;
         }
         runtime_fault_recover = &recover;
-        capture_work();
+        try {
+            capture_work();
+        } catch (...) {
+            runtime_fault_recover = nullptr; // `recover` dies with this frame
+            throw;
+        }
         runtime_fault_recover = nullptr;
         return true;
     })) {
@@ -776,11 +781,7 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
         PhaseTimer waiting{g_tlg_guest_wait_ns};
         capture_job.Wait();
     }
-    if (faulted->load(std::memory_order_acquire)) {
-        PhaseTimer capture{g_tlg_capture_ns};
-        build->ir.reset();
-        capture_work();
-    } else if (!capture_job.Poll()) {
+    const auto mark_failed = [&](const std::string& error) {
         if (initial) {
             program.compilation_failed = true;
         } else {
@@ -788,7 +789,19 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
             program.failed_permutations.push_back(std::move(*specialization));
         }
         LOG_ERROR(Render_Vulkan, "tlg: shader {:#x}/{} capture failed: {}", params.hash,
-                  permutation, capture_job.Error());
+                  permutation, error);
+    };
+    if (faulted->load(std::memory_order_acquire)) {
+        PhaseTimer capture{g_tlg_capture_ns};
+        build->ir.reset();
+        try {
+            capture_work();
+        } catch (const std::exception& e) {
+            mark_failed(e.what());
+            return false;
+        }
+    } else if (!capture_job.Poll()) {
+        mark_failed(capture_job.Error());
         return false;
     }
     const bool queued = build->job.Start(*compiler, [this, build] {
@@ -1851,8 +1864,17 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         }
         auto start = binding;
         auto compile_runtime = runtime_info; // translation adjusts it; the key keeps the original
-        const auto module =
-            CompileModule(new_program->info, compile_runtime, params.code, 0, binding);
+        vk::ShaderModule module;
+        try {
+            module = CompileModule(new_program->info, compile_runtime, params.code, 0, binding);
+        } catch (const Shader::UnsupportedShaderError& e) {
+            // tlg: kept in the cache as failed, so its draws are skipped without retranslating.
+            LOG_ERROR(Render_Vulkan, "tlg: shader {:#x} refused: {}", params.hash, e.what());
+            new_program->compilation_failed = true;
+            std::unique_lock lk{programs_mutex};
+            program_cache.emplace(params.hash, std::move(new_program));
+            return {};
+        }
         auto spec = Shader::StageSpecialization(new_program->info, runtime_info, profile, start);
         const auto perm_hash = HashCombine(params.hash, 0);
 
@@ -1924,7 +1946,15 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
             return {};
         }
         auto new_info = Shader::Info(hw_stage, sw_stage, params);
-        module = CompileModule(new_info, runtime_info, params.code, perm_idx, binding);
+        try {
+            module = CompileModule(new_info, runtime_info, params.code, perm_idx, binding);
+        } catch (const Shader::UnsupportedShaderError& e) {
+            LOG_ERROR(Render_Vulkan, "tlg: shader {:#x}/{} refused: {}", params.hash, perm_idx,
+                      e.what());
+            spec.info = &program->info;
+            program->failed_permutations.push_back(std::move(spec));
+            return {};
+        }
 
         RegisterShaderMeta(info, spec.fetch_shader_data, spec, perm_hash, perm_idx);
         std::unique_lock lk{programs_mutex};

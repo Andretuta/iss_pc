@@ -21,9 +21,9 @@ PRESET_ITEMS = ('menu:fps_limit', 'menu:frames_queued', 'menu:fsr1', 'menu:rcas'
 PRESETS = (
     ('performance', {'vsync': False}, {'menu:frames_queued': '2', 'menu:fsr1': '1'}),
     ('balanced', {}, {}),
-    ('quality', {}, {'menu:fsr1': '1', 'TLG_ASYNC_SHADERS': '0', 'TLG_STALE_READBACK': '0'}),
+    ('quality', {}, {'menu:fsr1': '1', 'TLG_STALE_READBACK': '0'}),
     ('ps4', {}, {'menu:fps_limit': '30', 'menu:fsr1': '0', 'menu:rcas': '0',
-                 'TLG_ASYNC_SHADERS': '0', 'TLG_STALE_READBACK': '0'}),
+                 'TLG_STALE_READBACK': '0'}),
 )
 DEFAULT_PRESET = 'balanced'
 
