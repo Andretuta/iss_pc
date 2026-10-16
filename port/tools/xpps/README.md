@@ -82,6 +82,48 @@ Por que os números não confirmados diferem:
 - **Malhas:** 210.244 é o total com V# relocados; a contagem antiga só considerava as cadeias com efeito resolvido e procurava os imports só na primeira tabela `KNLI`.
 - **Efeitos:** a contagem estrutural bate com os 22.518 itens de tipo 0xB; os 2 a mais da conta antiga não foram achados.
 
+## Etapas 2 e 3: jobs de pré-compilação (v1)
+
+`jobs.py` gera, a partir do índice e dos `.xpps` do próprio jogador, o arquivo de jobs que o pré-compilador do port lê (`ISSPJOB1`, formato em `vk_precompile.h` e `jobfile.py`). `jobs_eval.py` mede o gerador contra uma captura de desenvolvimento (`TLG_PRECOMPILE_CAPTURE`); o produto nunca lê captura.
+
+```sh
+python -m xpps.jobs_eval infer <captura> <indice.sqlite> <tabelas.json>   # tabelas INFERIDAS (só enums)
+python -m xpps.jobs <indice.sqlite> <tabelas.json> <saida.jobs> [--compute-wide]
+python -m xpps.jobs_eval rules <captura> <indice.sqlite>                  # quanto cada regra explica
+python -m xpps.jobs_eval eval  <captura> <indice.sqlite> <tabelas.json> --cv 5
+```
+
+| Módulo | O que faz |
+|---|---|
+| `jobfile.py` | lê e grava o formato `ISSPJOB1` |
+| `signature.py` | `signature(registro)`: só o que muda a `GraphicsPipelineKey` e a `StageSpecialization` (cada campo com o arquivo:linha do port) |
+| `engine_tables.py` | regras e tabelas do motor, cada uma marcada `EBOOT` (função do eboot) ou `INFERRED` (vira tarefa de RE) |
+| `gcn_mem.py` | acessos a buffer no código GCN (stride e escrita de um V#) |
+| `jobs.py` | o gerador |
+| `jobs_eval.py` | `infer`, `rules`, `eval` |
+
+**Assinatura.** Partes: `vs`, `ps`, `cs` (hash), `vs_rt`, `ps_rt`, `cs_rt` (RuntimeInfo comparado), `ps_in`, `rt`, `depth`, `raster`, `vs_res`, `ps_res`, `cs_res` (um sharp projetado por InputUsageSlot em `flat[startRegister]`, mais os quadros de user data sem slot) e `fetch`. Endereços e tamanhos saem. Na captura de 150 s ela separa 613 dos 614 pipelines gráficos e os 413 de compute que o port montou. Fica de fora: motion vectors, sgprs de draw indireto, `vertex_buffer_formats` (só sem input dinâmico), `start` e `mtype`/`add_tid_enable` (mudam o SPIR-V, mas não a chave: REVISAO B12).
+
+**De onde vem cada parte** (`rules`, captura de 150 s em Seattle, 614 gráficos e 413 compute):
+
+| Parte | Regra | Explica |
+|---|---|---|
+| RSRC1/2, formatos de export, PS_INPUT_ENA/ADDR, IN_CONTROL, BARYC, CB_SHADER_MASK, VS_OUT_* | cabeçalho Gnm | 614/614 cada |
+| DB_SHADER_CONTROL | cabeçalho + regra de carga (EBOOT, FUN_014468e0) | 614/614 (cru: 503) |
+| SPI_PS_INPUT_CNTL | semânticas de export do VS × entrada do PS | 614/614 |
+| RSRC1/2, NUM_THREAD do compute | cabeçalho Gnm | 413/413 |
+| T# de material do PS | efeito + instância + troca sRGB (EBOOT) | 3.027/3.027 (sem a troca: 2.959) |
+| S# do efeito | `smp_desc` pelos pares do pass (EBOOT) | 938/938 |
+| CB | V# canônico | 1.983/1.983 gráficos, 1.348/1.348 compute |
+| V# do fetch | malha da instância de material | 485/545; 52 sem malha ligada ao efeito |
+| estado RT/depth/raster | (pass id, COL_FORMAT) → perfis INFERIDOS de outros pares | 584/614 |
+| V# do motor (VS/PS) e T# do motor | perfis INFERIDOS no mesmo api slot de outros pares | 2.341/2.352, 248/250, 676/687 |
+| compute | modelo do `re_compute` (tabela de slots, stride da definição de partícula, V# anterior nulo/ligado) | ver abaixo |
+
+**Medido (CV de 5 dobras por par/programa: as tabelas inferidas nunca viram o par avaliado).** Gráficos: 85,0% (521/613) com 4,4 registros gerados por necessário; faltas por parte: `rt` 47, `fetch` 26, `ps_res` 22, `vs_res` 22, `depth` 10. Compute: 83,1% com 1,2× (modo `--compute-wide`: 87,2% com 1,9×); as 17 especializações dos 13 CS do motor (imagens) nunca acertam. Jogo inteiro: 7.754 registros gráficos + 13.486 de compute = 21.240 (86 MB), 87 s e 323 MB de RSS.
+
+**Limites.** A medição vale para uma rota de 150 s. As tabelas INFERIDAS saem de uma captura e não vão para o git: o produto ainda depende delas até o RE do eboot as substituir (estado por render slot e V# do motor). A assinatura é um modelo em Python do código C++; o teste final é no jogo.
+
 ---
 
 ## English summary
@@ -92,3 +134,4 @@ Por que os números não confirmados diferem:
 - Code start rule: start = footer − 8·(code[1]+1), code[0] = 0xBEEB03FF (the footer's length field is not the code size).
 - Measured on the game: 10,374 unique shaders, 314,869 code starts, 138,900 pass records, 2,195 VS/PS pairs (879/879 of the reference cache), 22,518 effects, 119,582 texture objects, 210,244 meshes; 44 s cold, 14 s warm.
 - Tests: `python3 -m unittest discover -s tests -p 'test_xpps_index.py'` (synthetic KCAP; the real-game test is skipped without the game folder).
+- Stages 2-3 (`jobs.py`, `jobs_eval.py`, `signature.py`): job builder v1 from the index; the signature keeps only what changes the pipeline key and the stage specialization. Cross-validated against a 150 s capture: 85.0% of graphics pipelines (4.4 records per needed one), 83.1% of compute (1.2x; 87.2% with `--compute-wide`); 21,240 records for the whole game in 87 s. The INFERRED tables come from a capture and stay off git.
