@@ -29,7 +29,9 @@ from typing import Optional, Sequence
 
 from . import kcap, scan
 
-SCHEMA_VERSION = 1
+# 2: same tables, but the link tables split across items are read (knli.read_links): indexes of
+# schema 1 are rebuilt instead of reusing their scans
+SCHEMA_VERSION = 2
 FP_CHUNK = 64 << 10
 HASH_BITS = 1 << 64
 INT64_LIMIT = 1 << 63

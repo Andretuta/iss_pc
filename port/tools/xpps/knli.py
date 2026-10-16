@@ -35,6 +35,7 @@ TAG_XLNK = b"KNLX"
 TAG_OTYP = b"PYTO"
 TAG_SPLP = b"PLPS"
 TAG_END = b" DNE"
+LINK_ITEM_TYPE = 2
 TAGS = {TAG_ILNK: "ILNK", TAG_CID: "CID", TAG_XLNK: "XLNK", TAG_OTYP: "OTYP",
         TAG_SPLP: "SPLP", TAG_END: "END"}
 
@@ -122,7 +123,10 @@ def parse_table(buf, pos: int, end: int, lt: LinkTable) -> int:
             for i in range(n):
                 e = p + 24 + 24 * i
                 h = bytes(buf[e:e + 16])
-                (local,) = struct.unpack_from("<Q", buf, e + 16)
+                # {hash16, u32 local, i32 addend} (FUN_0130a700, all.c l.692753): slot = export + addend
+                local, addend = struct.unpack_from("<Ii", buf, e + 16)
+                if addend:
+                    lt.stats["xlnk_addend"] += 1
                 lt.imports.setdefault(local, h)
         pos = p + size
     lt.stats["no_end"] += 1
@@ -134,7 +138,13 @@ def read_links(pack) -> LinkTable:
     lt = LinkTable()
     ends = {}   # several items (BSS ones included) can start at the same offset: use the largest
     for it in pack.k.items:
-        if pack.valid(it.off, 8) and pack.read(it.off, 4) == TAG_ILNK:
+        # the loader (FUN_0130fc00 -> FUN_0130a310, all.c l.695800/692853) walks the chunk chain
+        # of every link item whatever its first tag: in 54 packages the table is split into a
+        # KNLI-only item and items that start with KNLX, " DIC", PYTO or PLPS
+        if not pack.valid(it.off, 8):
+            continue
+        tag = pack.read(it.off, 4)
+        if tag == TAG_ILNK or (it.type == LINK_ITEM_TYPE and tag in TAGS and tag != TAG_END):
             ends[it.off] = max(ends.get(it.off, 0), it.end)
     for off in sorted(ends):
         parse_table(pack.mm, pack.doff + off, pack.doff + min(ends[off], pack.size), lt)

@@ -71,13 +71,18 @@ class PackBuilder:
             out.append((p - (b << 17)) // 4)
         return out
 
-    def link_table(self):
+    def link_table(self, split=False):
+        """One chunk chain (KNLI, KNLX, CID, END) or, with split, two: KNLI + END and
+        KNLX + CID + END (the layout of the world-block packages)."""
         streams = [(t, self.encode_positions(v)) for t, v in sorted(self.relocs.items()) if v]
         ilnk = struct.pack('<i', len(streams))
         ilnk += b''.join(struct.pack('<ii', t, len(s)) for t, s in streams)
         ilnk += b''.join(struct.pack('<%dh' % len(s), *s) for _, s in streams)
         ilnk += bytes(-len(ilnk) % 4)
         out = b'KNLI' + struct.pack('<I', len(ilnk)) + ilnk
+        if split:
+            first = out + b' DNE' + struct.pack('<I', 0)
+            out = b''
         if self.imports:
             x = struct.pack('<3Q', 0, 16, len(self.imports))
             x += b''.join(h + struct.pack('<Q', local) for local, h in self.imports)
@@ -85,13 +90,18 @@ class PackBuilder:
         if self.cid:
             c = struct.pack('<Q', len(self.cid)) + b''.join(struct.pack('<QQ', l, k) for l, k in self.cid)
             out += b' DIC' + struct.pack('<I', len(c)) + c
-        return out + b' DNE' + struct.pack('<I', 0)
+        out += b' DNE' + struct.pack('<I', 0)
+        return [first, out] if split else [out]
 
-    def build(self, bss_item=True):
-        table = self.link_table()
+    def build(self, bss_item=True, split=False):
+        tables = self.link_table(split)
         link_off = len(self.data)
-        data = bytes(self.data) + table
-        items = self.items + [(link_off, len(table), (2 << 16) | 8)]
+        data = bytes(self.data)
+        items = list(self.items)
+        for t in tables:
+            items.append((len(data), len(t), (2 << 16) | 8))
+            data += t
+        table = tables[0]
         if bss_item:   # runs past the data: BSS
             items.insert(0, (link_off, len(table) + 0x1000, (9 << 16) | 0x10))
         head = bytearray(0x98)
@@ -134,7 +144,7 @@ def gnm_header(b, at, stage, code_at, size, nslots, extra):
     extra(at, at + so + 4 * nslots)
 
 
-def make_pack(with_import=True, with_export=False, name_seed=0):
+def make_pack(with_import=True, with_export=False, name_seed=0, split=False):
     b = PackBuilder()
     b.item(G, 0x1000, 0x11, 0x100)
     b.item(C, 0x1200, 0x1)
@@ -237,7 +247,7 @@ def make_pack(with_import=True, with_export=False, name_seed=0):
         b.u64(ex + 0x20, ex + 0x30)
         b.u64(ex + 0x28, 1)
         b.put(ex + 0x30, struct.pack('<I', 0x5EED) + EXPORT_HASH + struct.pack('<III', 0, EFF, 0))
-    return b.build()
+    return b.build(split=split)
 
 
 class KcapTest(unittest.TestCase):
@@ -278,6 +288,18 @@ class KnliTest(unittest.TestCase):
                 self.assertEqual(lt.imports, {MI_IMPORT + scan.MI_EFFECT: EXPORT_HASH})
                 self.assertEqual(lt.cid[EFF + scan.EFF_OBJECT], 0xE0E0)
                 self.assertEqual(knli.read_exports(pack), [(EXPORT_HASH, EFF)])
+
+    def test_split_tables(self):
+        """World-block layout: the KNLX and CID chunks live in a second link item."""
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'b.xpps'
+            p.write_bytes(make_pack(split=True))
+            with kcap.Pack(str(p)) as pack:
+                lt = knli.read_links(pack)
+                self.assertEqual(lt.tables, 2)
+                self.assertEqual(lt.imports, {MI_IMPORT + scan.MI_EFFECT: EXPORT_HASH})
+                self.assertEqual(lt.cid[EFF + scan.EFF_OBJECT], 0xE0E0)
+                self.assertIn(VS_H + 8, lt.positions(knli.RELOC_GPU_ADDR))
 
 
 class GnmTest(unittest.TestCase):
