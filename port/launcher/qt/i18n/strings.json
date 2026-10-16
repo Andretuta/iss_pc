@@ -23,7 +23,7 @@
   "gfx_preset_quality_what": {"en": "FSR 1 on, shaders compiled before drawing and up-to-date GPU reads. Cleanest image; may hitch in new areas.", "pt": "FSR 1 ligado, shaders compilados antes de desenhar e leituras da GPU em dia. Imagem mais limpa; pode engasgar em áreas novas."},
   "gfx_preset_ps4_what": {"en": "30 FPS like the PS4, no FSR or sharpening, nothing deferred. The image the console showed.", "pt": "30 FPS como no PS4, sem FSR nem nitidez, nada adiado. A imagem que o console mostrava."},
   "gfx_preset_current": {"en": "RECOMMENDED 2", "pt": "RECOMENDADO 2"},
-  "gfx_preset_current_what": {"en": "The maintainer's setup with the game's native draw distance: exact GPU reads, read-ahead off, FSR 1 and the driver pipeline cache.", "pt": "A configuração do autor com o alcance de visão nativo do jogo: leituras exatas da GPU, leitura adiantada desligada, FSR 1 e o cache de pipelines do driver."},
+  "gfx_preset_current_what": {"en": "The maintainer's setup with the game's native draw distance: exact GPU reads, read-ahead off, no FSR 1 or sharpening, and the driver pipeline cache.", "pt": "A configuração do autor com o alcance de visão nativo do jogo: leituras exatas da GPU, leitura adiantada desligada, sem FSR 1 nem nitidez e o cache de pipelines do driver."},
   "gfx_preset_rec1": {"en": "RECOMMENDED 1", "pt": "RECOMENDADO 1"},
   "gfx_preset_rec1_what": {"en": "Recommended 2 with the shorter draw distance of 15/10 (LOD 0.6, far clip 1,418,000): lighter in the city.", "pt": "O Recomendado 2 com o alcance de visão menor de 15/10 (LOD 0.6, plano distante 1.418.000): mais leve na cidade."},
   "gfx_preset_seco": {"en": "BARE", "pt": "SECO"},
