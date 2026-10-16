@@ -264,7 +264,7 @@ VkPhysicalDeviceMemoryProperties:
         settings, stored = gfxlogic.preset_targets('current')
         self.assertEqual(('2', False, True), (settings['gpu_readbacks'], settings['eager_readback'],
                                               settings['write_merge']))
-        self.assertEqual(('1', '1', '1'), tuple(stored[k] for k in ('menu:fsr1', 'BP07', 'BP08')))
+        self.assertEqual((None, '0', '1', '1'), tuple(stored[k] for k in ('menu:fsr1', 'menu:rcas', 'BP07', 'BP08')))   # no FSR 1, no sharpening
         for key in ('menu:lod_scale', 'menu:region_lod', 'menu:region_fade', 'menu:near_clip', 'menu:far_clip',
                     'menu:mip_lod_bias'):                      # draw distance and LOD: always native (nothing stored)
             self.assertIsNone(stored[key], key)
@@ -504,14 +504,15 @@ class ControllerTests(unittest.TestCase):
         saved = self.saved_settings()
         self.assertEqual(('2', False, True), (saved['gpu_readbacks'], saved['eager_readback'], saved['write_merge']))
         ini = self.ini_text()
-        for line in ('fsr1=1', 'bp07=1', 'bp08=1'):
+        for line in ('rcas=0', 'bp07=1', 'bp08=1'):
             self.assertIn(line, ini)
+        self.assertNotIn('fsr1=1', ini)
         for key in ('lod_scale', 'region_lod', 'region_fade', 'near_clip', 'far_clip', 'mip_lod_bias', 'lod_bands'):
             self.assertNotIn(key + '=', ini)
         self.assertIn('current', self.graphics.presetText.lower())
         self.graphics.applyPreset('balanced')
         ini = self.ini_text()
-        self.assertNotIn('fsr1=1', ini)
+        self.assertNotIn('rcas=0', ini)               # balanced: sharpening back to its default (on)
         self.assertIn('bp07=1', ini)
 
     def test_applying_a_full_preset_sends_a_changed_draw_distance_back_to_native(self):
@@ -527,7 +528,7 @@ class ControllerTests(unittest.TestCase):
     def test_applying_the_amd_preset_and_going_back_to_the_current_one(self):
         self.graphics.applyPreset('amd')
         ini = self.ini_text()
-        for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'fsr1=1', 'bp07=1'):
+        for line in ('bp06=0', 'block1d=1', 'bc_tiny=1', 'no_msaa=1', 'rcas=0', 'bp07=1'):
             self.assertIn(line, ini)
         self.assertNotIn('bp08', ini)                  # off is its default: nothing stored
         self.assertIn('amd', self.graphics.presetText.lower())

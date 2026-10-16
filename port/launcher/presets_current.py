@@ -13,17 +13,18 @@ CURRENT = {
     'exported': '2026-10-16',
     'names': {'en': 'RECOMMENDED 2', 'pt': 'RECOMENDADO 2'},
     'what': {
-        'en': 'The maintainer\'s own setup: exact GPU reads (Precise), read-ahead off, FSR 1 on, '
+        'en': 'The maintainer\'s own setup: exact GPU reads (Precise), read-ahead off, no FSR 1 or sharpening, '
               'and the driver pipeline cache. Changes GPU accuracy too.',
         'pt': 'A configuração do próprio autor: leituras exatas da GPU (Preciso), leitura adiantada desligada, '
-              'FSR 1 ligado e o cache de pipelines do driver. '
+              'sem FSR 1 nem nitidez e o cache de pipelines do driver. '
               'Também muda a precisão da GPU.',
     },
     # launcher settings (settings.json): keys the plain presets do not touch, plus VSync
     'settings': {'vsync': True, 'gpu_readbacks': '2', 'eager_readback': False, 'write_merge': True},
     # table items (backports_table.py ids), values as stored strings; a value equal to the default is "off the list"
     'items': {
-        'menu:fsr1': '1',
+        'menu:fsr1': '0',   # FSR 1 and sharpening off (2026-10-16): listed so that applying the preset turns them off
+        'menu:rcas': '0',
         # draw distance and LOD stay native: listed with the game's own values (the defaults), so applying
         # this preset also sends them back to native if they were changed (lod_bands has no launcher item)
         'menu:lod_scale': '1',
