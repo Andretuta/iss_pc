@@ -254,7 +254,7 @@ VkPhysicalDeviceMemoryProperties:
             for item_id, value in items.items():       # a value the table accepts (not silently dropped)
                 item = gfxlogic.item_by_id(item_id)
                 self.assertIn(value, [item.default] + [c[0] for c in item.choices] + ['0', '1'], item_id)
-        self.assertEqual(('current', 'amd', 'performance', 'balanced', 'quality', 'ps4'),
+        self.assertEqual(('rec1', 'current', 'amd', 'seco', 'performance', 'balanced', 'quality', 'ps4'),
                          tuple(p[0] for p in gfxlogic.PRESETS))
 
     def test_current_preset_is_the_maintainers_setup_and_plain_presets_leave_its_keys_alone(self):
@@ -316,6 +316,23 @@ VkPhysicalDeviceMemoryProperties:
         self.assertIsNone(ps4['menu:fsr1'])           # off is the default
         self.assertEqual('0', ps4['menu:rcas'])       # sharpening is on by default: off is stored
         self.assertEqual({'vsync': False}, gfxlogic.preset_targets('performance')[0])
+
+    def test_view_presets(self):
+        _, rec1 = gfxlogic.preset_targets('rec1')
+        _, rec2 = gfxlogic.preset_targets('current')
+        _, bare = gfxlogic.preset_targets('seco')
+        self.assertEqual(('0.6', '0', '0.8', '1418000', '1.25'),
+                         tuple(rec1['menu:' + k] for k in ('lod_scale', 'region_lod', 'region_fade', 'far_clip', 'mip_lod_bias')))
+        for key in ('lod_scale', 'region_lod', 'region_fade', 'far_clip'):   # Recommended 2: native (default: not stored)
+            self.assertIsNone(rec2['menu:' + key], key)
+        for key in ('lod_scale', 'region_lod', 'region_fade', 'far_clip'):   # Bare: the lowest of each range
+            item = gfxlogic.item_by_id('menu:' + key)
+            self.assertEqual(float(item.lo), float(bare['menu:' + key]), key)
+        self.assertEqual(3.0, float(bare['menu:mip_lod_bias']))              # the blurriest textures
+        for key, value in rec2.items():                                      # the rest is Recommended 2
+            if not key.startswith(('menu:lod', 'menu:region', 'menu:far', 'menu:near', 'menu:mip')):
+                self.assertEqual(value, rec1[key], key)
+                self.assertEqual(value, bare[key], key)
 
     def test_every_preset_matches_itself_only(self):
         for preset_id, _, _ in gfxlogic.PRESETS:

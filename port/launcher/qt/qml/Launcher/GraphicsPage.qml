@@ -42,25 +42,44 @@ Item {
                            font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold }
                 }
             }
-            Row {
-                id: presetRow
-                width: parent.width; spacing: 12
+            // A grid that wraps: 4 cards per line on a wide window, fewer on a narrow one; every card of
+            // the grid gets the height of the tallest, so the lines stay even whatever the text.
+            Grid {
+                id: presetGrid
+                width: parent.width
+                columns: width >= 860 ? 4 : (width >= 560 ? 3 : 2)
+                spacing: 12
+                readonly property real cardWidth: (width - (columns - 1) * spacing) / columns
+                property real cardHeight: 150
+                function refit() {
+                    var tallest = 150
+                    for (var i = 0; i < presetCards.count; ++i) {
+                        var card = presetCards.itemAt(i)
+                        if (card) tallest = Math.max(tallest, card.need)
+                    }
+                    cardHeight = tallest
+                }
                 Repeater {
+                    id: presetCards
                     model: Graphics.presets
+                    onItemAdded: presetGrid.refit()
                     Rectangle {
                         readonly property bool hot: presetMouse.containsMouse
-                        width: (presetRow.width - 3 * presetRow.spacing) / 4; height: 150; radius: 12
+                        readonly property real need: presetCol.implicitHeight + 26
+                        onNeedChanged: presetGrid.refit()
+                        width: presetGrid.cardWidth; height: presetGrid.cardHeight; radius: 12
                         color: modelData.active ? Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.10) : hot ? Theme.navHover : Theme.card
                         border.width: modelData.active ? 2 : 1
                         border.color: modelData.active ? page.accent : hot ? Theme.ghostLineHover : Theme.cardLine
                         Column {
+                            id: presetCol
                             x: 14; y: 13; width: parent.width - 28; spacing: 7
-                            Row {
-                                spacing: 8
+                            Flow {
+                                width: parent.width; spacing: 8
                                 Text { text: modelData.label; color: "#fff"; font.family: Theme.fontDisplay; font.variableAxes: ({ "wght": 800 }); font.pixelSize: 20
                                        font.weight: Font.ExtraBold; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.8
-                                       anchors.verticalCenter: parent.verticalCenter }
-                                Tag { visible: modelData.standard; text: Theme.tr("gfx_preset_standard"); tone: "good"; anchors.verticalCenter: parent.verticalCenter }
+                                       width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
+                                Tag { visible: modelData.standard; text: Theme.tr("gfx_preset_standard"); tone: "good" }
                             }
                             Text { width: parent.width; text: modelData.what; wrapMode: Text.WordWrap; color: Theme.textDim
                                    font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.3; lineHeightMode: Text.ProportionalHeight }

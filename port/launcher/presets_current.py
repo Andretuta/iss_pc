@@ -11,7 +11,7 @@ AMD workarounds (BLOCK1D, BC_TINY, NO_MSAA), which stay on "Automatic".
 CURRENT = {
     'id': 'current',
     'exported': '2026-10-16',
-    'names': {'en': 'CURRENTLY RECOMMENDED', 'pt': 'RECOMENDADA ATUALMENTE'},
+    'names': {'en': 'RECOMMENDED 2', 'pt': 'RECOMENDADO 2'},
     'what': {
         'en': 'The maintainer\'s own setup: exact GPU reads (Precise), read-ahead off, FSR 1 on, '
               'and the driver pipeline cache. Changes GPU accuracy too.',
