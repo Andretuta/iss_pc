@@ -68,6 +68,7 @@ class Graphics(QObject):
         backend.profileChanged.connect(self.rebuild)
         backend.langChanged.connect(self.rebuild)
         backend.saves.changed.connect(self.changed)
+        backend.cacheMeasured.connect(self._on_cache_measured)
         self.rebuild()
 
     # -- helpers ------------------------------------------------------------------------------------
@@ -360,15 +361,14 @@ class Graphics(QObject):
 
     # -- shader cache ----------------------------------------------------------------------------------------
     def read_cache_bytes(self):
-        if 'cache' in self.backend.probes:
-            return self.backend.probes['cache']()
-        try:
-            return tlg_run.shader_cache_size(self.settings)
-        except Exception:
-            return 0
+        return self.backend.cache_bytes()   # measured off the UI thread (Backend.measure_cache)
 
     def cache_bytes(self):
         return self._cache
+
+    def _on_cache_measured(self, _size):
+        self._cache = self.read_cache_bytes()
+        self.changed.emit()
 
     @Property(str, notify=changed)
     def cacheText(self):

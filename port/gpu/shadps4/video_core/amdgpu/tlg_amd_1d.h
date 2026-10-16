@@ -18,8 +18,15 @@ inline std::atomic<bool> img_trace{false};
 inline std::atomic<bool> img_1d_no_storage{false};
 inline std::atomic<bool> img_1d_no_mutable{false};
 
+// The trace is for the crash that follows the first 1D image, so it stops after a few thousand lines:
+// a 1D image that is transitioned every frame filled the log (and the launcher's window) with
+// "GPU trace: Transit". TLG_IMG_TRACE_LINES=N changes the limit, 0 removes it.
+inline std::atomic<unsigned> img_trace_lines{0};
+inline std::atomic<unsigned> img_trace_limit{2000};
+
 inline bool ImgTrace() {
-    return img_trace.load(std::memory_order_relaxed);
+    return img_trace.load(std::memory_order_relaxed) &&
+           img_trace_lines.load(std::memory_order_relaxed) < img_trace_limit.load(std::memory_order_relaxed);
 }
 
 } // namespace AmdGpu
@@ -28,7 +35,12 @@ inline bool ImgTrace() {
 #define TLG_IMG_TRACE(...)                                                                         \
     do {                                                                                           \
         if (::AmdGpu::ImgTrace()) {                                                                \
+            const unsigned trace_n = ::AmdGpu::img_trace_lines.fetch_add(1) + 1;                   \
             std::printf("GPU trace: " __VA_ARGS__);                                                \
+            if (trace_n == ::AmdGpu::img_trace_limit.load()) {                                     \
+                std::printf("GPU trace: stopped after %u lines (TLG_IMG_TRACE_LINES=0 keeps it)\n", \
+                            trace_n);                                                              \
+            }                                                                                      \
             std::fflush(stdout);                                                                   \
         }                                                                                          \
     } while (0)

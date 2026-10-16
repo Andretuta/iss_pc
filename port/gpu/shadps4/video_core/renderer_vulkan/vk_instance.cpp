@@ -920,6 +920,10 @@ void Instance::CollectDeviceParameters() {
         return v && *v ? *v == '1' : fallback;
     };
     AmdGpu::img_trace.store(env_flag("TLG_IMG_TRACE", driver_id == vk::DriverId::eAmdProprietary));
+    if (const char* lines = std::getenv("TLG_IMG_TRACE_LINES")) {
+        const int limit = std::atoi(lines);
+        AmdGpu::img_trace_limit.store(limit > 0 ? static_cast<unsigned>(limit) : ~0u);
+    }
     AmdGpu::img_1d_no_storage.store(env_flag("TLG_1D_NO_STORAGE", false));
     AmdGpu::img_1d_no_mutable.store(env_flag("TLG_1D_NO_MUTABLE", false));
     if (AmdGpu::ImgTrace() || AmdGpu::img_1d_no_storage || AmdGpu::img_1d_no_mutable) {
