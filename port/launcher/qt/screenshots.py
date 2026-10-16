@@ -117,7 +117,6 @@ def demo_backend(with_art=False, saves_dir=None, pt=True):
     probes['updates'] = {'version': lambda: 'v2026.10.13-3f2a9c1', 'open_url': lambda url: None, 'save': lambda s: None,
                          'fetch': lambda version: demo_release()}
     demo_logs()
-    probes['graphics'] = {'defender_shown': lambda: True, 'defender': lambda folder: 'ok'}   # the Windows card, no prompt
     backend = Backend(settings=settings, probes=probes)
     backend._gpu = probes['gpu']()
     backend.fix_states = states
@@ -198,12 +197,6 @@ def screens_a_shots(app, backend, out):
         graphics.scrollRequested.emit(99999)
         app.grab(out / f'graficos-{lang}-limpar.png')
         graphics.cancelClear()
-        graphics._on_defender('ok')                        # the Defender card after the exclusion was added
-        graphics.scrollRequested.emit(99999)
-        app.grab(out / f'graficos-{lang}-defender.png')
-        graphics._def_msg = ''
-        graphics.settings['defender_excluded'] = ''
-        graphics.changed.emit()
         graphics.scrollRequested.emit(0)
         graphics.applyPreset('balanced')
         graphics.setValue('s:vram_budget_mb', '3500')
