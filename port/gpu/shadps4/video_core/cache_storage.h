@@ -57,6 +57,8 @@ public:
     size_t CountBlobs(BlobType type);
     /// tlg: the name (no extension) of every blob of a type, without reading it.
     void ForEachBlobName(BlobType type, const std::function<void(std::string_view name)>& func);
+    /// tlg: waits until every queued save is on disk.
+    void WaitIdle();
 
 private:
     std::jthread io_worker{};

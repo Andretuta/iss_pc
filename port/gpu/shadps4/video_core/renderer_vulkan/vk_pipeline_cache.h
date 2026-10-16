@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <shared_mutex>
 #include <variant>
 #include <boost/container/static_vector.hpp>
@@ -221,6 +222,12 @@ private:
     bool SaveDriverCacheUnchecked();
     void SeedWorkerCaches();
     bool CheckCacheProfile();
+    /// tlg: without TLG_ASYNC_WAIT_MS, a draw waits up to 4 ms for its pipeline build (precompiled
+    /// caches: the shaders are ready and the driver has the pipeline cached).
+    void UseDefaultPipelineWait();
+    /// tlg: reads every cached permutation of a program not in program_cache yet (precompiled
+    /// caches load programs when the game first uses them instead of all at the start).
+    bool LoadProgramFromCache(u64 hash);
     /// tlg: index for a new permutation of `program`: past every index the cache on disk holds.
     size_t NewPermutationIndex(const Program& program, u64 hash) const;
     struct BackgroundWarmup;
@@ -280,10 +287,14 @@ private:
     /// overwritten with another specialization, and the .key files that name it would build
     /// their pipelines with the wrong shader in the next session. Filled by CheckCacheProfile.
     std::unordered_map<u64, size_t> next_permutation;
+    /// tlg: precompiled cache: programs load on first use (LoadProgramFromCache), not at the start.
+    bool lazy_programs = false;
+    std::unordered_set<u64> lazy_tried;
     std::vector<Program*> pending_programs;
     /// tlg: exclusive for program/permutation insertions, shared for worker lookups.
     std::shared_mutex programs_mutex;
     u64 prepared_hits = 0, prepared_misses = 0;
+    u64 lazy_loaded_programs = 0, lazy_loaded_permutations = 0;
     const PreparedDraw* used_prepared = nullptr;
     tsl::robin_map<ComputePipelineKey, std::unique_ptr<ComputePipeline>> compute_pipelines;
     tsl::robin_map<GraphicsPipelineKey, std::unique_ptr<GraphicsPipeline>> graphics_pipelines;

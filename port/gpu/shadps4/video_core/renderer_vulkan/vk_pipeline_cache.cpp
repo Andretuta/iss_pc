@@ -1163,7 +1163,15 @@ struct AsyncWaitBudget {
     }
 };
 AsyncWaitBudget async_wait; // GPU thread only (pipeline selection)
+bool async_wait_set_by_env = std::getenv("TLG_ASYNC_WAIT_MS") != nullptr;
 } // namespace
+
+void PipelineCache::UseDefaultPipelineWait() {
+    if (!async_wait_set_by_env) {
+        async_wait.per_draw = std::chrono::milliseconds(4);
+        std::printf("GPU: a draw waits up to 4 ms for its pipeline (precompiled cache)\n");
+    }
+}
 
 const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectParams params,
                                                            const PreparedDraw* prepared) {
@@ -1858,6 +1866,9 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
     };
 
     auto it_pgm = program_cache.find(params.hash); // this thread is the only writer
+    if (it_pgm == program_cache.end() && lazy_programs && LoadProgramFromCache(params.hash)) {
+        it_pgm = program_cache.find(params.hash);
+    }
     const bool compile_async = AsyncCompilation() && hw_stage != HwStage::Compute &&
                                !sel.regs->stage_enable.hs_en &&
                                !EmulatorSettings.IsShaderCollect() &&

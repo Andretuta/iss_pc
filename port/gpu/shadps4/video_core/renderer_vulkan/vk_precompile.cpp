@@ -10,11 +10,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "common/assert.h"
+#include "common/assert_scope.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
 #include "video_core/amdgpu/regs.h"
 #include "video_core/amdgpu/regs_shader.h"
 #include "video_core/amdgpu/resource.h"
+#include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_precompile.h"
@@ -382,8 +384,17 @@ bool PipelineCache::PrecompileFirstStart(const std::function<void(u32 total)>& s
     const auto folder = Storage::GameCacheDir();
     const auto size = std::filesystem::file_size(jobs, ec);
     const auto stamp = std::filesystem::last_write_time(jobs, ec).time_since_epoch().count();
+    // The driver's own pipeline cache is lost when the driver or the GPU changes: then compile
+    // again so that the pipelines are in it (SCSKiller's finding: a driver update clears it).
+    const auto uuid = instance.GetPipelineCacheUUID();
+    u64 uuid_hash = 0;
+    for (const u8 byte : uuid) {
+        uuid_hash = uuid_hash * 1099511628211ull ^ byte;
+    }
     const std::string fingerprint =
-        fmt::format("{} {} {}\n", size, stamp, ShaderBinaryVersionForCache());
+        fmt::format("{} {} {} {:x}:{:x}:{:x}:{:x}\n", size, stamp, ShaderBinaryVersionForCache(),
+                    instance.GetVendorID(), instance.GetDeviceID(), instance.GetDriverVersion(),
+                    uuid_hash);
     if (ReadSmallFile(folder / Precompile::DoneFile) == fingerprint) {
         return false;
     }
@@ -392,14 +403,26 @@ bool PipelineCache::PrecompileFirstStart(const std::function<void(u32 total)>& s
         return false;
     }
     // A record that crashed the last start is skipped (it compiles in game, as before).
+    // "<record>|<crashes>|<fingerprint>": after three starts that stopped while compiling, it
+    // gives up (the game compiles in game as before) instead of failing at every start.
     size_t first = 0;
+    u32 crashes = 0;
     if (const auto text = ReadSmallFile(folder / Precompile::ProgressFile); !text.empty()) {
         const auto split = text.find('|');
-        if (split != std::string::npos && text.substr(split + 1) == fingerprint) {
+        const auto split2 = split == std::string::npos ? split : text.find('|', split + 1);
+        if (split2 != std::string::npos && text.substr(split2 + 1) == fingerprint) {
             first = std::strtoull(text.c_str(), nullptr, 10) + 1;
-            std::printf("Precompile: the last start stopped in record %zu: resuming after it\n",
+            crashes = u32(std::strtoul(text.c_str() + split + 1, nullptr, 10)) + 1;
+            std::printf("Precompile: start %u stopped in record %zu: resuming after it\n", crashes,
                         first - 1);
         }
+    }
+    if (crashes >= 3) {
+        std::printf("Precompile: stopped %u times, giving up: shaders compile in game\n", crashes);
+        WriteSmallFile(folder / Precompile::DoneFile, fingerprint);
+        std::error_code remove_ec;
+        std::filesystem::remove(folder / Precompile::ProgressFile, remove_ec);
+        return false;
     }
     if (first >= records.size()) {
         WriteSmallFile(folder / Precompile::DoneFile, fingerprint);
@@ -410,10 +433,30 @@ bool PipelineCache::PrecompileFirstStart(const std::function<void(u32 total)>& s
     const auto progress_path = folder / Precompile::ProgressFile;
     Precompile(records, [&](u32 done, u32 total) {
         if (done < total) {
-            WriteSmallFile(progress_path, fmt::format("{}|{}", first + done, fingerprint));
+            WriteSmallFile(progress_path, fmt::format("{}|{}|{}", first + done, crashes, fingerprint));
         }
         progress(done, total);
     });
+    // Release what the compilation loaded: the game loads each program again when it first uses
+    // it (LoadProgramFromCache), so this start does not keep the whole game's shaders in memory.
+    Storage::DataBase::Instance().WaitIdle();
+    size_t released = 0;
+    {
+        std::unique_lock lock{programs_mutex};
+        for (auto& [hash, program] : program_cache) {
+            auto& next = next_permutation[hash];
+            next = std::max(next, program->modules.size());
+            for (auto& module : program->modules) {
+                if (module.module) {
+                    instance.GetDevice().destroyShaderModule(module.module);
+                    ++released;
+                }
+            }
+        }
+        program_cache.clear();
+    }
+    std::printf("Precompile: released %zu shader modules (they load again on first use)\n",
+                released);
     WriteSmallFile(folder / Precompile::DoneFile, fingerprint);
     std::filesystem::remove(progress_path, ec);
     return true;
@@ -429,6 +472,9 @@ Precompile::Result PipelineCache::Precompile(
     auto regs = std::make_unique<AmdGpu::Regs>();
     AmdGpu::ComputeProgram cs{};
     std::unordered_map<u64, std::vector<u32>> flats;
+    // Each pipeline is built (the driver caches it), saved, and released: the game builds it again
+    // when it needs it. Keeping all of them took ~7 GiB with the whole game's job file.
+    std::unordered_set<u64> built_graphics, built_compute;
     const auto started = std::chrono::steady_clock::now();
     for (const auto& record : records) {
         ++result.records;
@@ -444,6 +490,7 @@ Precompile::Result PipelineCache::Precompile(
         PipelineSelection selection{};
         selection.sync_compile = true;
         try {
+            const Common::ScopedAssertThrows recoverable;
             if (record.kind == 0) {
                 regs->reg_array.fill(0);
                 for (const auto& [index, value] : record.regs) {
@@ -461,7 +508,9 @@ Precompile::Result PipelineCache::Precompile(
                 selection.regs = regs.get();
                 if (!RefreshGraphicsKey(selection)) {
                     ++result.failed;
-                } else if (graphics_pipelines.contains(selection.graphics_key)) {
+                } else if (graphics_pipelines.contains(selection.graphics_key) ||
+                           !built_graphics.insert(std::hash<GraphicsPipelineKey>{}(
+                                selection.graphics_key)).second) {
                     ++result.skipped;
                 } else {
                     const auto pipeline_hash = std::hash<GraphicsPipelineKey>{}(selection.graphics_key);
@@ -471,7 +520,6 @@ Precompile::Result PipelineCache::Precompile(
                         *pipeline_cache, selection.infos, selection.runtime_infos,
                         selection.fetch_shader, selection.modules, sdata, false);
                     RegisterPipelineData(selection.graphics_key, pipeline_hash, sdata);
-                    graphics_pipelines.emplace(selection.graphics_key, std::move(pipeline));
                     ++num_new_pipelines;
                     ++result.graphics;
                 }
@@ -493,7 +541,8 @@ Precompile::Result PipelineCache::Precompile(
                 ComputePipelineKey key{};
                 if (!RefreshComputeKey(selection, key)) {
                     ++result.failed;
-                } else if (compute_pipelines.contains(key)) {
+                } else if (compute_pipelines.contains(key) ||
+                           !built_compute.insert(std::hash<ComputePipelineKey>{}(key)).second) {
                     ++result.skipped;
                 } else {
                     ComputePipeline::SerializationSupport sdata{};
@@ -501,13 +550,14 @@ Precompile::Result PipelineCache::Precompile(
                         instance, scheduler, desc_heap, profile, *pipeline_cache, key,
                         *selection.infos[0], selection.modules[0], sdata, false, nullptr);
                     RegisterPipelineData(key, sdata);
-                    compute_pipelines.emplace(key, std::move(pipeline));
                     ++num_new_pipelines;
                     ++result.compute;
                 }
             }
         } catch (const std::exception& e) {
-            std::printf("Precompile: record %u failed: %s\n", result.records, e.what());
+            if (result.failed < 20) {
+                std::printf("Precompile: record %u failed: %s\n", result.records, e.what());
+            }
             ++result.failed;
         }
         Shader::Info::replay_flats = nullptr;
