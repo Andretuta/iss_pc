@@ -11,14 +11,21 @@ import subprocess
 from pathlib import Path
 
 import backports_table
+from presets_current import CURRENT
 
 # ------------------------------------------------------------------------------------- presets
 # Keys a preset sets (anything a preset does not list goes back to the default of the table).
 PRESET_SETTINGS = ('vsync',)
 PRESET_ITEMS = ('menu:fps_limit', 'menu:frames_queued', 'menu:fsr1', 'menu:rcas', 'menu:rcas_strength',
                 'TLG_ASYNC_SHADERS', 'TLG_STALE_READBACK', 'TLG_DEFERRED_READBACK', 'TLG_BACKGROUND_WARMUP')
+# Full presets (presets_current.py) also set keys the plain ones never touch (GPU accuracy, read-ahead,
+# write merge, draw distance...): those keys are applied, and compared, only for the preset that lists them.
+FULL_PRESETS = {CURRENT['id']: CURRENT}
+# Defaults of the launcher settings a full preset may set (infamous_run.DEFAULT_SETTINGS; a test keeps them equal).
+SETTING_DEFAULTS = {'vsync': True, 'gpu_readbacks': '2', 'eager_readback': False, 'write_merge': True}
 # id, settings overrides, item overrides (values as strings; unlisted = default)
 PRESETS = (
+    (CURRENT['id'], CURRENT['settings'], CURRENT['items']),
     ('performance', {'vsync': False}, {'menu:frames_queued': '2', 'menu:fsr1': '1', 'TLG_STALE_READBACK': '1'}),
     ('balanced', {}, {}),
     ('quality', {}, {'menu:fsr1': '1'}),
@@ -39,14 +46,25 @@ def preset_targets(preset_id):
     stored = {}
     for item_id in PRESET_ITEMS:
         stored[item_id] = backports_table.normalize(item_by_id(item_id), items.get(item_id))
+    if preset_id in FULL_PRESETS:      # only a full preset owns the extra keys
+        for key, value in overrides.items():
+            settings[key] = value
+        for item_id, value in items.items():
+            stored[item_id] = backports_table.normalize(item_by_id(item_id), value)
     return settings, stored
+
+
+def _same_setting(key, current, wanted):
+    default = SETTING_DEFAULTS.get(key, True)
+    value = default if current is None else current
+    return str(value).lower() == str(wanted).lower()
 
 
 def matching_preset(settings, states):
     """The id of the preset the current switches equal, or None (custom). `states` = fix states."""
     for preset_id, _, _ in PRESETS:
         want_settings, want_items = preset_targets(preset_id)
-        if all(bool(settings.get(k, True)) == v for k, v in want_settings.items()) and \
+        if all(_same_setting(k, settings.get(k), v) for k, v in want_settings.items()) and \
            all(states.get(i) == v for i, v in want_items.items()):
             return preset_id
     return None

@@ -244,13 +244,41 @@ VkPhysicalDeviceMemoryProperties:
     def test_presets_only_use_keys_that_exist(self):
         ids = {i.id for i in backports_table.ITEMS}
         self.assertTrue(set(gfxlogic.PRESET_ITEMS) <= ids)
-        for _, settings, items in gfxlogic.PRESETS:
+        for preset_id, settings, items in gfxlogic.PRESETS:
+            if preset_id in gfxlogic.FULL_PRESETS:      # a full preset also owns keys the plain ones never touch
+                self.assertTrue(set(settings) <= set(gfxlogic.SETTING_DEFAULTS))
+                self.assertTrue(set(items) <= ids)
+                continue
             self.assertTrue(set(settings) <= set(gfxlogic.PRESET_SETTINGS))
             self.assertTrue(set(items) <= set(gfxlogic.PRESET_ITEMS))
             for item_id, value in items.items():       # a value the table accepts (not silently dropped)
                 item = gfxlogic.item_by_id(item_id)
                 self.assertIn(value, [item.default] + [c[0] for c in item.choices] + ['0', '1'], item_id)
-        self.assertEqual(('performance', 'balanced', 'quality', 'ps4'), tuple(p[0] for p in gfxlogic.PRESETS))
+        self.assertEqual(('current', 'performance', 'balanced', 'quality', 'ps4'),
+                         tuple(p[0] for p in gfxlogic.PRESETS))
+
+    def test_current_preset_is_the_maintainers_setup_and_plain_presets_leave_its_keys_alone(self):
+        import infamous_run
+        for key, default in gfxlogic.SETTING_DEFAULTS.items():      # kept equal to the launcher's defaults
+            self.assertEqual(str(default).lower(), str(infamous_run.DEFAULT_SETTINGS[key]).lower(), key)
+        settings, stored = gfxlogic.preset_targets('current')
+        self.assertEqual(('2', False, True), (settings['gpu_readbacks'], settings['eager_readback'],
+                                              settings['write_merge']))
+        self.assertEqual(('1', '0.6', '0', '0.8', '1418000', '1.25', '1', '1'),
+                         tuple(stored[k] for k in ('menu:fsr1', 'menu:lod_scale', 'menu:region_lod',
+                                                   'menu:region_fade', 'menu:far_clip', 'menu:mip_lod_bias',
+                                                   'BP07', 'BP08')))
+        self.assertIsNone(stored['menu:fps_limit'])
+        for preset_id in ('performance', 'balanced', 'quality', 'ps4'):
+            plain_settings, plain_items = gfxlogic.preset_targets(preset_id)
+            self.assertEqual({'vsync'}, set(plain_settings), preset_id)
+            self.assertNotIn('menu:lod_scale', plain_items)
+            self.assertNotIn('BP07', plain_items)
+        # the plain presets do not reach its keys, so it is only recognised when they all match
+        base_settings, base_items = gfxlogic.preset_targets('balanced')
+        self.assertEqual('balanced', gfxlogic.matching_preset(base_settings, base_items))
+        self.assertEqual('current', gfxlogic.matching_preset(settings, stored))
+        self.assertNotEqual('current', gfxlogic.matching_preset(settings, dict(stored, **{'menu:lod_scale': '0.5'})))
 
     def test_balanced_is_the_default_and_ps4_is_30fps_without_fsr(self):
         settings, stored = gfxlogic.preset_targets('balanced')
@@ -429,6 +457,21 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn('frames_queued', self.ini_text())
         self.graphics.setValue('menu:fps_limit', '120')
         self.assertIn('custom', self.graphics.presetText)
+
+    def test_applying_the_current_preset_stores_every_key_and_balanced_undoes_only_its_own(self):
+        self.graphics.applyPreset('current')
+        saved = self.saved_settings()
+        self.assertEqual(('2', False, True), (saved['gpu_readbacks'], saved['eager_readback'], saved['write_merge']))
+        ini = self.ini_text()
+        for line in ('fsr1=1', 'lod_scale=0.6', 'region_lod=0', 'region_fade=0.8', 'far_clip=1418000',
+                     'mip_lod_bias=1.25', 'bp07=1', 'bp08=1'):
+            self.assertIn(line, ini)
+        self.assertIn('current', self.graphics.presetText.lower())
+        self.graphics.applyPreset('balanced')
+        ini = self.ini_text()
+        self.assertNotIn('fsr1=1', ini)
+        self.assertIn('lod_scale=0.6', ini)        # a plain preset leaves the draw distance alone
+        self.assertIn('bp07=1', ini)
 
     def test_presets_leave_other_choices_alone(self):
         self.graphics.setValue('s:display_mode', 'Fullscreen')
