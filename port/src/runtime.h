@@ -3,6 +3,14 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+/* Detailed log mode (ISS_VERBOSE_LOG=1/2 -> TLG_VERBOSE_LOG): 0 off, else the level. Read once per
+ * file; the extra logging of the runtime files is guarded by it, so it costs one test when off. */
+static inline int runtime_verbose(void) {
+    static int level=-1;
+    if (level<0) { const char *e=getenv("TLG_VERBOSE_LOG"); level=e ? atoi(e) : 0; if (level<0) level=0; }
+    return level;
+}
 #ifdef _WIN32
 #include "compat_win.h"
 /* No signals on Windows: the exception handler resumes the thread in tlg_longjmp

@@ -6,6 +6,7 @@ path (infamous_run.prepare/launch), same tlg.ini as the Tk launcher.
 
     python3 infamous_launcher_qt.py            # needs: pip install PySide6-Essentials
 """
+import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ import infamous_run as tlg_run  # noqa: E402
 
 
 def main():
+    multiprocessing.freeze_support()   # packaged: the shader list generator starts worker processes (re-runs this exe)
     args = sys.argv[1:]
     # Same packaged roles as the Tk launcher: preparation scripts and a window-less --play.
     if args[:1] == ['--script'] and len(args) > 1:

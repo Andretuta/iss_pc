@@ -16,8 +16,10 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 import backports_table
+import logtail
 import shader_cache
 import padsettings
 import savemanager
@@ -113,6 +115,8 @@ DEFAULT_SETTINGS = {
     'eager_readback': False,  # ISS_EAGER_READBACK: copy GPU results the game reads back at each fence
     'write_merge': True,     # ISS_WRITE_MERGE: game memcpy/memset into GPU memory without a GPU wait
     'deferred_readback': True,  # ISS_DEFERRED_READBACK: the game thread waits for its own GPU reads
+    'precompile_shaders': True,  # launcher: make the shader jobs list before the game starts (precompile.py)
+    'close_on_play': True,  # launcher: close about 2 s after the game starts (an open launcher cost ~30% FPS in CPU-bound scenes)
     'gpu_readbacks': '2',    # 2 precise: GPU particles (smoke to drain) need it; 0 fast skips them
 }
 
@@ -598,9 +602,20 @@ def new_log():
     return log
 
 
+def detach_options():
+    """Popen options that make the game an independent process: closing the launcher (or its
+    terminal) does not reach it. Linux: its own session. Windows: its own process group and no
+    console at all (stdout/stderr go to the log file, so nothing needs one)."""
+    if os.name == 'nt':
+        return {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
+    return {'start_new_session': True}
+
+
 def launch(settings, seconds=0, extra_env=None):
     """Writes the in-game settings, starts the game; returns (process, log path).
-    The process's combined output is a text pipe; the caller copies it to the log."""
+    The game writes stdout and stderr straight into the log file (no pipe, nobody reads it while
+    the game runs), and runs detached from the launcher; the caller may follow the file with
+    logtail.LogTail and wait() for the exit code."""
     data = user_dir()
     data.mkdir(parents=True, exist_ok=True)
     update_ini(data / 'tlg.ini', {
@@ -617,9 +632,10 @@ def launch(settings, seconds=0, extra_env=None):
            '--timeout', str(int(seconds))]
     if ISA_TABLE.is_file():
         cmd += ['--isa-rewrite', str(ISA_TABLE)]
-    process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                               encoding='utf-8', errors='replace', bufsize=1)
+    with open(log, 'wb') as out:   # the child keeps its own copy of the descriptor
+        process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
+                                   stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                   **detach_options())
     return process, log
 
 
@@ -652,11 +668,18 @@ def main(argv=None):
         return 1
     process, log = launch(settings, seconds)
     print(f'Rodando (log: {log})', flush=True)
-    with open(log, 'w', encoding='utf-8') as out:
-        for line in process.stdout:
-            sys.stdout.write(line)
-            out.write(line)
-            out.flush()
+    tail = logtail.LogTail(log, max_lines=1)
+    try:
+        while process.poll() is None:      # echo the log file to the terminal, once a second
+            for line in tail.poll():
+                sys.stdout.write(line + '\n')
+            sys.stdout.flush()
+            time.sleep(1)
+    except KeyboardInterrupt:              # the game is detached: Ctrl+C in the terminal stops it here
+        process.terminate()
+    for line in tail.poll(final=True):
+        sys.stdout.write(line + '\n')
+    sys.stdout.flush()
     return process.wait()
 
 

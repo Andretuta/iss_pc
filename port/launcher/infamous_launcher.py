@@ -7,6 +7,7 @@ game through infamous_run.py (the same code path as run_infamous.sh) and shows i
 Settings live in ~/.config/infamous-launcher/settings.json (%APPDATA% on Windows).
 """
 import locale
+import multiprocessing
 import os
 from pathlib import Path
 import queue
@@ -15,11 +16,18 @@ import sys
 import threading
 import webbrowser
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import backports_table  # noqa: E402
 import infamous_run as tlg_run  # noqa: E402  (same API as the TLG core)
+import logtail  # noqa: E402
+import precompile  # noqa: E402
+import preset_share  # noqa: E402
+
+LOG_LINES = 500           # lines the log panel keeps
+LOG_POLL_MS = 1000        # how often the game's log file is read
+CLOSE_DELAY_MS = 2000     # 'Close the launcher when the game starts': wait after the start
 
 TEXT = {
     'title': ('inFAMOUS Second Son — PC', 'inFAMOUS Second Son — PC'),
@@ -112,6 +120,10 @@ TEXT = {
     'occlusion': ('Light glare (occlusion)', 'Brilho das luzes (oclusão)'),
     'occlusion_hint': ('How much of a light the game counts as visible. 3 (recommended) keeps the headlight glow from showing through characters; 0 is the old behaviour. Applies on the next start.',
                        'Quanto de uma luz o jogo conta como visível. 3 (recomendado) evita o brilho dos faróis aparecer por cima dos personagens; 0 é o comportamento antigo. Vale na próxima partida.'),
+    'close_on_play': ('Close the launcher when the game starts', 'Fechar o launcher ao abrir o jogo'),
+    'verbose_log': ('Detailed log', 'Log detalhado'),
+    'verbose_log_hint': ('For problem reports: the log records much more (files, controller, audio, GPU with time and thread). It gets large and the game may run a little slower. Applies on the next start.',
+                         'Para relatar problemas: o log registra muito mais (arquivos, controle, áudio, GPU com horário e thread). Ele fica grande e o jogo pode ficar um pouco mais lento. Vale na próxima partida.'),
     'exp_auto': ('Automatic', 'Automático'),
     'exp_on': ('On', 'Ligado'),
     'exp_off': ('Off', 'Desligado'),
@@ -127,6 +139,8 @@ TEXT = {
     'exp_previous_hint': ('"Like the previous release" writes bp01=0 ... for every fix that is on by default (the same as starting with TLG_BACKPORTS=0); the boxes show it, and you can turn single ones back on.', '"Como a release anterior" grava bp01=0 ... em todas as correções que vêm ligadas (é o mesmo que iniciar com TLG_BACKPORTS=0); as caixas mostram isso e você pode religar uma a uma.'),
     'exp_close': ('Close', 'Fechar'),
 }
+TEXT.update(preset_share.TEXT)   # export / import of configuration files
+TEXT.update(precompile.TEXT)   # shader list texts: one table for both launchers
 TEXT.update(tlg_run.TEXT)  # game folder problems (old libc.prx, other eboot), shared with the command line
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
@@ -162,6 +176,10 @@ class Launcher:
         self.root = root
         self.settings = tlg_run.load_settings()
         self.process = None
+        self.tail = None
+        self.precompiler = precompile.Precompiler()
+        self.starting = False    # Play pressed, game not yet running (preparing / making the shader list)
+        self._jobs_step = {}
         self.lines = queue.Queue()
         self.build()
         self.root.after(100, self.pump)
@@ -270,6 +288,8 @@ class Launcher:
         self.combo(video, 5, 'gpu_readbacks', ['0', '1', '2'], lambda k: self.t('readbacks_' + k))
         self.check(video, 6, 'eager_readback')
         self.check(video, 7, 'write_merge')
+        self.check(video, 8, 'precompile_shaders')
+        self.check(video, 9, 'close_on_play')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -293,6 +313,18 @@ class Launcher:
         occ_combo.bind('<<ComboboxSelected>>',
                        lambda _, o=occ_options, b=occ_combo, i=occ_item: self.exp_set(i, o[b.current()][0]))
         ttk.Label(occ_box, text=self.t('occlusion_hint'), foreground='#777', wraplength=360,
+                  justify='left').grid(row=1, column=0, sticky='w', pady=(6, 0))
+
+        # Detailed log, right under the light glare box (same file/env path as the other switches).
+        log_item = next(i for i in backports_table.ITEMS if i.key == 'verbose_log')
+        log_box = ttk.LabelFrame(middle, text=self.t('verbose_log'), padding=8)
+        log_box.grid(sticky='ew', pady=(8, 0))
+        log_box.columnconfigure(0, weight=1)
+        log_var = tk.BooleanVar(value=backports_table.effective(log_item, self.exp_states) == '1')
+        ttk.Checkbutton(log_box, text=self.t('verbose_log'), variable=log_var,
+                        command=lambda v=log_var, i=log_item: self.exp_set(i, '1' if v.get() else '0')
+                        ).grid(row=0, column=0, sticky='w')
+        ttk.Label(log_box, text=self.t('verbose_log_hint'), foreground='#777', wraplength=360,
                   justify='left').grid(row=1, column=0, sticky='w', pady=(6, 0))
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
@@ -394,14 +426,14 @@ class Launcher:
         if not tlg_run.blocking(problems):
             texts.append(self.t('ready'))
         self.status.configure(text='\n'.join(texts), foreground='#b00020' if problems else '#555')
-        self.play_button.configure(state='disabled' if tlg_run.blocking(problems) or self.process else 'normal')
+        self.play_button.configure(state='disabled' if tlg_run.blocking(problems) or self.process or self.starting else 'normal')
         reported = tuple(problems)
         if reported != getattr(self, 'reported', ()):  # each new problem also goes to the log once
             self.reported = reported
             for (key, _), text in zip(problems, texts):
                 if key in tlg_run.TEXT:
                     self.append(text)
-        self.cache_button.configure(state='disabled' if self.process else 'normal')
+        self.cache_button.configure(state='disabled' if self.process or self.starting else 'normal')
 
     def browse(self, key):
         path = filedialog.askdirectory(initialdir=self.vars[key].get() or str(Path.home()))
@@ -417,7 +449,7 @@ class Launcher:
 
     def clear_cache(self):
         """Clear shader cache: asks first, never while the game runs; shows how much was freed."""
-        if self.process:
+        if self.process or self.starting:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
         size = tlg_run.shader_cache_size(self.settings)
@@ -497,6 +529,56 @@ class Launcher:
         self.exp_save()
         self.build_experimental()
 
+    def exp_port_version(self):
+        try:
+            from qt import report
+            return report.current_version((tlg_run.PORT_DIR, tlg_run.REPO_DIR), tlg_run.LOG_DIR)
+        except Exception:
+            return ''
+
+    def exp_export(self):
+        parent = getattr(self, 'exp_window', None) or self.root
+        name = simpledialog.askstring(self.t('ps_export_title'), self.t('ps_name'), parent=parent)
+        if name is None:
+            return
+        what = simpledialog.askstring(self.t('ps_export_title'), self.t('ps_what'), parent=parent) or ''
+        path = filedialog.asksaveasfilename(parent=parent, title=self.t('ps_save_title'), defaultextension='.json',
+                                            initialfile=preset_share.default_filename(name),
+                                            filetypes=[(self.t('ps_filter'), '*.json')])
+        if not path:
+            return
+        preset = preset_share.export_preset(self.settings, self.exp_states, name, what, self.exp_port_version())
+        try:
+            final = preset_share.write_preset(preset, path)
+        except OSError as error:
+            messagebox.showerror(self.t('ps_export_title'), self.t('ps_export_failed', detail=str(error)), parent=parent)
+            return
+        messagebox.showinfo(self.t('ps_export_title'), self.t('ps_exported', path=str(final)), parent=parent)
+
+    def exp_import(self):
+        parent = getattr(self, 'exp_window', None) or self.root
+        path = filedialog.askopenfilename(parent=parent, title=self.t('ps_open_title'),
+                                          filetypes=[(self.t('ps_filter'), '*.json'), ('*', '*')])
+        if not path:
+            return
+        title = self.t('ps_import_title')
+        preset, problems = preset_share.read_preset(path)
+        if preset is None:
+            messagebox.showerror(title, '\n'.join(preset_share.problem_text(p, self.t) for p in problems), parent=parent)
+            return
+        changes = preset_share.diff(preset, self.settings, self.exp_states)
+        body, lines = preset_share.summary_lines(preset, problems, changes, self.t, self.pt())
+        text = '\n'.join([body, ''] + ['• ' + line for line in lines])
+        if not changes:
+            messagebox.showinfo(title, text, parent=parent)
+            return
+        if not messagebox.askyesno(title, text + '\n\n' + self.t('ps_apply') + '?', parent=parent):
+            return
+        preset_share.apply_preset(preset, self.settings, self.exp_states)
+        self.exp_save()
+        self.build_experimental()
+        messagebox.showinfo(title, self.t('ps_imported', name=preset['profile'], n=len(changes)), parent=parent)
+
     def scrolled(self, parent):
         canvas = tk.Canvas(parent, highlightthickness=0, height=400)
         bar = ttk.Scrollbar(parent, command=canvas.yview)
@@ -550,6 +632,8 @@ class Launcher:
         ttk.Button(buttons, text=self.t('exp_previous'), command=lambda: self.exp_reset('previous')).pack(side='left')
         ttk.Button(buttons, text=self.t('exp_defaults'), command=lambda: self.exp_reset('defaults')).pack(
             side='left', padx=8)
+        ttk.Button(buttons, text=self.t('ps_export'), command=self.exp_export).pack(side='left')
+        ttk.Button(buttons, text=self.t('ps_import'), command=self.exp_import).pack(side='left', padx=8)
 
     def exp_tags(self, item):
         tags = [self.t('exp_live') if item.live else self.t('exp_restart')]
@@ -636,18 +720,35 @@ class Launcher:
         self.log.configure(state='disabled')
 
     def play(self):
-        if self.process:
+        if self.process or self.starting:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
+        self.starting = True
         self.changed()
         self.append(self.t('preparing'))
         self.play_button.configure(state='disabled')
         self.cache_button.configure(state='disabled')
+        self.precompiler = precompile.Precompiler()
         threading.Thread(target=self.run_game, daemon=True).start()
+
+    def jobs_progress(self, phase, n, total):
+        """A line in the log every 25% of a generator phase (the log has no progress bar)."""
+        step = (4 * n // total) if total else 0
+        if step > self._jobs_step.get(phase, 0):
+            self._jobs_step[phase] = step
+            if n < total:
+                self.lines.put(f'  {precompile.message(precompile.PHASE_TEXT.get(phase, "jobs_phase_other"), self.settings, phase=phase)} {100 * n // total}%')
 
     def run_game(self):
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lines.put(line))
+            self._jobs_step = {}
+            outcome = precompile.prepare_jobs(self.settings, log=lambda line: self.lines.put(line),
+                                              progress=self.jobs_progress, precompiler=self.precompiler)
+            if outcome == 'cancelled':   # window closed in the middle: do not start the game
+                self.lines.put(self.t('jobs_cancelled'))
+                self.lines.put(('stopped', None))
+                return
             self.process, log = tlg_run.launch(self.settings)
         except tlg_run.GameError as error:  # a problem with the game files, in the launcher's language
             text = self.t(error.key, detail=error.detail)
@@ -659,12 +760,8 @@ class Launcher:
             self.lines.put(('error', str(error)))
             return
         self.lines.put(f"{self.t('running')} {log}")
-        with open(log, 'w', encoding='utf-8') as out:
-            for line in self.process.stdout:
-                out.write(line)
-                out.flush()
-                self.lines.put(line.rstrip('\n'))
-        code = self.process.wait()
+        self.lines.put(('started', log))
+        code = self.process.wait()   # the game writes its own log file; here only the exit code
         self.process = None
         self.lines.put(('ended', code))
 
@@ -672,9 +769,15 @@ class Launcher:
         try:
             while True:
                 item = self.lines.get_nowait()
-                if isinstance(item, tuple):
+                if isinstance(item, tuple) and item[0] == 'started':
+                    self.start_tail(item[1])
+                elif isinstance(item, tuple):
                     kind, value = item
-                    if kind == 'error':
+                    self.starting = False
+                    self.stop_tail()
+                    if kind == 'stopped':
+                        pass
+                    elif kind == 'error':
                         messagebox.showerror(self.t('error'), value)
                     else:
                         message = self.t('ended' if value in (0, -15) else 'crashed', code=value)
@@ -688,15 +791,45 @@ class Launcher:
             pass
         self.root.after(100, self.pump)
 
+    def start_tail(self, log):
+        """Follow the game's log file once a second; optionally close the launcher soon after."""
+        self.tail = logtail.LogTail(log, LOG_LINES)
+        self.root.after(LOG_POLL_MS, self.tail_tick)
+        if self.settings.get('close_on_play'):
+            self.root.after(CLOSE_DELAY_MS, self.quit)
+
+    def stop_tail(self):
+        if self.tail is not None:
+            self.show_lines(self.tail.poll(final=True))
+            self.tail = None
+
+    def tail_tick(self):
+        if self.tail is not None:
+            self.show_lines(self.tail.poll())
+            self.root.after(LOG_POLL_MS, self.tail_tick)
+
+    def show_lines(self, lines):
+        """New log lines in one go: a single insert and a single scroll per tick."""
+        if not lines:
+            return
+        self.log.configure(state='normal')
+        self.log.insert('end', '\n'.join(lines) + '\n')
+        extra = int(self.log.index('end-1c').split('.')[0]) - LOG_LINES
+        if extra > 0:
+            self.log.delete('1.0', f'{extra + 1}.0')
+        self.log.see('end')
+        self.log.configure(state='disabled')
+
     def quit(self):
-        if self.process:
-            self.process.terminate()
+        # The game is an independent process: closing the launcher does not close it.
+        self.precompiler.cancel()
         self.root.destroy()
 
 
 def main():
     # Packaged executable roles: --script <file> runs a preparation script, --play starts the
     # game with the saved settings and no launcher window (shortcuts, Steam).
+    multiprocessing.freeze_support()   # packaged: the shader list generator starts worker processes (re-runs this exe)
     args = sys.argv[1:]
     if args[:1] == ['--script'] and len(args) > 1:
         sys.exit(tlg_run.run_script(args[1:]))

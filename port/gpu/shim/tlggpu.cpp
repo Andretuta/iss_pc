@@ -266,6 +266,29 @@ static void LogPlayerConfig() {
     std::printf("Config: ----\n");
 }
 
+// tlg: the part of tlggpu_init that the shader precompiler needs without a window or the game:
+// the player's settings (the backports chosen there change the shader cache version) and the
+// game's identity (some recompiler switches are on by default for this serial).
+extern "C" void tlggpu_init_headless(const TlgGpuConfig* config) {
+    TlgSettings::Load();
+    {
+        const auto& settings = TlgSettings::Get();
+        for (int i = 0; i < TlgSettings::kBackportPrefs; ++i) {
+            const int pref = settings.backport_pref[i].load();
+            if (pref >= 0) {
+                Common::Backports::ApplyConfig(static_cast<std::size_t>(i), pref != 0);
+            }
+        }
+    }
+    g_sdk_version = config->sdk_version;
+#ifdef _WIN32
+    if (config->user_dir && !std::getenv("TLG_GPU_USER_DIR")) _putenv_s("TLG_GPU_USER_DIR", config->user_dir);
+#else
+    if (config->user_dir) setenv("TLG_GPU_USER_DIR", config->user_dir, 0);
+#endif
+    Core::Emulator::FillElfInfo(*config);
+}
+
 extern "C" int tlggpu_init(const TlgGpuConfig* config) {
     TlgSettings::Load();
     // tlg: the fixes chosen in the launcher or the in-game menu (bpNN in tlg.ini); an environment

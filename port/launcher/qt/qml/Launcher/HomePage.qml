@@ -96,6 +96,14 @@ Item {
                                font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.DemiBold
                                color: Backend.canPlay ? "#160a04" : "#8a6a5a" }
                     }
+                    Rectangle {   // shader list progress (first start): thin bar along the button's bottom edge
+                        visible: Backend.jobsProgressValue >= 0
+                        x: 24; width: playBtn.width - 48; height: 4; radius: 2
+                        anchors.bottom: parent.bottom; anchors.bottomMargin: 8
+                        color: "#5a3a2a"
+                        Rectangle { width: parent.width * Math.max(0, Backend.jobsProgressValue); height: parent.height
+                                    radius: 2; color: "#160a04" }
+                    }
                     MouseArea { id: playMouse; anchors.fill: parent; hoverEnabled: true
                                 enabled: Backend.canPlay; cursorShape: Qt.PointingHandCursor; onClicked: Backend.play() }
                     Accessible.role: Accessible.Button
@@ -173,6 +181,21 @@ Item {
                     }
                 }
                 Text { width: parent.width; text: Theme.tr("occlusion_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
+                       font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.25; lineHeightMode: Text.ProportionalHeight }
+            }
+            Column {   // detailed log (ISS_VERBOSE_LOG), right under the light glare selector
+                width: parent.width; spacing: 6
+                Row {
+                    spacing: 12
+                    Text { text: Theme.tr("verbose_log"); color: Theme.textMuted; font.family: Theme.fontText; font.pixelSize: 13; font.weight: Font.Bold
+                           anchors.verticalCenter: parent.verticalCenter }
+                    Toggle {
+                        accent: page.accent
+                        checked: Backend.verboseLog
+                        onToggled: (v) => Backend.setVerboseLog(v)
+                    }
+                }
+                Text { width: parent.width; text: Theme.tr("verbose_log_hint"); wrapMode: Text.WordWrap; color: Theme.textDim
                        font.family: Theme.fontText; font.pixelSize: 12; lineHeight: 1.25; lineHeightMode: Text.ProportionalHeight }
             }
             Item {

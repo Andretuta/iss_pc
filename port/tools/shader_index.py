@@ -6,17 +6,20 @@ size and stage. No game bytes are copied: `lookup --dump` writes a shader to std
 when asked, nothing is kept.
 
 OrbShdr block (AmdGpu::BinaryInfo in video_core/amdgpu/regs_shader.h, 28 bytes). It sits
-right after the code it describes, so the code is [header_offset - length, header_offset):
+right after the code it describes:
     0..6   "OrbShdr"            7  version
     8..11  u32 bit0 pssl_or_cg, bit1 cached, bits2-5 stage type, bits6-7 source, bits8-31 length
     12..15 usage info          16..23 u64 shader_hash (the key the port uses)   24..27 crc32
-A block is accepted only when length != 0, length % 4 == 0 and length <= header_offset
-(the same test as BinaryInfoMatchesCode); anything else counts as "rejected".
+The code start is NOT header_offset - length: the code begins with code[0] = 0xBEEB03FF and the
+header sits at start + 8*(code[1] + 1) (xpps/gnm.py, the test of FindBinaryInfo). A block is
+accepted only when exactly one such start exists; anything else counts as "rejected". The code
+of a shader is [start, header_offset).
 
 Index (SQLite, default ~/decomp/iss_ref/shader_index/shader_index.sqlite):
     files(id, path)            path relative to the scanned root
     occ(hash, file_id, offset, size, stage, type)
-                               every occurrence; offset is where the CODE starts; hash is the
+                               every occurrence; offset is where the CODE starts (start rule
+                               above), size = header_offset - offset; hash is the
                                u64 stored as signed int64 (use `lookup`, not hand-written SQL)
     shaders(hash PK, file_id, offset, size, stage, type, n_occ, n_variants)
                                one canonical row per hash (first occurrence in path order);
@@ -43,6 +46,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from xpps import gnm  # noqa: E402
+
 HOME = Path.home()
 DEFAULT_ROOT = HOME / "decomp/infamous_pc/game/CUSA00223/art/cache"
 DEFAULT_DB = HOME / "decomp/iss_ref/shader_index/shader_index.sqlite"
@@ -51,13 +57,14 @@ DEFAULT_CACHES = (
     str(HOME / "decomp/infamous_pc*/port/user/shader"),
 )
 
-# OrbShdr layout (see module docstring).
-SIGNATURE = b"OrbShdr"
-HEADER_SIZE = 28
-FLAGS_OFFSET = 8
-HASH_OFFSET = 16
-TYPE_SHIFT, TYPE_MASK = 2, 0xF
-LENGTH_SHIFT = 8
+# OrbShdr layout (see module docstring and xpps/gnm.py).
+SIGNATURE = gnm.SIGNATURE
+HEADER_SIZE = gnm.FOOTER_SIZE
+FLAGS_OFFSET = gnm.FLAGS_OFFSET
+HASH_OFFSET = gnm.HASH_OFFSET
+TYPE_SHIFT, TYPE_MASK = gnm.TYPE_SHIFT, gnm.TYPE_MASK
+LENGTH_SHIFT = gnm.LENGTH_SHIFT
+CODE_MARKER = gnm.CODE_MARKER
 
 BLOCK_SIZE = 64 << 20
 # A header may straddle two blocks: read this much past the block end.
@@ -116,14 +123,28 @@ def from_signed(value: int) -> int:
     return value + HASH_BITS if value < 0 else value
 
 
-def parse_header(buf: bytes, pos: int, file_offset: int) -> Optional[ShaderRef]:
-    """Decode the OrbShdr at buf[pos:]; None when it fails the BinaryInfoMatchesCode test."""
-    flags = struct.unpack_from("<I", buf, pos + FLAGS_OFFSET)[0]
-    length = flags >> LENGTH_SHIFT
-    if length == 0 or length % 4 or length > file_offset:
+def parse_header(buf: bytes, pos: int, file_offset: int, f=None) -> Optional[ShaderRef]:
+    """Decode the OrbShdr at buf[pos:] (file offset `file_offset`); None unless the code start
+    rule finds exactly one start. The code before the header is looked up in `buf` when it is
+    there, otherwise read from the open file `f`."""
+    footer = gnm.parse_footer(buf, pos)
+    if footer is None:
         return None
-    (shader_hash,) = struct.unpack_from("<Q", buf, pos + HASH_OFFSET)
-    return ShaderRef(shader_hash, file_offset - length, length, (flags >> TYPE_SHIFT) & TYPE_MASK)
+    lo = max(0, file_offset - footer.length - gnm.START_SEARCH_SLACK)
+    if file_offset - pos <= lo:            # the whole search window is inside buf
+        starts = gnm.code_starts(buf, pos, pos - (file_offset - lo), footer.length)
+        base = file_offset - pos
+    elif f is not None:
+        f.seek(lo)
+        window = f.read(file_offset - lo)
+        starts = gnm.code_starts(window, len(window), 0, footer.length)
+        base = lo
+    else:
+        return None
+    if len(starts) != 1:
+        return None
+    start = base + starts[0]
+    return ShaderRef(footer.hash, start, file_offset - start, footer.type)
 
 
 def scan_stream(f, size: int, counts: ScanCounts) -> Iterator[ShaderRef]:
@@ -137,7 +158,7 @@ def scan_stream(f, size: int, counts: ScanCounts) -> Iterator[ShaderRef]:
             if i + HEADER_SIZE > len(buf):
                 counts.truncated += 1
             else:
-                ref = parse_header(buf, i, start + i)
+                ref = parse_header(buf, i, start + i, f)
                 if ref:
                     counts.headers += 1
                     yield ref

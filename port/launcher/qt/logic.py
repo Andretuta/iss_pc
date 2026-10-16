@@ -39,7 +39,8 @@ def tk_text():
         import infamous_launcher
         return dict(infamous_launcher.TEXT)
     except Exception:  # tkinter missing in a slim Python
-        return dict(tlg_run.TEXT)
+        import preset_share
+        return {**preset_share.TEXT, **tlg_run.TEXT}
 
 
 def system_is_portuguese():
@@ -98,7 +99,7 @@ _GROUP_OF = {
     'TLG_ASYNC_SHADERS': 'perf', 'TLG_DEFERRED_READBACK': 'perf', 'TLG_STALE_READBACK': 'perf',
     'TLG_BACKGROUND_WARMUP': 'perf',
     'BP09': 'tex', 'BP10': 'tex', 'TLG_BLOCK1D': 'tex', 'TLG_BC_TINY': 'tex', 'TLG_NO_MSAA': 'tex',
-    'BP06': 'exp', 'TLG_RFL_ALL': 'exp', 'TLG_PIPELINE_BINARIES': 'exp',
+    'BP06': 'exp', 'TLG_RFL_ALL': 'exp', 'TLG_PIPELINE_BINARIES': 'exp', 'TLG_VERBOSE_LOG': 'exp',
 }
 
 

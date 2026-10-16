@@ -40,20 +40,43 @@ def item_by_id(item_id):
     return next(i for i in backports_table.ITEMS if i.id == item_id)
 
 
+def _full_targets(overrides, items):
+    """Targets of a full preset: the plain keys plus every key the preset lists."""
+    settings = {'vsync': overrides.get('vsync', True)}
+    stored = {item_id: backports_table.normalize(item_by_id(item_id), items.get(item_id))
+              for item_id in PRESET_ITEMS}
+    settings.update(overrides)
+    for item_id, value in items.items():
+        stored[item_id] = backports_table.normalize(item_by_id(item_id), value)
+    return settings, stored
+
+
 def preset_targets(preset_id):
     """({settings key: value}, {item id: stored value or None}) for a preset: every key a preset
     can set, so applying one also undoes what another set."""
     _, overrides, items = next(p for p in PRESETS if p[0] == preset_id)
-    settings = {'vsync': overrides.get('vsync', True)}
-    stored = {}
-    for item_id in PRESET_ITEMS:
-        stored[item_id] = backports_table.normalize(item_by_id(item_id), items.get(item_id))
     if preset_id in FULL_PRESETS:      # only a full preset owns the extra keys
-        for key, value in overrides.items():
-            settings[key] = value
-        for item_id, value in items.items():
-            stored[item_id] = backports_table.normalize(item_by_id(item_id), value)
-    return settings, stored
+        return _full_targets(overrides, items)
+    stored = {item_id: backports_table.normalize(item_by_id(item_id), items.get(item_id))
+              for item_id in PRESET_ITEMS}
+    return {'vsync': overrides.get('vsync', True)}, stored
+
+
+def custom_targets(preset):
+    """The targets of a preset that is not in PRESETS (an imported file, see preset_share.py): it is
+    applied as a full preset. `preset` has the layout of presets_current.CURRENT."""
+    return _full_targets(preset.get('settings', {}), preset.get('items', {}))
+
+
+def apply_targets(settings, states, targets):
+    """Puts the targets of a preset into the launcher settings and the fix states (in place); the
+    caller saves them (Backend._save_fixes in Qt, tlg_run.save_experimental in Tk)."""
+    settings.update(targets[0])
+    states.update(targets[1])
+
+
+def same_setting(key, current, wanted):
+    return _same_setting(key, current, wanted)
 
 
 def _same_setting(key, current, wanted):

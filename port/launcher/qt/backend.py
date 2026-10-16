@@ -5,7 +5,8 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, Qt, QUrl, Signal, Slot)
+from PySide6.QtCore import (Property, QAbstractListModel, QCoreApplication, QModelIndex, QObject, Qt, QTimer, QUrl,
+                            Signal, Slot)
 
 from . import logic
 from .saves import Saves
@@ -13,6 +14,12 @@ from .support import Support
 from .updates import Updates
 from .logic import backports_table, tlg_run
 import advanced_table  # noqa: E402
+import logtail  # noqa: E402
+import precompile  # noqa: E402
+
+LOG_LINES = 500           # lines the log panel keeps
+LOG_POLL_MS = 1000        # how often the game's log file is read for the panel
+CLOSE_DELAY_MS = 2000     # 'Close the launcher when the game starts': wait after the start
 
 URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g',
         'sponsor': 'https://github.com/sponsors/HayatoG'}
@@ -141,7 +148,9 @@ class Backend(QObject):
     gameLanguageChanged = Signal()
     gpuFound = Signal(object)
     lineReceived = Signal(str)
+    jobsProgress = Signal(str, int, int)   # shader list: phase, done, total (from the play thread)
     finished = Signal(int)
+    gameStarted = Signal(str)   # the log path; from the play thread right after the game was launched
     message = Signal(str)
     guideChanged = Signal()
     scrollRequested = Signal(int)   # used by the screenshot tool
@@ -169,7 +178,15 @@ class Backend(QObject):
         self.advanced = FixesModel(self, 'adv')
         self.gpuFound.connect(self._on_gpu)
         self.lineReceived.connect(self._on_line)
+        self.jobsProgress.connect(self._on_jobs_progress)
+        self.precompiler = precompile.Precompiler()
+        self._jobs = None        # (phase, done, total) while the shader list is being made
         self.finished.connect(self._on_finished)
+        self.gameStarted.connect(self._on_game_started)
+        self._tail = None        # logtail.LogTail of the running game's log
+        self._tail_timer = QTimer(self)
+        self._tail_timer.setInterval(LOG_POLL_MS)
+        self._tail_timer.timeout.connect(self._poll_log)
         self.refresh()
         self.saves = Saves(self, self.probes.get('saves'))
         self.support = Support(self, self.probes.get('support'))
@@ -290,6 +307,8 @@ class Backend(QObject):
 
     @Property(str, notify=stateChanged)
     def playSubtitle(self):
+        if self._jobs:
+            return self.jobsText
         if self._play_state == 'launching':
             return self.t_('play_launching')
         if self._play_state == 'running':
@@ -297,6 +316,27 @@ class Backend(QObject):
         if not self.canPlay:
             return self.t_('play_blocked')
         return self.t_('play_continue', save=self._save) if self._save else self.t_('play_new')
+
+    @Property(str, notify=stateChanged)
+    def jobsText(self):
+        """'Indexing the game files… 42%' while the generator runs, else ''."""
+        if not self._jobs:
+            return ''
+        phase, done, total = self._jobs
+        text = precompile.message(precompile.PHASE_TEXT.get(phase, 'jobs_phase_other'), self.settings, phase=phase)
+        return f'{text} {100 * done // total}%' if total else text
+
+    @Property(float, notify=stateChanged)
+    def jobsProgressValue(self):
+        """0..1 of the generator's current phase, -1 when it is not running."""
+        if not self._jobs:
+            return -1.0
+        _, done, total = self._jobs
+        return min(1.0, done / total) if total else 0.0
+
+    def _on_jobs_progress(self, phase, done, total):
+        self._jobs = (phase, done, total)
+        self.stateChanged.emit()
 
     @Property(bool, notify=stateChanged)
     def canPlay(self):
@@ -329,7 +369,7 @@ class Backend(QObject):
 
     @Property(str, notify=logChanged)
     def logText(self):
-        return '\n'.join(self._log[-400:])
+        return '\n'.join(self._log[-LOG_LINES:])
 
     @Property(str, notify=stateChanged)
     def notice(self):
@@ -371,6 +411,7 @@ class Backend(QObject):
             backports_table.mark_notice_seen(self.settings)
             tlg_run.save_settings(self.settings)
         self._play_state = 'launching'
+        self.precompiler = precompile.Precompiler()
         self._log = [self.t_('preparing')]
         self.logChanged.emit()
         self.stateChanged.emit()
@@ -379,34 +420,64 @@ class Backend(QObject):
     def _run_game(self):
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lineReceived.emit(line))
+            outcome = precompile.prepare_jobs(self.settings, log=lambda line: self.lineReceived.emit(line),
+                                              progress=lambda *args: self.jobsProgress.emit(*args),
+                                              precompiler=self.precompiler)
+            self._jobs = None
+            if outcome == 'cancelled':   # window closed or Quit in the middle: no half file, no game
+                self.lineReceived.emit(self.t_('jobs_cancelled'))
+                self.finished.emit(-1000)
+                return
             self.process, log = tlg_run.launch(self.settings)
         except tlg_run.GameError as error:
             self.lineReceived.emit(self.t_(error.key, detail=error.detail))
             self.finished.emit(-1000)
             return
         except Exception as error:  # shown to the player; the launcher keeps running
+            self._jobs = None
             self.lineReceived.emit(str(error))
             self.finished.emit(-1000)
             return
         self.lineReceived.emit(f"{self.t_('running')} {log}")
         self._play_state = 'running'
         self.stateChanged.emit()
-        with open(log, 'w', encoding='utf-8') as out:
-            for line in self.process.stdout:
-                out.write(line)
-                out.flush()
-                self.lineReceived.emit(line.rstrip('\n'))
-        code = self.process.wait()
+        self.gameStarted.emit(str(log))
+        code = self.process.wait()   # the game writes its own log file; here only the exit code
         self.process = None
         self.finished.emit(code)
 
+    def _on_game_started(self, log):
+        """Main thread: follow the log file once a second and, if asked, close the launcher."""
+        self._tail = logtail.LogTail(log, LOG_LINES)
+        self._tail_timer.start()
+        if self.settings.get('close_on_play'):
+            QTimer.singleShot(CLOSE_DELAY_MS, self._quit_app)
+
+    def _quit_app(self):
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _poll_log(self, final=False):
+        """Reads the bytes the game appended; the panel is rebuilt once per tick, never per line."""
+        if self._tail is None:
+            return
+        new = self._tail.poll(final=final)
+        if new:
+            self._log.extend(new)
+            del self._log[:-LOG_LINES]
+            self.logChanged.emit()
+
     def _on_line(self, line):
         self._log.append(line)
-        del self._log[:-2000]
+        del self._log[:-LOG_LINES]
         self.logChanged.emit()
 
     def _on_finished(self, code):
         self._play_state = 'idle'
+        self._tail_timer.stop()
+        self._poll_log(final=True)
+        self._tail = None
         if code == -1000:
             pass
         else:
@@ -415,8 +486,9 @@ class Backend(QObject):
         self.refresh()
 
     def shutdown(self):
-        if self.process:
-            self.process.terminate()
+        # The game is an independent process: closing the launcher does not close it.
+        self.precompiler.cancel()
+        self._tail_timer.stop()
 
     # -- fixes ----------------------------------------------------------------------------------
     @Property(QObject, constant=True)
@@ -492,6 +564,18 @@ class Backend(QObject):
     @Slot(str)
     def setOcclusion(self, value):
         self.setFix(self._occlusion_item().id, value)
+
+    def _verbose_log_item(self):
+        return next(i for i in backports_table.ITEMS if i.key == 'verbose_log')
+
+    @Property(bool, notify=profileChanged)
+    def verboseLog(self):
+        """The "Detailed log" switch on the Home screen, under the light glare selector."""
+        return backports_table.effective(self._verbose_log_item(), self.fix_states) == '1'
+
+    @Slot(bool)
+    def setVerboseLog(self, on):
+        self.setFix(self._verbose_log_item().id, '1' if on else '0')
 
     # -- game language (voice and text; the interface language above is separate) ---------------
     @Property('QVariantList', notify=langChanged)

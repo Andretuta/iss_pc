@@ -11,6 +11,9 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <miniz.h>
 
 #include <condition_variable>
@@ -394,6 +397,12 @@ void DataBase::ForEachBlobName(BlobType type,
     std::error_code error;
     for (const auto& entry : std::filesystem::directory_iterator{cache_path, error}) {
         visit(entry.path().filename().string());
+    }
+}
+
+void DataBase::WaitIdle() {
+    while (opened && std::atomic_ref<u32>(num_requests).load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 

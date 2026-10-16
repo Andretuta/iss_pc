@@ -158,10 +158,11 @@ static int gamepad_active(SDL_Gamepad *g) {
 static SDL_Gamepad *current_gamepad(void) {
     static uint64_t last_scan;
     if (!sdl_ready) sdl_ready = SDL_WasInit(SDL_INIT_GAMEPAD) ? 1 : SDL_InitSubSystem(SDL_INIT_GAMEPAD) ? 1 : -1;
-    if (sdl_ready<0) return NULL;
+    if (sdl_ready<0) { if (runtime_verbose()) { static int once; if (!once++) printf("Verbose: SDL gamepad subsystem failed to start (%s)\n",SDL_GetError()); } return NULL; }
     for (int i=0;i<MAX_GAMEPADS;++i)
         if (gamepads[i] && !SDL_GamepadConnected(gamepads[i])) {
             if (gamepads[i]==gamepad) gamepad=NULL;
+            if (runtime_verbose()) printf("Verbose: gamepad disconnected: %s (slot %d)\n",SDL_GetGamepadName(gamepads[i]),i);
             SDL_CloseGamepad(gamepads[i]); gamepads[i]=NULL;
         }
     const uint64_t now=now_us();
@@ -177,7 +178,11 @@ static SDL_Gamepad *current_gamepad(void) {
             }
             if (open || slot<0) continue;
             gamepads[slot]=SDL_OpenGamepad(ids[c]);
-            if (gamepads[slot]) { ++connected_count; printf("Runtime: gamepad connected: %s\n",SDL_GetGamepadName(gamepads[slot])); }
+            if (gamepads[slot]) {
+                ++connected_count; printf("Runtime: gamepad connected: %s\n",SDL_GetGamepadName(gamepads[slot]));
+                if (runtime_verbose()) printf("Verbose: gamepad slot %d: id %u, type %s, %d connected\n",slot,(unsigned)ids[c],
+                                              SDL_GetGamepadStringForType(SDL_GetGamepadType(gamepads[slot])),(int)connected_count);
+            } else if (runtime_verbose()) printf("Verbose: gamepad id %u could not be opened (%s)\n",(unsigned)ids[c],SDL_GetError());
         }
         SDL_free(ids);
     }
@@ -880,12 +885,13 @@ static ABI int32_t pad_open(int32_t user, int32_t type, int32_t index, const voi
     pthread_mutex_lock(&lock);
     int already=opened; opened=1;
     pthread_mutex_unlock(&lock);
-    if (already) return ERR_ALREADY_OPENED;
+    if (already) { if (runtime_verbose()) puts("Verbose: scePadOpen refused: already open"); return ERR_ALREADY_OPENED; }
     puts("Runtime: pad opened for user 1 (SDL gamepad or keyboard)");
     return PAD_HANDLE;
 }
 static ABI int32_t pad_close(int32_t handle) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;
+    if (runtime_verbose()) puts("Verbose: scePadClose");
     opened=0; return 0;
 }
 static ABI int32_t pad_read_state(int32_t handle, PadData *data) {

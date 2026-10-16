@@ -251,6 +251,13 @@ DIAGNOSTICS = [
                 'quanto de uma luz está visível é falso. 1 = nada visível, 2 = tudo visível, 3 = contagem zero; '
                 '0 é o comportamento antigo; 3 é o padrão. Mande o log e uma captura de cada modo.'),
                source='diagnóstico (liverpool.cpp ZPASS_DONE)'),
+    _ab('verbose_log', 'TLG_VERBOSE_LOG', False, False, False, ('Detailed log (for bug reports)', 'Log detalhado (para relatórios de problema)'),
+        ('Turns on every safe trace switch, the GPU log at debug level, timestamps and thread ids on GPU lines, and extra '
+         'messages for files, gamepads, semaphores, audio and boot steps. The log gets very large and the game may run a '
+         'little slower, so turn it on only to send the log with a problem report.',
+         'Liga todas as opções de rastreio seguras, o log da GPU em nível debug, horário e id da thread nas linhas da GPU e '
+         'mensagens extras sobre arquivos, controles, semáforos, áudio e etapas da inicialização. O log fica muito grande e o '
+         'jogo pode ficar um pouco mais lento; ligue só para enviar o log junto de um relatório de problema.')),
 ]
 
 import advanced_table  # noqa: E402
