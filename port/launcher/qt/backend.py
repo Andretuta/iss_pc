@@ -5,7 +5,8 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, QObject, Qt, QUrl, Signal, Slot)
+from PySide6.QtCore import (Property, QAbstractListModel, QCoreApplication, QModelIndex, QObject, Qt, QTimer, QUrl,
+                            Signal, Slot)
 
 from . import logic
 from .saves import Saves
@@ -13,7 +14,12 @@ from .support import Support
 from .updates import Updates
 from .logic import backports_table, tlg_run
 import advanced_table  # noqa: E402
+import logtail  # noqa: E402
 import precompile  # noqa: E402
+
+LOG_LINES = 500           # lines the log panel keeps
+LOG_POLL_MS = 1000        # how often the game's log file is read for the panel
+CLOSE_DELAY_MS = 2000     # 'Close the launcher when the game starts': wait after the start
 
 URLS = {'channel': 'https://www.youtube.com/@hayatog-dev', 'discord': 'https://discord.gg/UMkdMYZh9g',
         'sponsor': 'https://github.com/sponsors/HayatoG'}
@@ -144,6 +150,7 @@ class Backend(QObject):
     lineReceived = Signal(str)
     jobsProgress = Signal(str, int, int)   # shader list: phase, done, total (from the play thread)
     finished = Signal(int)
+    gameStarted = Signal(str)   # the log path; from the play thread right after the game was launched
     message = Signal(str)
     guideChanged = Signal()
     scrollRequested = Signal(int)   # used by the screenshot tool
@@ -175,6 +182,11 @@ class Backend(QObject):
         self.precompiler = precompile.Precompiler()
         self._jobs = None        # (phase, done, total) while the shader list is being made
         self.finished.connect(self._on_finished)
+        self.gameStarted.connect(self._on_game_started)
+        self._tail = None        # logtail.LogTail of the running game's log
+        self._tail_timer = QTimer(self)
+        self._tail_timer.setInterval(LOG_POLL_MS)
+        self._tail_timer.timeout.connect(self._poll_log)
         self.refresh()
         self.saves = Saves(self, self.probes.get('saves'))
         self.support = Support(self, self.probes.get('support'))
@@ -357,7 +369,7 @@ class Backend(QObject):
 
     @Property(str, notify=logChanged)
     def logText(self):
-        return '\n'.join(self._log[-400:])
+        return '\n'.join(self._log[-LOG_LINES:])
 
     @Property(str, notify=stateChanged)
     def notice(self):
@@ -429,22 +441,43 @@ class Backend(QObject):
         self.lineReceived.emit(f"{self.t_('running')} {log}")
         self._play_state = 'running'
         self.stateChanged.emit()
-        with open(log, 'w', encoding='utf-8') as out:
-            for line in self.process.stdout:
-                out.write(line)
-                out.flush()
-                self.lineReceived.emit(line.rstrip('\n'))
-        code = self.process.wait()
+        self.gameStarted.emit(str(log))
+        code = self.process.wait()   # the game writes its own log file; here only the exit code
         self.process = None
         self.finished.emit(code)
 
+    def _on_game_started(self, log):
+        """Main thread: follow the log file once a second and, if asked, close the launcher."""
+        self._tail = logtail.LogTail(log, LOG_LINES)
+        self._tail_timer.start()
+        if self.settings.get('close_on_play'):
+            QTimer.singleShot(CLOSE_DELAY_MS, self._quit_app)
+
+    def _quit_app(self):
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _poll_log(self, final=False):
+        """Reads the bytes the game appended; the panel is rebuilt once per tick, never per line."""
+        if self._tail is None:
+            return
+        new = self._tail.poll(final=final)
+        if new:
+            self._log.extend(new)
+            del self._log[:-LOG_LINES]
+            self.logChanged.emit()
+
     def _on_line(self, line):
         self._log.append(line)
-        del self._log[:-2000]
+        del self._log[:-LOG_LINES]
         self.logChanged.emit()
 
     def _on_finished(self, code):
         self._play_state = 'idle'
+        self._tail_timer.stop()
+        self._poll_log(final=True)
+        self._tail = None
         if code == -1000:
             pass
         else:
@@ -453,9 +486,9 @@ class Backend(QObject):
         self.refresh()
 
     def shutdown(self):
+        # The game is an independent process: closing the launcher does not close it.
         self.precompiler.cancel()
-        if self.process:
-            self.process.terminate()
+        self._tail_timer.stop()
 
     # -- fixes ----------------------------------------------------------------------------------
     @Property(QObject, constant=True)
