@@ -602,6 +602,41 @@ def new_log():
     return log
 
 
+def desktop_env():
+    """Environment for the programs the launcher opens for the player (browser, file manager).
+    The frozen launcher runs with PyInstaller's LD_LIBRARY_PATH (its _internal folder); a browser
+    started with it loads the launcher's libraries instead of the system's and dies silently
+    (Linux package: the YouTube, Discord and sponsor links did nothing)."""
+    env = os.environ.copy()
+    if os.name != 'nt' and FROZEN:
+        original = env.pop('LD_LIBRARY_PATH_ORIG', None)
+        if original:
+            env['LD_LIBRARY_PATH'] = original
+        else:
+            env.pop('LD_LIBRARY_PATH', None)
+    return env
+
+
+def open_external(target):
+    """Opens a URL or a local path with the system's handler, detached from the launcher.
+    Returns True when a handler was started."""
+    target = str(target)
+    try:
+        if os.name == 'nt':
+            os.startfile(target)  # noqa: S606 (the player's own link or folder)
+            return True
+        opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
+        subprocess.Popen([opener, target], env=desktop_env(), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        try:
+            import webbrowser
+            return bool(webbrowser.open(target))
+        except Exception:
+            return False
+
+
 def detach_options():
     """Popen options that make the game an independent process: closing the launcher (or its
     terminal) does not reach it. Linux: its own session. Windows: its own process group and no

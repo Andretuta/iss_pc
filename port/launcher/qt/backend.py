@@ -439,8 +439,7 @@ class Backend(QObject):
 
     @Slot(str)
     def openUrl(self, name):
-        import webbrowser
-        webbrowser.open(URLS[name])
+        tlg_run.open_external(URLS[name])
 
     # -- play (same path as the Tk launcher: prepare() then launch()) -------------------------------
     @Slot()
@@ -715,15 +714,13 @@ class Backend(QObject):
 
     @Slot()
     def openGuidesFolder(self):
-        from PySide6.QtGui import QDesktopServices
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.probes.get('guide_dir') or logic.GUIDE_DIR)))
+        tlg_run.open_external(self.probes.get('guide_dir') or logic.GUIDE_DIR)
 
     @Slot()
     def openReadme(self):
-        from PySide6.QtGui import QDesktopServices
         readme = tlg_run.REPO_DIR / 'README.md'
         if readme.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(readme)))
+            tlg_run.open_external(readme)
 
     @Slot(str, str)
     def setFix(self, item_id, value):
