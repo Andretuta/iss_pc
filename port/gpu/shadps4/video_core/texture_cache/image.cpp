@@ -4,6 +4,7 @@
 #include "video_core/amdgpu/tlg_amd_1d.h"
 #include "tlg_toggles.h"
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <ranges>
 #include "common/assert.h"
@@ -21,6 +22,41 @@ namespace VideoCore {
 using namespace Vulkan;
 
 Common::IncrementalIdProvider<u64> Image::global_image_uid{};
+
+namespace {
+// tlg: RX 580 / Polaris crash (amdvlk64.dll+0xebbbb, #31/#49/#81/#99/#103): AMD's Windows driver
+// faults with a null write right after the first image-upload barrier of the 512x1, 32-layer,
+// 10-mip texture, whether it is a 1D, a 2D or a CPU-decoded image. Two crash logs (one with BP09 on, one off) end at
+// Transit -> FlushBarriers. Two suspects, both switchable:
+//  * TLG_EXPLICIT_RANGE (default on, 0 = old behaviour): full-image barriers carry the real
+//    level and layer counts instead of VK_REMAINING_MIP_LEVELS / VK_REMAINING_ARRAY_LAYERS.
+//    Identical by the spec (base 0), but it is the one value in the barrier the driver has to
+//    resolve itself.
+//  * TLG_BARRIER_SPLIT=1 (default off): one barrier per mip level instead of one for all.
+bool ExplicitBarrierRange() {
+    static const bool on = [] {
+        const char* env = std::getenv("TLG_EXPLICIT_RANGE");
+        const bool enabled = !(env && env[0] == '0');
+        if (enabled) {
+            std::printf("GPU: explicit barrier ranges (TLG_EXPLICIT_RANGE=0 keeps VK_REMAINING_*)\n");
+        }
+        return enabled;
+    }();
+    return on;
+}
+
+bool SplitMipBarriers() {
+    static const bool on = [] {
+        const char* env = std::getenv("TLG_BARRIER_SPLIT");
+        const bool enabled = env && env[0] == '1';
+        if (enabled) {
+            std::printf("GPU: one barrier per mip level (TLG_BARRIER_SPLIT=1)\n");
+        }
+        return enabled;
+    }();
+    return on;
+}
+} // namespace
 
 static vk::ImageUsageFlags ImageUsageFlags(const Vulkan::Instance& instance,
                                            const ImageInfo& info) {
@@ -387,24 +423,34 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
             return;
         }
 
-        barriers.emplace_back(vk::ImageMemoryBarrier2{
-            .srcStageMask = last_state.pl_stage,
-            .srcAccessMask = last_state.access_mask,
-            .dstStageMask = dst_stage,
-            .dstAccessMask = dst_mask,
-            .oldLayout = last_state.layout,
-            .newLayout = dst_layout,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = GetImage(),
-            .subresourceRange{
-                .aspectMask = aspect_mask,
-                .baseMipLevel = 0,
-                .levelCount = VK_REMAINING_MIP_LEVELS,
-                .baseArrayLayer = 0,
-                .layerCount = VK_REMAINING_ARRAY_LAYERS,
-            },
-        });
+        // tlg: see ExplicitBarrierRange / SplitMipBarriers above.
+        const u32 total_levels = static_cast<u32>(info.resources.levels);
+        const u32 total_layers = static_cast<u32>(info.resources.layers);
+        const bool explicit_range = ExplicitBarrierRange() && total_levels > 0 && total_layers > 0;
+        const u32 level_count = explicit_range ? total_levels : VK_REMAINING_MIP_LEVELS;
+        const u32 layer_count = explicit_range ? total_layers : VK_REMAINING_ARRAY_LAYERS;
+        const bool split = explicit_range && total_levels > 1 && SplitMipBarriers();
+        const u32 barrier_count = split ? total_levels : 1;
+        for (u32 level = 0; level < barrier_count; ++level) {
+            barriers.emplace_back(vk::ImageMemoryBarrier2{
+                .srcStageMask = last_state.pl_stage,
+                .srcAccessMask = last_state.access_mask,
+                .dstStageMask = dst_stage,
+                .dstAccessMask = dst_mask,
+                .oldLayout = last_state.layout,
+                .newLayout = dst_layout,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = GetImage(),
+                .subresourceRange{
+                    .aspectMask = aspect_mask,
+                    .baseMipLevel = split ? level : 0,
+                    .levelCount = split ? 1 : level_count,
+                    .baseArrayLayer = 0,
+                    .layerCount = layer_count,
+                },
+            });
+        }
     }
 
     last_state.layout = dst_layout;
