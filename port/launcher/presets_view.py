@@ -34,8 +34,8 @@ SECO = {
     'exported': '2026-10-16',
     'names': {'en': 'BARE', 'pt': 'SECO'},
     'what': {
-        'en': 'The recommended setup with every draw-distance option at its minimum. For weak PCs.',
-        'pt': 'A configuração recomendada com tudo de distância no mínimo. Para PCs fracos.',
+        'en': 'BARE-BONES MACHINES, USE THIS ONE. The recommended setup with every draw-distance option at its minimum.',
+        'pt': 'MÁQUINAS SECAS E LISAS, USEM ESSE. A configuração recomendada com tudo de distância no mínimo.',
     },
     'settings': dict(CURRENT['settings']),
     'items': dict(CURRENT['items'], **VIEW_BARE),
