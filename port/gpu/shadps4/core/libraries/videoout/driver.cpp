@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -316,6 +317,16 @@ void VideoOutDriver::Flip(const Request& req) {
 
     // tlg: TLG_FRAME_STATS=1 prints flip rate and frame time spread every 5 seconds.
     static const bool frame_stats = EmulatorSettingsImpl::Flag("TLG_FRAME_STATS", false);
+    if (TlgPerf::FramesEnabled()) {
+        using Clock = std::chrono::steady_clock;
+        static auto last_trace = Clock::time_point{};
+        static std::uint64_t trace_frame = 0;
+        const auto now = Clock::now();
+        const auto interval = last_trace == Clock::time_point{} ? 0 :
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_trace).count();
+        last_trace = now;
+        TlgPerf::FramePresented(++trace_frame, interval);
+    }
     if (frame_stats) {
         using Clock = std::chrono::steady_clock;
         static Clock::time_point window_start = Clock::now(), last = window_start;

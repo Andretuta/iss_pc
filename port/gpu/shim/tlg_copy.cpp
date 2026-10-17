@@ -50,12 +50,17 @@ public:
         return !threads.empty();
     }
 
+    bool HasPending() const noexcept {
+        return busy.load(std::memory_order_acquire);
+    }
+
     void Async(std::function<void()> task) {
         {
             std::scoped_lock lk{mutex};
             const u64 epoch = epoch_base + epochs.size() - 1;
             ++epochs.back().pending;
             ++pending;
+            busy.store(true, std::memory_order_release);
             async_tasks.push_back({std::move(task), epoch});
         }
         cv.notify_one();
@@ -68,6 +73,7 @@ public:
                 // Runs once every copy issued so far is done, in order with earlier ones.
                 epochs.back().callbacks.push_back(std::move(callback));
                 epochs.emplace_back();
+                busy.store(true, std::memory_order_release);
                 return;
             }
         }
@@ -81,6 +87,7 @@ public:
             {
                 std::scoped_lock lk{mutex};
                 if (pending == 0 && epochs.size() == 1 && !draining) {
+                    busy.store(false, std::memory_order_release);
                     return;
                 }
                 if (!async_tasks.empty()) {
@@ -172,6 +179,7 @@ private:
             lk.lock();
         }
         draining = false;
+        busy.store(pending != 0 || epochs.size() > 1, std::memory_order_release);
     }
 
     static void Work(Job& job) {
@@ -222,6 +230,7 @@ private:
     u64 epoch_base = 0;       ///< epoch number of epochs.front()
     std::size_t pending = 0;
     bool draining = false;
+    std::atomic<bool> busy{false};
 };
 
 Pool& GetPool() {
@@ -239,6 +248,10 @@ thread_local Batch batch;
 
 bool Enabled() {
     return GetPool().Enabled() && !TlgToggle::Disabled(TlgToggle::ParallelCopies);
+}
+
+bool HasPending() noexcept {
+    return !batch.items.empty() || GetPool().HasPending();
 }
 
 void Async(std::function<void()> task) {

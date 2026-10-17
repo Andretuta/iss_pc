@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -102,12 +103,17 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
     // the layout, which the destructor keeps alive until the build is done. Returns no pipeline
     // when one may only come from the driver's cache and it isn't there.
     const auto create = [&instance, module, layout = *pipeline_layout,
-                         debug_str](vk::PipelineCache cache,
+                         debug_str, trace_key = std::hash<ComputePipelineKey>{}(compute_key)](vk::PipelineCache cache,
                                     vk::PipelineCreateFlags flags) -> vk::UniquePipeline {
         const vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_ci = {
             .requiredSubgroupSize = 64,
         };
+        TlgPerf::Span trace_build{TlgPerf::Kind::CompileBegin, TlgPerf::Kind::CompileEnd, trace_key, 'c'};
+        vk::PipelineCreationFeedback feedback{};
+        const vk::PipelineCreationFeedbackCreateInfo feedback_info{.pPipelineCreationFeedback = &feedback};
+        // Pipeline creation feedback is core in Vulkan 1.3, required by this renderer.
         const vk::ComputePipelineCreateInfo compute_pipeline_ci = {
+            .pNext = TlgPerf::Enabled() ? &feedback_info : nullptr,
             .flags = flags,
             .stage{
                 .pNext = instance.IsSubgroupSize64Supported() ? &subgroup_size_ci : nullptr,
@@ -122,6 +128,12 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
         for (u32 attempt = 1;
              RetryPipelineCreation(created.result, attempt, "compute", debug_str); ++attempt) {
             created = device.createComputePipelineUnique(cache, compute_pipeline_ci);
+        }
+        if (TlgPerf::Enabled()) {
+            TlgPerf::Event e; e.kind = TlgPerf::Kind::PipelineFeedback; e.operation = trace_build.Id(); e.object = trace_key;
+            e.b = created.result == vk::Result::eSuccess ? TlgPerf::CacheFeedback(static_cast<unsigned>(feedback.flags)) : 0;
+            e.a = e.b ? feedback.duration : 0;
+            e.generation = 'c'; TlgPerf::Emit(e);
         }
         if (created.result == vk::Result::ePipelineCompileRequired &&
             (flags & vk::PipelineCreateFlagBits::eFailOnPipelineCompileRequired)) {

@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -123,7 +124,16 @@ struct PageManager::Impl {
 
     static bool GuestFaultSignalHandler(void* context, void* fault_address) {
         const auto start = std::chrono::steady_clock::now();
+        const auto rip = TlgPerf::Enabled() ? reinterpret_cast<std::uintptr_t>(Common::GetRip(context)) : 0;
+        const auto site = rip >= 0x800000000ULL && rip < 0x810000000ULL ? rip - 0x800000000ULL : 0;
+        TlgPerf::Span perf_fault{TlgPerf::Kind::FaultBegin, TlgPerf::Kind::FaultEnd,
+                                site, Common::IsWriteError(context) ? 1ULL : 0ULL};
         const auto addr = reinterpret_cast<VAddr>(fault_address);
+        if (perf_fault.Id()) {
+            TlgPerf::Event e;e.kind=TlgPerf::Kind::FaultContext;e.operation=perf_fault.Id();
+            e.object=TlgPerf::Hash(addr);e.a=site;e.b=Common::IsWriteError(context);
+            TlgPerf::Emit(e);
+        }
         const bool handled = HandleGuestFault(context, addr);
         ProfileFault(context, addr, Common::IsWriteError(context),
                      static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(

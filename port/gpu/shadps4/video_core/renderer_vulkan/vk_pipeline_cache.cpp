@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -650,14 +651,23 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
             ASSERT_MSG(result == vk::Result::eSuccess, "Failed to create compiler pipeline cache");
             worker_pipeline_caches.push_back(std::move(worker_cache));
         }
+        const auto trace_hooks = [](std::uint64_t label) {
+            AsyncCompiler::TraceHooks hooks;
+            if (TlgPerf::Enabled()) {
+                hooks.enqueued = [label](bool priority,size_t depth) { return TlgPerf::Enqueue(label,priority,depth); };
+                hooks.begin = [label](std::uint64_t op) { return TlgPerf::QueueBegin(op,label); };
+                hooks.end = [label](std::uint64_t op,std::uint64_t parent) { TlgPerf::QueueEnd(op,parent,label); };
+            }
+            return hooks;
+        };
         capture_compiler = std::make_unique<AsyncCompiler>(capture_count, 8, [](unsigned index) {
             Common::SetCurrentThreadName(("tlg:ShaderCapture" + std::to_string(index)).c_str());
             Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
-        });
+        }, trace_hooks(TlgPerf::Label("shader_capture")));
         compiler = std::make_unique<AsyncCompiler>(count, 64, [](unsigned index) {
             Common::SetCurrentThreadName(("tlg:ShaderCompile" + std::to_string(index)).c_str());
             Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
-        });
+        }, trace_hooks(TlgPerf::Label("shader_compile")));
         LOG_INFO(Render_Vulkan, "tlg: async graphics compilation ready ({} capture, {} compile workers)",
                  capture_count, count);
     }
@@ -697,6 +707,9 @@ struct PhaseTimer {
     ~PhaseTimer() { Stop(); }
 };
 struct CompileTimer {
+    TlgPerf::Span perf;
+    explicit CompileTimer(u64 object=0,u64 kind=0)
+        : perf{TlgPerf::Kind::CompileBegin,TlgPerf::Kind::CompileEnd,object,kind} {}
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
     ~CompileTimer() {
         g_tlg_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1204,6 +1217,12 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
         return nullptr;
     }
     // tlg: region trace (TLG_REGION_TRACE=1): the first request of each pipeline.
+    if (TlgPerf::Enabled() && !graphics_pipelines.contains(sel.graphics_key)) {
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::PipelineRequest;
+        e.object = std::hash<GraphicsPipelineKey>{}(sel.graphics_key);
+        e.a = 'g'; e.b = pending_graphics.contains(sel.graphics_key) ? 1 : lazy_programs ? 2 : 0;
+        TlgPerf::Emit(e);
+    }
     TlgRegion::NotePipeline('g', std::hash<GraphicsPipelineKey>{}(sel.graphics_key),
                             graphics_pipelines.contains(sel.graphics_key));
     if (Precompile::CaptureEnabled() && !graphics_pipelines.contains(sel.graphics_key)) {
@@ -1290,7 +1309,7 @@ compile_now:
     if (is_new) {
         const auto pipeline_hash = std::hash<GraphicsPipelineKey>{}(sel.graphics_key);
         LOG_INFO(Render_Vulkan, "Compiling graphics pipeline {:#x}", pipeline_hash);
-        CompileTimer timer;
+        CompileTimer timer{pipeline_hash, 'g'};
 
         GraphicsPipeline::SerializationSupport sdata{};
         it.value() = std::make_unique<GraphicsPipeline>(
@@ -1321,6 +1340,12 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
     if (!RefreshComputeKey()) {
         return nullptr;
     }
+    if (TlgPerf::Enabled() && !compute_pipelines.contains(compute_key)) {
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::PipelineRequest;
+        e.object = std::hash<ComputePipelineKey>{}(compute_key);
+        e.a = 'c'; e.b = lazy_programs ? 2 : 0; // downstream cache state otherwise unknown
+        TlgPerf::Emit(e);
+    }
     TlgRegion::NotePipeline('c', std::hash<ComputePipelineKey>{}(compute_key),
                             compute_pipelines.contains(compute_key));
     const auto [it, is_new] = compute_pipelines.try_emplace(compute_key);
@@ -1330,7 +1355,7 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
     if (is_new) {
         const auto pipeline_hash = std::hash<ComputePipelineKey>{}(compute_key);
         LOG_INFO(Render_Vulkan, "Compiling compute pipeline {:#x}", pipeline_hash);
-        CompileTimer timer;
+        CompileTimer timer{pipeline_hash, 'c'};
 
         ComputePipeline::SerializationSupport sdata{};
         // tlg: built on the compiler threads when the driver hasn't cached it (the dispatch
@@ -1709,8 +1734,12 @@ vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::Runtim
                                               Shader::Backend::Bindings& binding) {
     LOG_INFO(Render_Vulkan, "Compiling {} shader {:#x} {}", info.hw_stage, info.pgm_hash,
              perm_idx != 0 ? "(permutation)" : "");
+    if (TlgPerf::Enabled()) {
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::ShaderTranslate;
+        e.object = info.pgm_hash; e.generation = perm_idx; TlgPerf::Emit(e);
+    }
     DumpShader(code, info.pgm_hash, info.hw_stage, perm_idx, "bin");
-    CompileTimer timer;
+    CompileTimer timer{info.pgm_hash, 's'};
 
     const auto ir_program = Shader::TranslateProgram(code, pools, info, runtime_info, profile);
     auto spv = Shader::Backend::SPIRV::EmitSPIRV(profile, runtime_info, ir_program, binding);
@@ -1867,6 +1896,10 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
 
     auto it_pgm = program_cache.find(params.hash); // this thread is the only writer
     if (it_pgm == program_cache.end() && lazy_programs && LoadProgramFromCache(params.hash)) {
+        if (TlgPerf::Enabled()) {
+            TlgPerf::Event e; e.kind = TlgPerf::Kind::ShaderLoad;
+            e.object = params.hash; TlgPerf::Emit(e);
+        }
         it_pgm = program_cache.find(params.hash);
     }
     const bool compile_async = AsyncCompilation() && hw_stage != HwStage::Compute &&

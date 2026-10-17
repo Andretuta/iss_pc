@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -285,7 +286,14 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
     const bool enabled = global_key.keySize && EmulatorSettings.IsPipelineCacheEnabled();
     const auto create = [&](vk::PipelineCache used_cache, const auto& used_info, bool restored) {
         const auto started = std::chrono::steady_clock::now();
-        auto result = device.createGraphicsPipelineUnique(used_cache, used_info);
+        TlgPerf::Span trace_build{TlgPerf::Kind::CompileBegin, TlgPerf::Kind::CompileEnd,
+                                 std::hash<GraphicsPipelineKey>{}(key), 'g'};
+        vk::PipelineCreationFeedback feedback{};
+        const vk::PipelineCreationFeedbackCreateInfo feedback_info{
+            .pNext = used_info.pNext, .pPipelineCreationFeedback = &feedback};
+        auto measured_info = used_info;
+        if (TlgPerf::Enabled()) measured_info.pNext = &feedback_info;
+        auto result = device.createGraphicsPipelineUnique(used_cache, measured_info);
         // tlg: a failure the driver may recover from is tried again (a binary that failed to
         // restore is compiled instead).
         for (u32 attempt = 1;
@@ -293,7 +301,14 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
              RetryPipelineCreation(result.result, attempt, "graphics",
                                    fmt::format("{:#x}", std::hash<GraphicsPipelineKey>{}(key)));
              ++attempt) {
-            result = device.createGraphicsPipelineUnique(used_cache, used_info);
+            result = device.createGraphicsPipelineUnique(used_cache, measured_info);
+        }
+        if (TlgPerf::Enabled()) {
+            TlgPerf::Event e; e.kind = TlgPerf::Kind::PipelineFeedback; e.operation = trace_build.Id();
+            e.object = std::hash<GraphicsPipelineKey>{}(key);
+            e.b = result.result == vk::Result::eSuccess ? TlgPerf::CacheFeedback(static_cast<unsigned>(feedback.flags)) : 0;
+            e.a = e.b ? feedback.duration : 0;
+            e.generation = 'g'; TlgPerf::Emit(e);
         }
         const auto ns = u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now() - started)
