@@ -153,16 +153,16 @@ private:
         return (size + 63) & ~63u;
     }
 
-    /// tlg: whether a drain that outlived its spin sleeps on `consumed` instead of yielding.
-    /// The yield loop kept a core busy for the whole wait (perf: ~8% of all samples in
-    /// sched_yield on a 16-thread machine), which costs nothing there but takes a core from
-    /// the game's threads on CPUs with few. TLG_DRAIN_SLEEP=0/1 overrides.
+    /// tlg: a drain that outlived its spin sleeps on `consumed` instead of yielding. The yield
+    /// loop kept a core busy for the whole wait (perf: ~8% of all samples in sched_yield on a
+    /// 16-thread machine) and takes a core from the game's threads on CPUs with few. Measured
+    /// on the 16-thread machine: no FPS difference beyond run-to-run noise (30.8-32.9 either
+    /// way), the GPU command thread from 47% to 35% of a core. TLG_DRAIN_SLEEP=0 restores the
+    /// yield loop for comparisons.
     static bool SleepInDrain() {
         static const bool sleep = [] {
-            if (const char* env = std::getenv("TLG_DRAIN_SLEEP"); env && *env) {
-                return *env == '1';
-            }
-            return TlgThreads::Available() < 12;
+            const char* env = std::getenv("TLG_DRAIN_SLEEP");
+            return !(env && *env == '0');
         }();
         return sleep;
     }
