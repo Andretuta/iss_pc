@@ -58,6 +58,57 @@ int BarrierSplitMode() {
     }();
     return mode;
 }
+// tlg: RX 580 / Polaris crash (amdvlk64.dll+0xebbbb): the logs show one flush of 9217 barriers
+// (1536 layers x 6 mips of ONE image, one barrier per subresource, all with the same layouts and
+// access masks) right before the AMD Windows driver faults. Neighbouring subresources with an
+// identical transition are one barrier by the spec; this folds runs of layers first, then runs of
+// mips, so the 9216 become 1. TLG_BARRIER_MERGE=0 keeps the old one-per-subresource barriers.
+bool MergeBarriersEnabled() {
+    static const bool on = [] {
+        const char* env = std::getenv("TLG_BARRIER_MERGE");
+        const bool enabled = !(env && env[0] == '0');
+        if (enabled) {
+            std::printf("GPU: merging adjacent subresource barriers (TLG_BARRIER_MERGE=0 keeps "
+                        "one per subresource)\n");
+        }
+        return enabled;
+    }();
+    return on;
+}
+
+template <typename Container>
+void MergeAdjacentBarriers(Container& barriers, size_t first) {
+    if (barriers.size() < first + 2) {
+        return;
+    }
+    size_t out = first;
+    for (size_t i = first + 1; i < barriers.size(); ++i) {
+        auto& prev = barriers[out];
+        const auto cur = barriers[i];
+        auto& pr = prev.subresourceRange;
+        const auto& cr = cur.subresourceRange;
+        const bool same_transition =
+            prev.image == cur.image && pr.aspectMask == cr.aspectMask &&
+            prev.srcStageMask == cur.srcStageMask && prev.srcAccessMask == cur.srcAccessMask &&
+            prev.dstStageMask == cur.dstStageMask && prev.dstAccessMask == cur.dstAccessMask &&
+            prev.oldLayout == cur.oldLayout && prev.newLayout == cur.newLayout &&
+            prev.srcQueueFamilyIndex == cur.srcQueueFamilyIndex &&
+            prev.dstQueueFamilyIndex == cur.dstQueueFamilyIndex;
+        if (same_transition && pr.baseMipLevel == cr.baseMipLevel &&
+            pr.levelCount == cr.levelCount && pr.baseArrayLayer + pr.layerCount == cr.baseArrayLayer) {
+            pr.layerCount += cr.layerCount; // next layers of the same mips
+            continue;
+        }
+        if (same_transition && pr.baseArrayLayer == cr.baseArrayLayer &&
+            pr.layerCount == cr.layerCount && pr.baseMipLevel + pr.levelCount == cr.baseMipLevel) {
+            pr.levelCount += cr.levelCount; // next mips of the same layers
+            continue;
+        }
+        barriers[++out] = cur;
+    }
+    barriers.erase(barriers.begin() + (out + 1), barriers.end());
+}
+
 } // namespace
 
 static vk::ImageUsageFlags ImageUsageFlags(const Vulkan::Instance& instance,
@@ -359,6 +410,7 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
     }
     memo.valid = false;
     if (needs_partial_transition || partially_transited) {
+        const size_t first_new_barrier = barriers.size();
         if (!partially_transited) {
             subresource_states.resize(info.resources.levels * info.resources.layers);
             std::fill(subresource_states.begin(), subresource_states.end(), last_state);
@@ -414,6 +466,12 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
                     state.pl_stage = dst_stage;
                 }
             }
+        }
+
+        if (MergeBarriersEnabled()) {
+            // First pass folds layers within a mip, second folds mips with equal layer ranges.
+            MergeAdjacentBarriers(barriers, first_new_barrier);
+            MergeAdjacentBarriers(barriers, first_new_barrier);
         }
 
         if (!needs_partial_transition) {
