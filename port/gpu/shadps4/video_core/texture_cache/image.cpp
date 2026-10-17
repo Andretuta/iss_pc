@@ -24,14 +24,11 @@ using namespace Vulkan;
 Common::IncrementalIdProvider<u64> Image::global_image_uid{};
 
 namespace {
-// tlg: RX 580 / Polaris crash (amdvlk64.dll+0xebbbb, #31/#49/#81/#99/#103): AMD's Windows driver
-// faults with a null write right after the first image-upload barrier of the 512x1, 32-layer,
-// 10-mip texture, whether it is a 1D, a 2D or a CPU-decoded image. Two crash logs (one with BP09 on, one off) end at
-// Transit -> FlushBarriers. Two suspects, both switchable:
+// tlg: RX 580 / Polaris crash (amdvlk64.dll+0xebbbb, issues #31/#49/#81/#99/#103). Two early
+// experiments, both switchable and neither shown to be the cause (the crash stayed with both):
 //  * TLG_EXPLICIT_RANGE (default on, 0 = old behaviour): full-image barriers carry the real
 //    level and layer counts instead of VK_REMAINING_MIP_LEVELS / VK_REMAINING_ARRAY_LAYERS.
-//    Identical by the spec (base 0), but it is the one value in the barrier the driver has to
-//    resolve itself.
+//    Identical by the spec (base 0).
 //  * TLG_BARRIER_SPLIT=1 (default off): one barrier per mip level instead of one for all;
 //    =2: one barrier per mip level and per layer.
 bool ExplicitBarrierRange() {
@@ -58,6 +55,7 @@ int BarrierSplitMode() {
     }();
     return mode;
 }
+
 // tlg: RX 580 / Polaris crash (amdvlk64.dll+0xebbbb): the logs show one flush of 9217 barriers
 // (1536 layers x 6 mips of ONE image, one barrier per subresource, all with the same layouts and
 // access masks) right before the AMD Windows driver faults. Neighbouring subresources with an
@@ -488,7 +486,7 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
             return;
         }
 
-        // tlg: see ExplicitBarrierRange / SplitMipBarriers above.
+        // tlg: see ExplicitBarrierRange / BarrierSplitMode above.
         const u32 total_levels = static_cast<u32>(info.resources.levels);
         const u32 total_layers = static_cast<u32>(info.resources.layers);
         const bool explicit_range = ExplicitBarrierRange() && total_levels > 0 && total_layers > 0;
