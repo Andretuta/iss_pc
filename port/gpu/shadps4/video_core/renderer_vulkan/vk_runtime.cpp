@@ -965,6 +965,9 @@ void Runtime::FlushBarriers() {
                       u32(image_barriers.size()), int(dep_info.memoryBarrierCount));
         u32 index = 0;
         for (const auto& b : image_barriers) {
+            if (index >= 12) {
+                break; // a batch can hold thousands; the first few say what it is
+            }
             TLG_IMG_TRACE("  barrier %u image %p %s -> %s stage %s -> %s access %s -> %s "
                           "mips %u+%u layers %u+%u aspect %s\n",
                           index++, (void*)VkImage(b.image), vk::to_string(b.oldLayout).c_str(),
@@ -975,6 +978,9 @@ void Runtime::FlushBarriers() {
                           b.subresourceRange.levelCount, b.subresourceRange.baseArrayLayer,
                           b.subresourceRange.layerCount,
                           vk::to_string(b.subresourceRange.aspectMask).c_str());
+        }
+        if (image_barriers.size() > 12) {
+            TLG_IMG_TRACE("  ... and %u more barriers\n", u32(image_barriers.size() - 12));
         }
         TLG_IMG_TRACE("FlushBarriers: EndRendering\n");
     }
