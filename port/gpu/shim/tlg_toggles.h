@@ -72,6 +72,10 @@ enum : std::uint64_t {
     /// graphics queue (dispatches, fences and memory writes in order) instead of draining it
     /// before every packet; this bit switches it off live.
     PipelinedCompute = 1ull << 56,
+    /// Commands other threads send to the GPU thread (deferred readbacks, texture readback
+    /// waits) run in order on the draw recording thread instead of draining the draw pipe
+    /// first; this bit switches it off live (they drain and run on the GPU thread, as before).
+    PipelinedCommands = 1ull << 63,
     SceneMipBias = 1ull << 57, ///< negative LOD bias of G-buffer samplers at reduced scene sizes
     /// Guest threads wait for their own readback copies (TLG_DEFERRED_READBACK=1 enables it;
     /// this bit switches it off live for A/B, see BufferCache::ReadMemory).

@@ -268,7 +268,7 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
         // tlg: the GPU command thread only records the copy and goes on with the game's
         // commands; this thread waits for the copy, as it would for the GPU on a console.
         std::shared_ptr<DeferredReadback> readback;
-        liverpool->SendCommand<true>([&] {
+        liverpool->SendCommand<true, true>([&] {
             readback = StartDeferredReadback(device_addr, size);
             if (!readback && is_write) {
                 // Nothing to copy back, as when DownloadMemory finds nothing.
@@ -281,7 +281,7 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
             if (queued_at) {
                 Readbacks().stale.fetch_add(1);
             }
-            liverpool->SendCommand<true>(flush_request);
+            liverpool->SendCommand<true, true>(flush_request);
         } else if (readback) {
             if (is_write) {
                 // After the data is back; see MarkRegionAsCpuModifiedUnlessGpu.
@@ -294,7 +294,7 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
             }
         }
     } else {
-        liverpool->SendCommand<true>(flush_request);
+        liverpool->SendCommand<true, true>(flush_request);
     }
 }
 
