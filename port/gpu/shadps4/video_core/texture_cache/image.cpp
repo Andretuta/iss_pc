@@ -32,7 +32,8 @@ namespace {
 //    level and layer counts instead of VK_REMAINING_MIP_LEVELS / VK_REMAINING_ARRAY_LAYERS.
 //    Identical by the spec (base 0), but it is the one value in the barrier the driver has to
 //    resolve itself.
-//  * TLG_BARRIER_SPLIT=1 (default off): one barrier per mip level instead of one for all.
+//  * TLG_BARRIER_SPLIT=1 (default off): one barrier per mip level instead of one for all;
+//    =2: one barrier per mip level and per layer.
 bool ExplicitBarrierRange() {
     static const bool on = [] {
         const char* env = std::getenv("TLG_EXPLICIT_RANGE");
@@ -45,16 +46,17 @@ bool ExplicitBarrierRange() {
     return on;
 }
 
-bool SplitMipBarriers() {
-    static const bool on = [] {
+// 0 = one barrier for the whole image, 1 = one per mip level, 2 = one per mip level and layer.
+int BarrierSplitMode() {
+    static const int mode = [] {
         const char* env = std::getenv("TLG_BARRIER_SPLIT");
-        const bool enabled = env && env[0] == '1';
-        if (enabled) {
-            std::printf("GPU: one barrier per mip level (TLG_BARRIER_SPLIT=1)\n");
+        const int value = (env && env[0] >= '1' && env[0] <= '2') ? env[0] - '0' : 0;
+        if (value != 0) {
+            std::printf("GPU: split full-image barriers, mode %d (TLG_BARRIER_SPLIT)\n", value);
         }
-        return enabled;
+        return value;
     }();
-    return on;
+    return mode;
 }
 } // namespace
 
@@ -289,16 +291,21 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
     backing = &backing_images.emplace_back();
     backing->num_samples = info.num_samples;
     backing->image = UniqueImage{instance.GetDevice(), instance.GetAllocator()};
-    if (host_1d) {
-        TLG_IMG_TRACE("create 1D image %ux%u layers %u mips %u %s flags %s usage %s at %#llx\n",
+    // tlg: every height-1 image is traced, whatever its Vulkan type: the crash image was a
+    // height-1 image that the old 1D-only creation trace never showed.
+    const bool trace_thin = host_1d || (!info.props.is_host_2d && info.size.height == 1);
+    if (trace_thin) {
+        TLG_IMG_TRACE("create thin image %ux%u layers %u mips %u %s vk type %s guest type %u "
+                      "tile %u flags %s usage %s at %#llx\n",
                       info.size.width, info.size.height, u32(info.resources.layers),
                       u32(info.resources.levels), vk::to_string(supported_format).c_str(),
-                      vk::to_string(flags).c_str(), vk::to_string(usage_flags).c_str(),
-                      (unsigned long long)info.guest_address);
+                      vk::to_string(image_ci.imageType).c_str(), u32(info.type),
+                      u32(info.tile_mode), vk::to_string(flags).c_str(),
+                      vk::to_string(usage_flags).c_str(), (unsigned long long)info.guest_address);
     }
     backing->image.Create(image_ci);
-    if (host_1d) {
-        TLG_IMG_TRACE("created 1D image %p\n", (void*)VkImage(backing->image.image));
+    if (trace_thin) {
+        TLG_IMG_TRACE("created thin image %p\n", (void*)VkImage(backing->image.image));
     }
 
     Vulkan::SetObjectName(instance.GetDevice(), GetImage(),
@@ -429,27 +436,32 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
         const bool explicit_range = ExplicitBarrierRange() && total_levels > 0 && total_layers > 0;
         const u32 level_count = explicit_range ? total_levels : VK_REMAINING_MIP_LEVELS;
         const u32 layer_count = explicit_range ? total_layers : VK_REMAINING_ARRAY_LAYERS;
-        const bool split = explicit_range && total_levels > 1 && SplitMipBarriers();
-        const u32 barrier_count = split ? total_levels : 1;
-        for (u32 level = 0; level < barrier_count; ++level) {
-            barriers.emplace_back(vk::ImageMemoryBarrier2{
-                .srcStageMask = last_state.pl_stage,
-                .srcAccessMask = last_state.access_mask,
-                .dstStageMask = dst_stage,
-                .dstAccessMask = dst_mask,
-                .oldLayout = last_state.layout,
-                .newLayout = dst_layout,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = GetImage(),
-                .subresourceRange{
-                    .aspectMask = aspect_mask,
-                    .baseMipLevel = split ? level : 0,
-                    .levelCount = split ? 1 : level_count,
-                    .baseArrayLayer = 0,
-                    .layerCount = layer_count,
-                },
-            });
+        const int split_mode = explicit_range ? BarrierSplitMode() : 0;
+        const bool split_mips = split_mode >= 1 && total_levels > 1;
+        const bool split_layers = split_mode >= 2 && total_layers > 1;
+        const u32 mip_barriers = split_mips ? total_levels : 1;
+        const u32 layer_barriers = split_layers ? total_layers : 1;
+        for (u32 level = 0; level < mip_barriers; ++level) {
+            for (u32 layer = 0; layer < layer_barriers; ++layer) {
+                barriers.emplace_back(vk::ImageMemoryBarrier2{
+                    .srcStageMask = last_state.pl_stage,
+                    .srcAccessMask = last_state.access_mask,
+                    .dstStageMask = dst_stage,
+                    .dstAccessMask = dst_mask,
+                    .oldLayout = last_state.layout,
+                    .newLayout = dst_layout,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = GetImage(),
+                    .subresourceRange{
+                        .aspectMask = aspect_mask,
+                        .baseMipLevel = split_mips ? level : 0,
+                        .levelCount = split_mips ? 1 : level_count,
+                        .baseArrayLayer = split_layers ? layer : 0,
+                        .layerCount = split_layers ? 1 : layer_count,
+                    },
+                });
+            }
         }
     }
 
