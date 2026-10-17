@@ -756,6 +756,25 @@ bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 to
     return true;
 }
 
+namespace {
+void RunCommandTask(Rasterizer&, const u8* data) {
+    auto* command = *reinterpret_cast<Common::UniqueFunction<void>* const*>(data);
+    (*command)();
+    delete command;
+}
+} // namespace
+
+bool Rasterizer::RunCommandInOrder(Common::UniqueFunction<void>&& command) {
+    if (!UseDrawPipe() || !OnStageA() || TlgToggle::Disabled(TlgToggle::PipelinedCommands)) {
+        return false;
+    }
+    auto* heap = new Common::UniqueFunction<void>(std::move(command));
+    if (!RunInOrder(&RunCommandTask, &heap, sizeof(heap), TlgToggle::PipelinedCommands)) {
+        return true; // ran here after a drain (RunInOrder's fallback), and freed by the task
+    }
+    return true;
+}
+
 void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     auto& self = *static_cast<Rasterizer*>(context);
     if (*reinterpret_cast<const PacketKind*>(data) == PacketKind::Task) {

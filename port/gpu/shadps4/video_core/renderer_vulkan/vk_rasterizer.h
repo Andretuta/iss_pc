@@ -7,6 +7,7 @@
 #include <source_location>
 
 #include "common/recursive_lock.h"
+#include "common/unique_function.h"
 #include "common/shared_first_mutex.h"
 #include "video_core/renderer_vulkan/vk_wait_diagnostics.h"
 #include "video_core/buffer_cache/buffer_cache.h"
@@ -123,6 +124,10 @@ public:
     /// Returns true when the task was handed to the recording thread (not run yet).
     bool RunInOrder(OrderedTask task, const void* data, u32 size,
                     u64 toggle = TlgToggle::PipelinedTasks);
+    /// tlg: a command another thread sent to the GPU thread (Liverpool::SendCommand in_order),
+    /// run on the draw recording thread after the draws handed over before it. Returns false
+    /// when it must run here instead (pipe off, PipelinedCommands off, not on stage A).
+    bool RunCommandInOrder(Common::UniqueFunction<void>&& command);
     /// Stage A: the draw pipe position after the last handed-over packet, and whether the
     /// recording thread has run everything before a position.
     [[nodiscard]] u64 DrawPipeHead() const {

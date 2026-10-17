@@ -180,7 +180,7 @@ bool TextureCache::ResolveReadbacks(VAddr address, u64 size, bool assume_locks,
     };
     TlgFreeze::WaitScope wait{"GPU readback", reinterpret_cast<const void*>(address)}; // tlg
     if (assume_locks) resolve();
-    else liverpool->SendCommand<true>(resolve);
+    else liverpool->SendCommand<true, true>(resolve);
     return true;
 }
 

@@ -88,19 +88,27 @@ Liverpool::~Liverpool() {
 }
 
 void Liverpool::ProcessCommands() {
-    if (num_commands && rasterizer) {
-        rasterizer->DrainDrawPipe(Vulkan::DrawPipe::ReasonCommands); // tlg: commands touch the caches
-    }
     // Process incoming commands with high priority
+    bool drained = false;
     while (num_commands) {
-        Common::UniqueFunction<void> callback{};
+        Command command{};
         {
             std::scoped_lock lk{submit_mutex};
-            callback = std::move(command_queue.front());
+            command = std::move(command_queue.front());
             command_queue.pop();
             --num_commands;
         }
-        callback();
+        // tlg: a readback runs in order on the draw recording thread; anything else touches the
+        // caches from this thread, so the pipe is drained first (which also runs the readbacks
+        // handed over before it: the order between the two kinds holds).
+        if (command.in_order && rasterizer && rasterizer->RunCommandInOrder(std::move(command.func))) {
+            continue;
+        }
+        if (!drained && rasterizer) {
+            rasterizer->DrainDrawPipe(Vulkan::DrawPipe::ReasonCommands);
+            drained = true;
+        }
+        command.func();
     }
 }
 
