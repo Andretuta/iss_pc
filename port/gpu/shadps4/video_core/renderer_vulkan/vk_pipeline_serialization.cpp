@@ -286,13 +286,16 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
     const bool enabled = global_key.keySize && EmulatorSettings.IsPipelineCacheEnabled();
     const auto create = [&](vk::PipelineCache used_cache, const auto& used_info, bool restored) {
         const auto started = std::chrono::steady_clock::now();
+        // One snapshot: feedback is attached and read under the same decision.
+        const bool trace = TlgPerf::Enabled();
+        const u64 trace_key = trace ? std::hash<GraphicsPipelineKey>{}(key) : 0;
         TlgPerf::Span trace_build{TlgPerf::Kind::CompileBegin, TlgPerf::Kind::CompileEnd,
-                                 std::hash<GraphicsPipelineKey>{}(key), 'g'};
+                                 trace_key, 'g'};
         vk::PipelineCreationFeedback feedback{};
         const vk::PipelineCreationFeedbackCreateInfo feedback_info{
             .pNext = used_info.pNext, .pPipelineCreationFeedback = &feedback};
         auto measured_info = used_info;
-        if (TlgPerf::Enabled()) measured_info.pNext = &feedback_info;
+        if (trace) measured_info.pNext = &feedback_info;
         auto result = device.createGraphicsPipelineUnique(used_cache, measured_info);
         // tlg: a failure the driver may recover from is tried again (a binary that failed to
         // restore is compiled instead).
@@ -303,9 +306,9 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
              ++attempt) {
             result = device.createGraphicsPipelineUnique(used_cache, measured_info);
         }
-        if (TlgPerf::Enabled()) {
+        if (trace) {
             TlgPerf::Event e; e.kind = TlgPerf::Kind::PipelineFeedback; e.operation = trace_build.Id();
-            e.object = std::hash<GraphicsPipelineKey>{}(key);
+            e.object = trace_key;
             e.b = result.result == vk::Result::eSuccess ? TlgPerf::CacheFeedback(static_cast<unsigned>(feedback.flags)) : 0;
             e.a = e.b ? feedback.duration : 0;
             e.generation = 'g'; TlgPerf::Emit(e);

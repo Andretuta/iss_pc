@@ -50,8 +50,10 @@ public:
         return !threads.empty();
     }
 
-    bool HasPending() const noexcept {
-        return busy.load(std::memory_order_acquire);
+    // Same test as WaitAll's early return. Takes the lock: only asked while tracing.
+    bool HasPending() {
+        std::scoped_lock lk{mutex};
+        return pending != 0 || epochs.size() > 1 || draining;
     }
 
     void Async(std::function<void()> task) {
@@ -60,7 +62,6 @@ public:
             const u64 epoch = epoch_base + epochs.size() - 1;
             ++epochs.back().pending;
             ++pending;
-            busy.store(true, std::memory_order_release);
             async_tasks.push_back({std::move(task), epoch});
         }
         cv.notify_one();
@@ -73,7 +74,6 @@ public:
                 // Runs once every copy issued so far is done, in order with earlier ones.
                 epochs.back().callbacks.push_back(std::move(callback));
                 epochs.emplace_back();
-                busy.store(true, std::memory_order_release);
                 return;
             }
         }
@@ -87,7 +87,6 @@ public:
             {
                 std::scoped_lock lk{mutex};
                 if (pending == 0 && epochs.size() == 1 && !draining) {
-                    busy.store(false, std::memory_order_release);
                     return;
                 }
                 if (!async_tasks.empty()) {
@@ -179,7 +178,6 @@ private:
             lk.lock();
         }
         draining = false;
-        busy.store(pending != 0 || epochs.size() > 1, std::memory_order_release);
     }
 
     static void Work(Job& job) {
@@ -230,7 +228,6 @@ private:
     u64 epoch_base = 0;       ///< epoch number of epochs.front()
     std::size_t pending = 0;
     bool draining = false;
-    std::atomic<bool> busy{false};
 };
 
 Pool& GetPool() {
@@ -250,7 +247,7 @@ bool Enabled() {
     return GetPool().Enabled() && !TlgToggle::Disabled(TlgToggle::ParallelCopies);
 }
 
-bool HasPending() noexcept {
+bool HasPending() {
     return !batch.items.empty() || GetPool().HasPending();
 }
 

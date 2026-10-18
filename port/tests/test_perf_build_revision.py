@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
+import os
 import shutil
 import subprocess
 import tempfile
@@ -55,6 +56,24 @@ class BuildRevision(unittest.TestCase):
             self.assertEqual(identify(), revision + "-dirty")
             git("add", "source.txt")
             self.assertEqual(identify(), revision + "-dirty")
+
+    def test_source_archive_is_unknown_not_dirty(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            script = root / "probe.cmake"
+            result = root / "revision.txt"
+            script.write_text(
+                f'include("{HELPER.as_posix()}")\n'
+                f'tlg_perf_build_revision("{root.as_posix()}" REV)\n'
+                f'file(WRITE "{result.as_posix()}" "${{REV}}")\n',
+                encoding="utf-8",
+            )
+            # Keep git from finding a repository above the temporary folder.
+            env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(root.parent))
+            subprocess.run(
+                ["cmake", "-P", str(script)], check=True, capture_output=True, env=env
+            )
+            self.assertEqual(result.read_text(encoding="utf-8"), "unknown")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
 #include <deque>
 #include <fstream>
 #include <memory>
+#include <random>
 #include <thread>
 #include <vector>
 #ifndef TLG_PERF_BUILD_ID
@@ -33,7 +34,6 @@ struct State {
     std::uint64_t epoch = 0, salt = 0;
 };
 std::atomic<State *> current{nullptr};
-std::atomic<bool> detailed{false};
 std::atomic<std::uint64_t> active{0}, operations{1}, epochs{0};
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
 static_assert(std::atomic<State *>::is_always_lock_free);
@@ -227,6 +227,12 @@ void Consume(State &s) {
                 history.push_back(e);
                 latest = e.ts_ns;
             }
+            if (!batch.empty()) {
+                // A crash right after a hitch is the case worth diagnosing: keep what was read.
+                frames.flush();
+                if (out.is_open())
+                    out.flush();
+            }
             while (!history.empty() &&
                    (history.size() > History || now - history.front().ts_ns > s.options.pre_ns))
                 history.pop_front();
@@ -250,8 +256,6 @@ void Consume(State &s) {
     }
 }
 } // namespace
-bool Enabled() noexcept { return detailed.load(std::memory_order_relaxed); }
-bool FramesEnabled() noexcept { return current.load(std::memory_order_relaxed) != nullptr; }
 bool Start(const Options &options) noexcept {
     if (current.load())
         return false;
@@ -263,12 +267,18 @@ bool Start(const Options &options) noexcept {
         auto s = std::make_unique<State>();
         s->options = options;
         s->epoch = epochs.fetch_add(1) + 1;
-        s->salt = static_cast<std::uint64_t>(Clock::now().time_since_epoch().count());
-        // Unique directory, atomically allocated, to protect all earlier captures.
+        // Random and kept in memory only: Hash() IDs cannot be mapped back to addresses.
+        std::random_device random;
+        s->salt = (static_cast<std::uint64_t>(random()) << 32) ^ random();
+        // Unique directory, atomically allocated, to protect all earlier captures. Named by
+        // wall-clock seconds so sessions sort by date; never by the salt.
+        const auto wall = std::chrono::duration_cast<std::chrono::seconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count();
         auto base = options.folder;
         for (unsigned attempt = 0;; ++attempt) {
             s->options.folder =
-                base / ("session-" + std::to_string(s->salt) + "-" + std::to_string(attempt));
+                base / ("session-" + std::to_string(wall) + "-" + std::to_string(attempt));
             if (std::filesystem::create_directory(s->options.folder))
                 break;
         }
@@ -287,14 +297,16 @@ bool Start(const Options &options) noexcept {
             }
         });
         current.store(s.release());
-        detailed.store(options.detailed);
+        detail::frames.store(true);
+        detail::detailed.store(options.detailed);
         return true;
     } catch (...) {
         return false;
     }
 }
 void Stop() noexcept {
-    detailed.store(false);
+    detail::detailed.store(false);
+    detail::frames.store(false);
     auto *s = current.exchange(nullptr);
     if (!s)
         return;
@@ -418,34 +430,27 @@ std::uint64_t Hash(std::uint64_t x) noexcept {
     x *= 0x94d049bb133111ebULL;
     return x ^ (x >> 31);
 }
-Span::Span(Kind begin, Kind end, std::uint64_t object, std::uint64_t generation) noexcept
-    : end_(end) {
-    if (!Enabled())
-        return;
+void Span::Begin(Kind begin) noexcept {
     operation_ = NextOperation();
-    object_ = object;
-    generation_ = generation;
     parent_ = current_scope;
     current_scope = operation_;
     Event e;
     e.kind = begin;
     e.operation = operation_;
-    e.object = object;
-    e.generation = generation;
+    e.object = object_;
+    e.generation = generation_;
     e.b = parent_;
     Emit(e);
 }
-Span::~Span() {
-    if (operation_) {
-        Event e;
-        e.kind = end_;
-        e.operation = operation_;
-        e.object = object_;
-        e.generation = generation_;
-        e.b = parent_;
-        Emit(e);
-        if (current_scope == operation_)
-            current_scope = parent_;
-    }
+void Span::End() noexcept {
+    Event e;
+    e.kind = end_;
+    e.operation = operation_;
+    e.object = object_;
+    e.generation = generation_;
+    e.b = parent_;
+    Emit(e);
+    if (current_scope == operation_)
+        current_scope = parent_;
 }
 } // namespace TlgPerf

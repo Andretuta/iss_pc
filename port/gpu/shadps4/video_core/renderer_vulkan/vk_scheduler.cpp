@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 #include <functional>
+#include <optional>
 
 #include "tlg_copy.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
@@ -268,12 +269,12 @@ void Scheduler::WaitHostCopies() {
         }
     }
     TlgStats::WaitTimer timer{TlgStats::copy_threads_wait_ns};
-    if (TlgCopy::HasPending()) {
-        TlgPerf::Span perf_wait{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("copy_threads")};
-        TlgCopy::WaitAsync();
-    } else {
-        TlgCopy::WaitAsync();
+    // A span only for a real wait; HasPending takes the copy lock, so ask only while tracing.
+    std::optional<TlgPerf::Span> perf_wait;
+    if (TlgPerf::Enabled() && TlgCopy::HasPending()) {
+        perf_wait.emplace(TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("copy_threads"));
     }
+    TlgCopy::WaitAsync();
 }
 
 void Scheduler::KickRecording(bool force) {

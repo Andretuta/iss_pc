@@ -11,7 +11,8 @@ function(tlg_perf_build_revision source_dir output)
         endif()
         execute_process(COMMAND "${GIT_EXECUTABLE}" diff --quiet HEAD --
                         WORKING_DIRECTORY "${source_dir}" RESULT_VARIABLE dirty ERROR_QUIET)
-        if(dirty)
+        # 1 means changes; any other non-zero code is git failing (e.g. not a repository).
+        if(dirty EQUAL 1)
             string(APPEND revision "-dirty")
         endif()
     endif()

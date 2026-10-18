@@ -142,6 +142,8 @@ def analyze(events):
             begin = pending.pop(key, None)
             if begin is None or begin["kind"] + 1 != k or e["ts_ns"] < begin["ts_ns"]:
                 incomplete.append(e)
+                if begin is not None:  # popped above: keep it visible, not silently lost
+                    incomplete.append(begin)
                 continue
             spans.append(
                 dict(
@@ -385,6 +387,12 @@ def main(argv=None):
     if args.frames:
         result["frame_series"] = read_frames(
             args.frames, args.start_frame, args.end_frame
+        )
+        # The console line and the HTML read result["warnings"] only: an incomplete frame
+        # series must show there too, not just inside frame_series.
+        result["warnings"] = sorted(
+            set(result["warnings"])
+            | {"frames:" + w for w in result["frame_series"]["warnings"]}
         )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.with_suffix(".json").write_text(

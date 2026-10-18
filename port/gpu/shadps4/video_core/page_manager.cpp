@@ -124,18 +124,18 @@ struct PageManager::Impl {
 
     static bool GuestFaultSignalHandler(void* context, void* fault_address) {
         const auto start = std::chrono::steady_clock::now();
+        const bool write = Common::IsWriteError(context);
         const auto rip = TlgPerf::Enabled() ? reinterpret_cast<std::uintptr_t>(Common::GetRip(context)) : 0;
         const auto site = rip >= 0x800000000ULL && rip < 0x810000000ULL ? rip - 0x800000000ULL : 0;
-        TlgPerf::Span perf_fault{TlgPerf::Kind::FaultBegin, TlgPerf::Kind::FaultEnd,
-                                site, Common::IsWriteError(context) ? 1ULL : 0ULL};
+        TlgPerf::Span perf_fault{TlgPerf::Kind::FaultBegin, TlgPerf::Kind::FaultEnd, site, write};
         const auto addr = reinterpret_cast<VAddr>(fault_address);
         if (perf_fault.Id()) {
             TlgPerf::Event e;e.kind=TlgPerf::Kind::FaultContext;e.operation=perf_fault.Id();
-            e.object=TlgPerf::Hash(addr);e.a=site;e.b=Common::IsWriteError(context);
+            e.object=TlgPerf::Hash(addr);e.a=site;e.b=write;
             TlgPerf::Emit(e);
         }
         const bool handled = HandleGuestFault(context, addr);
-        ProfileFault(context, addr, Common::IsWriteError(context),
+        ProfileFault(context, addr, write,
                      static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                          std::chrono::steady_clock::now() - start).count()));
         return handled;

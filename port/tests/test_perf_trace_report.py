@@ -45,7 +45,9 @@ class Report(unittest.TestCase):
         a = self.event(5, 20)
         b = self.event(6, 10)
         a["op"] = b["op"] = 2
-        self.assertTrue(r.analyze([a, b])["incomplete_spans"])
+        incomplete = r.analyze([a, b])["incomplete_spans"]
+        self.assertIn(a, incomplete)  # the begin is reported, not dropped
+        self.assertIn(b, incomplete)
 
     def test_lifetime_reuse_is_not_same_texture(self):
         es = [self.event(9, 1), self.event(10, 2), self.event(9, 3)]
@@ -139,6 +141,16 @@ class Report(unittest.TestCase):
             report = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
             self.assertTrue(report["frame_series"]["complete"])
             self.assertEqual(report["frame_series"]["p99_ms"], 20)
+
+    def test_frame_series_warnings_reach_report_warnings(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "frames.csv"
+            p.write_text("frame,ts_ns,interval_ns\n1,10,20000000\n", encoding="utf-8")
+            out = Path(d) / "report"
+            with contextlib.redirect_stdout(io.StringIO()):
+                r.main(["--frames", str(p), "--out", str(out)])
+            report = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
+            self.assertIn("frames:missing_frame_footer", report["warnings"])
 
     def test_queue_time_is_separate_from_work(self):
         enq = self.event(19, 10)
