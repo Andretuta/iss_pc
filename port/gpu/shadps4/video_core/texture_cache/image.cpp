@@ -14,6 +14,7 @@
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/blit_helper.h"
+#include "video_core/texture_cache/barrier_merge.h"
 #include "video_core/texture_cache/image.h"
 
 #include <vk_mem_alloc.h>
@@ -348,6 +349,7 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
                                       vk::AccessFlagBits2::eShaderWrite |
                                       vk::AccessFlagBits2::eMemoryWrite;
     auto& memo = backing->partial_memo;
+    const auto first_new_barrier = barriers.size();
     if (needs_partial_transition && partially_transited && memo.valid &&
         memo.range == *subres_range && memo.layout == dst_layout && memo.access == dst_mask &&
         memo.stage == dst_stage) {
@@ -444,6 +446,14 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
                 .layerCount = VK_REMAINING_ARRAY_LAYERS,
             },
         });
+    }
+
+    // Keep the ordinary path untouched. The launcher exposes this opt-in for Polaris/RX 580.
+    if (barriers.size() >= first_new_barrier + 2 && [] {
+            static const bool enabled = IsBarrierMergeEnabled(std::getenv("TLG_BARRIER_MERGE"));
+            return enabled;
+        }()) {
+        MergeAdjacentBarriers(barriers, first_new_barrier);
     }
 
     last_state.layout = dst_layout;

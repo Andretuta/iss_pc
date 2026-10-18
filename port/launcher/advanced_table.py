@@ -155,6 +155,12 @@ _ROWS = (
     ('image', '1D_NO_MUTABLE', 'bool', '0', ('1D images without mutable format', 'Imagens 1D sem formato mutável'),
      ('AMD workaround test: creates 1D images without the mutable-format flag.',
       'Teste de contorno para AMD: cria imagens 1D sem o formato mutável.'), {'risky': True}),
+    ('image', 'BARRIER_MERGE', 'bool', '0', ('RX580 compatibility', 'Compatibilidade RX580'),
+     ('Experimental image-subresource barrier merging. Reported by one RX 580 user to help compatibility; '
+      'results are not confirmed and this may affect other GPUs. Off by default.',
+      'Junção experimental de barreiras de sub-recursos de imagem. Um usuário de RX 580 relatou melhora de '
+      'compatibilidade; o resultado não foi confirmado e pode afetar outras GPUs. Desligada por padrão.'),
+     {'risky': True}),
     ('diag', 'PERF_DIAG', 'bool', '0', ('Image creation report', 'Relatório de criação de imagens'),
      ('Every 5 s the log lists the images created most often and the partial-height views used, to see whether a game remakes the same image every frame.',
       'A cada 5 s o log lista as imagens criadas com mais frequência e as vistas de altura parcial usadas, para ver se o jogo refaz a mesma imagem a cada quadro.'), {}),
