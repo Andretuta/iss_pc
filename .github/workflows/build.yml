@@ -1,11 +1,9 @@
-# Builds and tests packages on PRs and main pushes. Publishing is an explicit manual
+# Builds and tests packages on PRs. Publishing is an explicit manual
 # action: run this workflow on main with publish_release enabled to release accumulated PRs.
 # No game or console file is ever built in or uploaded.
 name: Build
 
 on:
-  push:
-    branches: [main]
   # Pull requests to main build both packages (artifacts only): the Release is left untouched.
   pull_request:
     branches: [main]
@@ -27,6 +25,7 @@ permissions:
 
 jobs:
   linux:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true)
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -83,6 +82,7 @@ jobs:
           retention-days: 3
 
   windows:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true)
     runs-on: windows-latest
     defaults:
       run:
