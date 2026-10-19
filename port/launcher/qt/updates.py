@@ -4,7 +4,6 @@ clicks "Check for updates" (or opens the launcher with the option on, off by def
 data of the player. Nothing is downloaded or installed: "Download" opens the release page."""
 import datetime
 import threading
-import webbrowser
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
@@ -148,4 +147,4 @@ class Updates(QObject):
         if 'open_url' in self.probes:
             self.probes['open_url'](url)
         else:
-            webbrowser.open(url)
+            tlg_run.open_external(url)

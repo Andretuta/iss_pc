@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -1408,6 +1409,8 @@ void TextureCache::RefreshImage(Image& image) {
     if (False(image.flags & ImageFlagBits::Dirty) || image.info.guest_samples > 1) {
         return;
     }
+    TlgPerf::Span perf_upload{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd,
+                             TlgPerf::Label("image_refresh"), image.perf_generation};
     ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                      ReadbackSource::ImageRefresh);
     TlgStats::Timer timer{TlgStats::t_refresh};
@@ -1494,6 +1497,11 @@ void TextureCache::RefreshImage(Image& image) {
         copy.bufferOffset += offset;
     }
 
+    if (TlgPerf::Enabled()) {
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::ResourceUpload;
+        e.object = TlgPerf::Hash(image.info.guest_address); e.generation = image.perf_generation;
+        e.a = image.info.guest_size; TlgPerf::Emit(e);
+    }
     runtime.UploadImage(&image, buffer, image_copies);
 }
 
@@ -1599,6 +1607,12 @@ vk::Sampler TextureCache::GetSampler(const AmdGpu::Sampler& sampler,
 void TextureCache::RegisterImage(ImageId image_id) {
     TlgStats::images_registered.fetch_add(1, std::memory_order_relaxed);
     Image& image = slot_images[image_id];
+    if (TlgPerf::Enabled()) {
+        image.perf_generation = TlgPerf::NextOperation();
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::ResourceCreate;
+        e.object = TlgPerf::Hash(image.info.guest_address); e.generation = image.perf_generation;
+        e.a = image.info.guest_size; TlgPerf::Emit(e);
+    }
     ASSERT_MSG(False(image.flags & ImageFlagBits::Registered),
                "Trying to register an already registered image");
     image.flags |= ImageFlagBits::Registered;
@@ -1632,7 +1646,14 @@ void TextureCache::RegisterImage(ImageId image_id) {
                 [this, image_id](u64 page) { page_table[page].push_back(image_id); });
 }
 
-void TextureCache::UnregisterImage(ImageId image_id) {
+void TextureCache::UnregisterImage(ImageId image_id,unsigned perf_reason) {
+    if (TlgPerf::Enabled()) {
+        const auto& image = slot_images[image_id];
+        TlgPerf::Event e; e.kind = TlgPerf::Kind::ResourceEvict;
+        e.object = TlgPerf::Hash(image.info.guest_address); e.generation = image.perf_generation;
+        e.a = image.info.guest_size; e.b = perf_reason; // 1 pressure, 2 GC, 0 unknown
+        TlgPerf::Emit(e);
+    }
     Image& image = slot_images[image_id];
     ASSERT_MSG(True(image.flags & ImageFlagBits::Registered),
                "Trying to unregister an already unregistered image");
@@ -1835,7 +1856,7 @@ void TextureCache::GarbageCollectImages() {
             ++gc_downloads;
         }
         ++gc_evictions;
-        FreeImage(image_id);
+        FreeImage(image_id,pressured ? 1U : 2U);
         if (total_used_memory < critical_gc_memory) {
             if (aggresive) {
                 num_deletions >>= 2;
@@ -1864,6 +1885,11 @@ void TextureCache::GarbageCollectImages() {
     if (pressured || gc_downloads != 0) {
         const auto now = std::chrono::steady_clock::now();
         if (now - gc_report_time >= std::chrono::seconds(5)) {
+            if (TlgPerf::Enabled()) {
+                TlgPerf::Event e; e.kind = TlgPerf::Kind::MemoryPressure;
+                e.a = total_used_memory; e.b = pressure_gc_memory; e.generation = critical_gc_memory;
+                TlgPerf::Emit(e);
+            }
             std::printf("Texture cache: memory pressure, %llu of %llu MiB (critical %llu): "
                         "%llu images evicted, %llu written back since the last report\n",
                         (unsigned long long)(total_used_memory >> 20),

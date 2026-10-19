@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2025 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -10,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 #include <functional>
+#include <optional>
 
 #include "tlg_copy.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
@@ -247,6 +249,7 @@ void Scheduler::WaitDeferredSignals() {
         return;
     }
     TlgStats::WaitTimer timer{TlgStats::host_copies_wait_ns};
+    TlgPerf::Span perf_wait{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("host_copies")};
     KickRecording(true);
     while (deferred_signals_done->load(std::memory_order_acquire) < issued) {
         // Helps the copy threads the signals wait for.
@@ -258,6 +261,7 @@ void Scheduler::WaitDeferredSignals() {
 void Scheduler::WaitHostCopies() {
     if (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
         TlgStats::WaitTimer timer{TlgStats::host_copies_wait_ns};
+        TlgPerf::Span perf_wait{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("host_copies")};
         TlgStats::host_copy_waits.fetch_add(1, std::memory_order_relaxed);
         KickRecording(true);
         while (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
@@ -265,6 +269,11 @@ void Scheduler::WaitHostCopies() {
         }
     }
     TlgStats::WaitTimer timer{TlgStats::copy_threads_wait_ns};
+    // A span only for a real wait; HasPending takes the copy lock, so ask only while tracing.
+    std::optional<TlgPerf::Span> perf_wait;
+    if (TlgPerf::Enabled() && TlgCopy::HasPending()) {
+        perf_wait.emplace(TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("copy_threads"));
+    }
     TlgCopy::WaitAsync();
 }
 
@@ -310,6 +319,7 @@ void Scheduler::SyncRecording() {
     }
     KickRecording(true);
     TlgStats::WaitTimer timer{TlgStats::sync_recording_ns};
+    TlgPerf::Span perf_wait{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("recorder")};
     std::unique_lock lk{recorder_mutex};
     recorder_idle_cv.wait(lk, [this] { return recorder_queue.empty() && !recorder_busy; });
 }
@@ -397,7 +407,10 @@ void Scheduler::Wait(u64 tick, std::source_location caller, u64 submit_ns) {
     }
     TlgStats::WaitTimer timer{TlgStats::tick_wait_ns};
     const auto submitted = diagnose ? std::chrono::steady_clock::now() : start;
-    work_semaphore.Wait(tick);
+    if (!work_semaphore.IsFree(tick)) {
+        TlgPerf::Span perf_wait{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd, TlgPerf::Label("gpu_tick")};
+        work_semaphore.Wait(tick);
+    }
     if (diagnose) {
         const auto completed = std::chrono::steady_clock::now();
         WaitDiagnostics::Get().Add(caller.file_name(), caller.line(),

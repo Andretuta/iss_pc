@@ -30,6 +30,8 @@ FROZEN = bool(getattr(sys, 'frozen', False))
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 REPO_DIR = PORT_DIR.parent
 OUT_DIR = PORT_DIR / 'out'
+sys.path.insert(0, str(PORT_DIR / 'scripts'))
+import mod_patches  # noqa: E402
 
 
 def user_dir():
@@ -37,6 +39,41 @@ def user_dir():
     file (survives reinstalling), else <port folder>/user (userdata.py has the rules). Always call
     this instead of caching it: the Qt launcher changes it while running."""
     return userdata.user_dir(PORT_DIR)
+
+
+def mods_dir():
+    """ISS_MODS_DIR, else user_dir()/mods (created empty on first use so the player sees where
+    to drop shadPS4/GoldHEN cheat XML files). Not cached: user_dir() can change while running."""
+    directory = Path(os.environ.get('ISS_MODS_DIR') or user_dir() / 'mods')
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def mods_config():
+    return Path(os.environ.get('ISS_MODS_CONFIG') or user_dir() / 'mods.json')
+
+
+def list_mods(settings):
+    """[(key, name, note, enabled)] for the Mods tab: every shadPS4/GoldHEN cheat XML found in
+    the mods folder for this game's version, with its current enabled state."""
+    from infamous_patches import TITLE_IDS
+    app_version = mod_patches.game_app_version(settings['game_dir'])
+    found = mod_patches.external_patches(mods_dir(), app_version, TITLE_IDS)
+    selected = {key for key, _, _ in mod_patches.external_selection(found, mods_config())}
+    return [(key, meta.get('Name'), meta.get('Note', ''), key in selected) for key, _, meta in found]
+
+
+def set_mod_enabled(key, enabled):
+    """Updates mods.json: moves key into enabled/disabled, out of the other list."""
+    path = mods_config()
+    try:
+        data = json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError, ValueError):
+        data = {}
+    on, off = set(data.get('enabled', [])), set(data.get('disabled', []))
+    (on if enabled else off).add(key)
+    (off if enabled else on).discard(key)
+    path.write_text(json.dumps({'enabled': sorted(on), 'disabled': sorted(off)}, indent=2))
 
 
 def __getattr__(name):  # old code that still reads tlg_run.USER_DIR gets the current folder
@@ -373,6 +410,8 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
+        [*python_command(scripts / 'infamous_patches.py'), game, '--out', str(OUT_DIR),
+         '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -602,6 +641,41 @@ def new_log():
     return log
 
 
+def desktop_env():
+    """Environment for the programs the launcher opens for the player (browser, file manager).
+    The frozen launcher runs with PyInstaller's LD_LIBRARY_PATH (its _internal folder); a browser
+    started with it loads the launcher's libraries instead of the system's and dies silently
+    (Linux package: the YouTube, Discord and sponsor links did nothing)."""
+    env = os.environ.copy()
+    if os.name != 'nt' and FROZEN:
+        original = env.pop('LD_LIBRARY_PATH_ORIG', None)
+        if original:
+            env['LD_LIBRARY_PATH'] = original
+        else:
+            env.pop('LD_LIBRARY_PATH', None)
+    return env
+
+
+def open_external(target):
+    """Opens a URL or a local path with the system's handler, detached from the launcher.
+    Returns True when a handler was started."""
+    target = str(target)
+    try:
+        if os.name == 'nt':
+            os.startfile(target)  # noqa: S606 (the player's own link or folder)
+            return True
+        opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
+        subprocess.Popen([opener, target], env=desktop_env(), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        try:
+            import webbrowser
+            return bool(webbrowser.open(target))
+        except Exception:
+            return False
+
+
 def detach_options():
     """Popen options that make the game an independent process: closing the launcher (or its
     terminal) does not reach it. Linux: its own session. Windows: its own process group and no
@@ -629,7 +703,7 @@ def launch(settings, seconds=0, extra_env=None):
         print(note, flush=True)
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(data), '--content-profile', str(OUT_DIR / 'content.bin'),
-           '--timeout', str(int(seconds))]
+           '--patches', str(OUT_DIR / 'patches.bin'), '--timeout', str(int(seconds))]
     if ISA_TABLE.is_file():
         cmd += ['--isa-rewrite', str(ISA_TABLE)]
     with open(log, 'wb') as out:   # the child keeps its own copy of the descriptor
@@ -663,6 +737,13 @@ def main(argv=None):
         return 1
     try:
         prepare(settings, log=lambda line: None)
+        # Import here: precompile itself imports this module. The direct --play path
+        # must use the same first-start job generation as the Qt/Tk interfaces.
+        import precompile
+        outcome = precompile.prepare_jobs(settings)
+        print(f'Precompile jobs: {outcome}', flush=True)
+        if outcome == 'cancelled':
+            return 1
     except RuntimeError as error:  # GameError included: a message, never a traceback
         print(error, file=sys.stderr)
         return 1

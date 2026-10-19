@@ -442,7 +442,7 @@ private:
     void RegisterImage(ImageId image);
 
     /// Unregister image from the page table
-    void UnregisterImage(ImageId image);
+    void UnregisterImage(ImageId image,unsigned perf_reason=0);
 
     /// Track CPU reads and writes for image
     void TrackImage(ImageId image_id);
@@ -462,12 +462,12 @@ private:
     /// Touch the image in the LRU cache.
     void TouchImage(const Image& image);
 
-    void FreeImage(ImageId image_id) {
+    void FreeImage(ImageId image_id,unsigned perf_reason=0) {
         const auto& image = slot_images[image_id];
         ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                          ReadbackSource::ImageFree);
         UntrackImage(image_id);
-        UnregisterImage(image_id);
+        UnregisterImage(image_id,perf_reason);
         DeleteImage(image_id);
     }
 

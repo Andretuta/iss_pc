@@ -50,6 +50,12 @@ public:
         return !threads.empty();
     }
 
+    // Same test as WaitAll's early return. Takes the lock: only asked while tracing.
+    bool HasPending() {
+        std::scoped_lock lk{mutex};
+        return pending != 0 || epochs.size() > 1 || draining;
+    }
+
     void Async(std::function<void()> task) {
         {
             std::scoped_lock lk{mutex};
@@ -239,6 +245,10 @@ thread_local Batch batch;
 
 bool Enabled() {
     return GetPool().Enabled() && !TlgToggle::Disabled(TlgToggle::ParallelCopies);
+}
+
+bool HasPending() {
+    return !batch.items.empty() || GetPool().HasPending();
 }
 
 void Async(std::function<void()> task) {
