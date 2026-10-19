@@ -90,7 +90,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 
 ## Download
 
-A [**última versão**](https://github.com/HayatoG/iss_pc/releases/latest) é publicada quando o mantenedor decide reunir as mudanças em um pacote. PRs e merges continuam sendo compilados e testados, sem publicar releases. As anteriores ficam em [Releases](https://github.com/HayatoG/iss_pc/releases) como histórico. Veja [como publicar](docs/RELEASES.md):
+A [**última versão**](https://github.com/HayatoG/iss_pc/releases/latest) é publicada quando o mantenedor decide reunir as mudanças em um pacote. PRs são compilados e testados; aprovações e merges não disparam builds. Na `main`, Linux e Windows só compilam na execução manual autorizada para release. As anteriores ficam em [Releases](https://github.com/HayatoG/iss_pc/releases) como histórico. Veja [como publicar](docs/RELEASES.md):
 
 - **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 ou mais novos): `infamous-linux-x86_64.tar.gz`
 - **Windows 10 (1903 ou mais novo) / 11, 64 bits**: `infamous-windows-x86_64.zip`
@@ -451,7 +451,7 @@ The screenshots are at the top of this page.
 
 ## Download
 
-The [**latest release**](https://github.com/HayatoG/iss_pc/releases/latest) is published when the maintainer chooses to bundle the accumulated changes. PRs and merges still build and test without publishing releases. Older ones stay under [Releases](https://github.com/HayatoG/iss_pc/releases) as history. See [how to publish](docs/RELEASES.md):
+The [**latest release**](https://github.com/HayatoG/iss_pc/releases/latest) is published when the maintainer chooses to bundle the accumulated changes. PRs build and test; approvals and merges do not trigger builds. On `main`, Linux and Windows build only through an authorized manual release run. Older ones stay under [Releases](https://github.com/HayatoG/iss_pc/releases) as history. See [how to publish](docs/RELEASES.md):
 
 - **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 or newer): `infamous-linux-x86_64.tar.gz`
 - **Windows 10 (1903 or newer) / 11, 64-bit**: `infamous-windows-x86_64.zip`
