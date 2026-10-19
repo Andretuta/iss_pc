@@ -2,6 +2,9 @@
 # drivers, adapted to the native_probe runtime through shims in shim/.
 cmake_minimum_required(VERSION 3.24)
 project(tlggpu LANGUAGES C CXX)
+# Standalone diagnostics tests can be built without the GPU dependency stack:
+# cmake -S port/tests/perf -B <test-build>
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -186,6 +189,10 @@ add_library(tlggpu ${TLGGPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_S
     shadps4/core/libraries/videoout/driver.cpp shadps4/core/libraries/videoout/video_out.cpp
     shadps4/core/libraries/kernel/equeue.cpp ${AVPLAYER}
     shadps4/core/libraries/videodec/video_utils.cpp)
+# Identify diagnostic captures without exposing a build directory.
+include(cmake/PerfBuildRevision.cmake)
+tlg_perf_build_revision("${CMAKE_CURRENT_SOURCE_DIR}" TLG_TRACE_REV)
+target_compile_definitions(tlggpu PRIVATE TLG_PERF_BUILD_ID="${TLG_TRACE_REV}")
 add_dependencies(tlggpu host_shaders)
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).

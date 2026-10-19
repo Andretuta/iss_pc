@@ -20,7 +20,7 @@ from presets_view import REC1, SECO
 # Keys a preset sets (anything a preset does not list goes back to the default of the table).
 PRESET_SETTINGS = ('vsync',)
 PRESET_ITEMS = ('menu:fps_limit', 'menu:frames_queued', 'menu:fsr1', 'menu:rcas', 'menu:rcas_strength',
-                'TLG_BARRIER_MERGE',
+                'TLG_BARRIER_MERGE', 'TLG_EXPLICIT_RANGE', 'TLG_BARRIER_SPLIT',
                 'TLG_ASYNC_SHADERS', 'TLG_STALE_READBACK', 'TLG_DEFERRED_READBACK', 'TLG_BACKGROUND_WARMUP')
 # Full presets (presets_current.py) also set keys the plain ones never touch (GPU accuracy, read-ahead,
 # write merge, draw distance...): those keys are applied, and compared, only for the preset that lists them.

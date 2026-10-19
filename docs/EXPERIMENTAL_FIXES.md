@@ -10,7 +10,9 @@ Botões: **Voltar ao recomendado** (apaga todas as escolhas; o perfil Recomendad
 
 Variáveis: o launcher passa `ISS_<nome>=0/1` ao jogo (o `tlg-probe` copia para `TLG_<nome>`; um `ISS_`/`TLG_` já definido fora do launcher vence). As opções do menu do jogo são lidas do `tlg.ini` pelo próprio jogo.
 
-**Compatibilidade RX580:** na tela **Gráficos > Imagem** e também em **Avançado > Contornos de imagem**, a opção **Compatibilidade RX580** controla `ISS_BARRIER_MERGE` (`TLG_BARRIER_MERGE` no jogo). As duas telas editam a mesma opção salva. Ela fica desligada por padrão e não é ativada pela detecção da placa. O perfil **Compatibilidade RX 580 (experimental)** liga essa opção junto das escolhas recomendadas para AMD; os outros perfis integrados a desligam. Um usuário de RX 580 relatou melhora de compatibilidade, mas o resultado não foi confirmado e não é promessa de correção de crash. A opção também pode ser testada em qualquer GPU; qualquer `ISS_BARRIER_MERGE` ou `TLG_BARRIER_MERGE` definido fora do launcher prevalece.
+**Comparação de barreiras:** em **Avançado > Contornos de imagem**, **Intervalos explícitos** (`ISS_EXPLICIT_RANGE`, padrão 1) e **Dividir barreiras** (`ISS_BARRIER_SPLIT`, 0–2, padrão 0) expõem as experiências do #232. A divisão exige intervalos explícitos; desligue a junção para comparar os lotes divididos. Exigem reiniciar.
+
+**Compatibilidade RX580:** na tela **Gráficos > Imagem** e também em **Avançado > Contornos de imagem**, a opção **Compatibilidade RX580** controla `ISS_BARRIER_MERGE` (`TLG_BARRIER_MERGE` no jogo). As duas telas editam a mesma opção salva. Ela fica desligada por padrão e não é ativada pela detecção da placa. O perfil **Compatibilidade RX 580 (experimental)** liga essa opção junto das escolhas recomendadas para AMD; os outros perfis integrados a desligam. Dois usuários de RX 580 relataram melhora em um build anterior; o conjunto atual ainda precisa de validação e não é promessa de correção de crash. A opção também pode ser testada em qualquer GPU; qualquer `ISS_BARRIER_MERGE` ou `TLG_BARRIER_MERGE` definido fora do launcher prevalece.
 
 ## Correções BPnn
 
@@ -99,7 +101,9 @@ Buttons: **Back to recommended** (clears every choice; the Recommended profile i
 
 Variables: the launcher gives the game `ISS_<name>=0/1` (`tlg-probe` copies it to `TLG_<name>`; an `ISS_`/`TLG_` already set outside the launcher wins). The game menu options are read from `tlg.ini` by the game itself.
 
-**RX580 compatibility:** in **Graphics > Image** and **Advanced > Image workarounds**, the **RX580 compatibility** option controls `ISS_BARRIER_MERGE` (`TLG_BARRIER_MERGE` in the game). Both screens edit the same saved option. It is off by default and GPU detection does not enable it. The **RX 580 compatibility (experimental)** preset turns it on alongside the recommended AMD choices; all other built-in presets turn it off. One RX 580 user reported improved compatibility, but this is unconfirmed and does not promise to fix a crash. You can also test the option on any GPU; an `ISS_BARRIER_MERGE` or `TLG_BARRIER_MERGE` set outside the launcher takes precedence.
+**Barrier comparisons:** **Advanced > Image workarounds** exposes **Explicit image barrier ranges** (`ISS_EXPLICIT_RANGE`, default 1) and **Split full-image barriers** (`ISS_BARRIER_SPLIT`, 0–2, default 0), the experiments from #232. Splitting requires explicit ranges; disable merging to compare split batches. Restart required.
+
+**RX580 compatibility:** in **Graphics > Image** and **Advanced > Image workarounds**, the **RX580 compatibility** option controls `ISS_BARRIER_MERGE` (`TLG_BARRIER_MERGE` in the game). Both screens edit the same saved option. It is off by default and GPU detection does not enable it. The **RX 580 compatibility (experimental)** preset turns it on alongside the recommended AMD choices; all other built-in presets turn it off. Two RX 580 users reported improved compatibility in an earlier build; this combined version still needs validation and does not promise to fix a crash. You can also test the option on any GPU; an `ISS_BARRIER_MERGE` or `TLG_BARRIER_MERGE` set outside the launcher takes precedence.
 
 ## BPnn fixes
 

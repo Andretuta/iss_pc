@@ -29,6 +29,9 @@ int main() {
     assert(!VideoCore::IsBarrierMergeEnabled(nullptr));
     assert(!VideoCore::IsBarrierMergeEnabled("0"));
     assert(!VideoCore::IsBarrierMergeEnabled("true"));
+    assert(!VideoCore::IsBarrierMergeEnabled("10"));
+    assert(!VideoCore::IsBarrierMergeEnabled("1 "));
+    assert(!VideoCore::IsBarrierMergeEnabled(""));
     assert(VideoCore::IsBarrierMergeEnabled("1"));
 
     std::vector<vk::ImageMemoryBarrier2> empty;
@@ -71,4 +74,22 @@ int main() {
     std::vector<vk::ImageMemoryBarrier2> noncontiguous{MakeBarrier(0, 0), MakeBarrier(0, 2)};
     MergeAdjacentBarriers(noncontiguous, 0);
     assert(noncontiguous.size() == 2);
+    // A different prior layout in the middle must keep its own dependency and range.
+    std::vector<vk::ImageMemoryBarrier2> mixed{
+        MakeBarrier(0, 0), MakeBarrier(0, 1, vk::ImageLayout::eTransferDstOptimal),
+        MakeBarrier(0, 2), MakeBarrier(0, 3),
+    };
+    MergeAdjacentBarriers(mixed, 0);
+    assert(mixed.size() == 3);
+    assert(mixed[1].oldLayout == vk::ImageLayout::eTransferDstOptimal);
+    assert(mixed[1].subresourceRange.baseArrayLayer == 1);
+    assert(mixed[1].subresourceRange.layerCount == 1);
+    assert(mixed[2].subresourceRange.baseArrayLayer == 2);
+    assert(mixed[2].subresourceRange.layerCount == 2);
+
+    // Disjoint mip ranges cannot be collapsed across a missing mip.
+    std::vector<vk::ImageMemoryBarrier2> mip_gap{MakeBarrier(0, 0), MakeBarrier(2, 0)};
+    MergeAdjacentBarriers(mip_gap, 0);
+    assert(mip_gap.size() == 2);
+
 }

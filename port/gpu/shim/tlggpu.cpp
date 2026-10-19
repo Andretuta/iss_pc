@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 #include "tlg_write_log.h"
 // tlg: glue between the C loader and the vendored shadPS4 video core.
 #include "tlg_overlay.h"
@@ -286,6 +287,7 @@ extern "C" void tlggpu_init_headless(const TlgGpuConfig* config) {
 #else
     if (config->user_dir) setenv("TLG_GPU_USER_DIR", config->user_dir, 0);
 #endif
+    TlgPerf::InitFromEnvironment();
     Core::Emulator::FillElfInfo(*config);
 }
 
@@ -312,6 +314,7 @@ extern "C" int tlggpu_init(const TlgGpuConfig* config) {
 #else
     if (config->user_dir) setenv("TLG_GPU_USER_DIR", config->user_dir, 0);
 #endif
+    TlgPerf::InitFromEnvironment();
     Core::Emulator::FillElfInfo(*config);
     const std::string title = config->title ? config->title : "God of War III";
     const s32 width = config->width, height = config->height;
@@ -330,6 +333,7 @@ extern "C" int tlggpu_init(const TlgGpuConfig* config) {
         LOG_INFO(Frontend, "Window closed by user");
         runtime_report();
         std::fflush(stdout);
+        TlgPerf::Stop(); // _Exit bypasses atexit; finish diagnostics on normal window close.
         std::_Exit(0);
     });
     g_window_thread.detach();
