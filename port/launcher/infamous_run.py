@@ -737,6 +737,13 @@ def main(argv=None):
         return 1
     try:
         prepare(settings, log=lambda line: None)
+        # Import here: precompile itself imports this module. The direct --play path
+        # must use the same first-start job generation as the Qt/Tk interfaces.
+        import precompile
+        outcome = precompile.prepare_jobs(settings)
+        print(f'Precompile jobs: {outcome}', flush=True)
+        if outcome == 'cancelled':
+            return 1
     except RuntimeError as error:  # GameError included: a message, never a traceback
         print(error, file=sys.stderr)
         return 1

@@ -1,3 +1,4 @@
+#include "tlg_perf_trace.h"
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -245,8 +246,20 @@ std::tuple<const Buffer*, VAddr, VAddr> BufferCache::GetReadbackWindow(VAddr dev
 }
 
 void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool assume_locks) {
+    TlgPerf::Span trace_read{TlgPerf::Kind::WaitBegin, TlgPerf::Kind::WaitEnd,
+                            TlgPerf::Label("buffer_readback"), is_write ? 1ULL : 0ULL};
+    const auto trace_operation = trace_read.Id();
+    const auto trace_origin = TlgPerf::Enabled() ? TlgPerf::Hash(device_addr) : 0;
+    if (trace_operation) {
+        TlgPerf::Event e; e.kind=TlgPerf::Kind::ResourceRead; e.operation=trace_operation;
+        e.object=trace_origin; e.a=size; e.generation=is_write; TlgPerf::Emit(e);
+    }
     const s64 queued_at = ReadbackStatsEnabled() ? NowNs() : 0;
-    const auto flush_request = [this, device_addr, size, is_write, queued_at] {
+    const auto flush_request = [this, device_addr, size, is_write, queued_at,trace_operation,trace_origin] {
+        if (trace_operation) {
+            TlgPerf::Event e; e.kind=TlgPerf::Kind::ReadbackApply;e.operation=trace_operation;
+            e.object=trace_origin;e.a=size;e.generation=is_write;TlgPerf::Emit(e);
+        }
         const s64 started_at = queued_at ? NowNs() : 0;
         const auto [arena, window_start, window_end] = GetReadbackWindow(device_addr, size);
         DownloadMemory(arena, window_start, window_end - window_start);
@@ -269,6 +282,10 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
         // commands; this thread waits for the copy, as it would for the GPU on a console.
         std::shared_ptr<DeferredReadback> readback;
         liverpool->SendCommand<true, true>([&] {
+            if (trace_operation) {
+                TlgPerf::Event e; e.kind=TlgPerf::Kind::ReadbackApply;e.operation=trace_operation;
+                e.object=trace_origin;e.a=size;e.generation=is_write;TlgPerf::Emit(e);
+            }
             readback = StartDeferredReadback(device_addr, size);
             if (!readback && is_write) {
                 // Nothing to copy back, as when DownloadMemory finds nothing.
